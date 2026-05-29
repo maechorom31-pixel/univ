@@ -672,22 +672,38 @@ function categoryGroups(univ, dept, filterCats) {
       const vals = picked.flatMap(sub => data[cat][sub][y] || []);
       return vals.length ? Math.min(...vals) : null; // 대표 = 더 좋은(낮은) 등급
     });
-    groups.push({cat, subs: picked, series});
+    const branches = subs.filter(s => !picked.includes(s)); // 나눠진(공존) 갈래
+    groups.push({cat, subs: picked, series, branches, raw: data[cat]});
   }
   return groups;
 }
-// 묶음(연속) 점선 데이터셋
-function catConnectorDatasets(univ, dept, filterCats, opts) {
+// 점선 데이터셋 한 줄 만들기
+function connectorDS(cat, series, prefix) {
+  return {label: (prefix || '') + cat + ' (연결)', data: series,
+    borderColor: CAT_COLOR[cat] || '#999', borderDash: [5,4], borderWidth: 1.5,
+    pointRadius: 0, tension: .3, spanGaps: true, fill: false, order: 99,
+    datalabels: {display: false}};
+}
+// '나눠지기 전(줄기) + 해당 세부유형' 결합 점선: 그 해에 자기 값 있으면 자기 값, 없으면 줄기 값
+function combinedSeries(group, sub) {
+  return YEARS.map((y, i) => {
+    const own = group.raw[sub] && group.raw[sub][y];
+    return (own && own.length) ? Math.min(...own) : group.series[i];
+  });
+}
+// 연결 점선: 25/26에 존재하는(현재) 세부유형만 대상으로, '나눠지기 전(줄기)+해당유형'을 잇는다.
+// 갈라진 경우 각 현재 갈래마다 줄기를 중복해서 보여줌. (과거에만 있던 유형은 줄기 일부로만 쓰임)
+function currentConnectors(univ, dept, filterCats, opts) {
   opts = opts || {};
-  return categoryGroups(univ, dept, filterCats)
-    .filter(g => !opts.onlyCats || opts.onlyCats.has(g.cat))
-    .map(g => ({
-      label: (opts.prefix || '') + g.cat + ' (연결)',
-      data: g.series, borderColor: CAT_COLOR[g.cat] || '#999',
-      borderDash: [5,4], borderWidth: 1.5, pointRadius: 0,
-      tension: .3, spanGaps: true, fill: false, order: 99,
-      datalabels: {display: false}
-    }));
+  const out = [];
+  categoryGroups(univ, dept, filterCats).forEach(g => {
+    Object.keys(g.raw).forEach(sub => {
+      if (opts.subFilter && !opts.subFilter.has(sub)) return;
+      if (!(g.raw[sub][2025] || g.raw[sub][2026])) return; // 현재(25/26) 없는 유형은 제외
+      out.push(connectorDS(g.cat, combinedSeries(g, sub), opts.prefix));
+    });
+  });
+  return out;
 }
 
 function renderSubChips() {
@@ -966,8 +982,8 @@ function renderTrend(rs) {
         borderColor:subColor(sub), backgroundColor:subColor(sub)+'33',
         tension:.3, pointRadius:4, borderWidth:2, spanGaps:true});
     });
-    // 끊긴 카테고리 점선 연결
-    catConnectorDatasets(univ, dept, F.cats, {prefix:`${dept.slice(0,15)} `})
+    // 끊긴 추이 점선 연결 (현재 유형 기준)
+    currentConnectors(univ, dept, F.cats, {prefix:`${dept.slice(0,15)} `})
       .forEach(ds => datasets.push(ds));
   });
   if (trendChart) trendChart.destroy();
@@ -999,15 +1015,9 @@ function renderModalChart() {
         font:{size:11, weight:700}, anchor:'end', align:'top', offset:6,
         formatter:v => v != null ? v.toFixed(2) : ''}});
   }
-  // 세부유형 이름이 바뀌어 끊긴 카테고리를 점선으로 연결
-  // 전체 보기이거나, 묶음(카테고리 전체)을 선택했을 때 그 카테고리만 점선 표시
-  let onlyCats = null;
-  if (activeSubs && activeSubs.size > 0) {
-    onlyCats = new Set(categoryGroups(univ, dept, F.cats)
-      .filter(g => g.subs.every(s => activeSubs.has(s)))
-      .map(g => g.cat));
-  }
-  datasets.push(...catConnectorDatasets(univ, dept, F.cats, {onlyCats}));
+  // 이름이 바뀌어 끊긴 추이를 '줄기+현재유형' 점선으로 연결 (선택 시 그 유형만)
+  const subFilter = (activeSubs && activeSubs.size > 0) ? activeSubs : null;
+  datasets.push(...currentConnectors(univ, dept, F.cats, {subFilter}));
   const allVals = datasets.flatMap(d => d.data).filter(v => v != null);
   const yMin = allVals.length ? Math.max(1, Math.min(...allVals) - 0.3) : 1;
   const yMax = allVals.length ? Math.min(9, Math.max(...allVals) + 0.3) : 9;
@@ -1055,26 +1065,6 @@ function renderModalLegend() {
   allChip.innerHTML = `<span style="font-weight:700">전체 보기</span>`;
   allChip.onclick = () => { M_STATE.activeSubs = null; renderModalLegend(); renderModalChart(); };
   legend.appendChild(allChip);
-  // 묶음 칩: 이름만 바뀌고 연속인 세부유형들을 한 번에 선택 (점선 연결과 동일 기준)
-  const groups = categoryGroups(univ, dept, F.cats);
-  groups.forEach(g => {
-    const item = document.createElement('div');
-    const isActive = activeSubs && activeSubs.size === g.subs.length && g.subs.every(s => activeSubs.has(s));
-    const col = CAT_COLOR[g.cat] || '#999';
-    item.className = 'legend-item';
-    item.style.borderStyle = 'dashed';
-    if (isActive) { item.style.background = col+'22'; item.style.borderColor = col; item.style.borderWidth = '2px'; }
-    const names = g.subs.map(s => s.split('-')[1]).join('·');
-    item.innerHTML = `<span class="legend-dot" style="background:${col}"></span>
-                     <span class="cat-badge tag-${g.cat}">${g.cat}</span>묶음 (${names})`;
-    item.title = '이름만 바뀐 연속 전형을 한 줄로 보기';
-    item.onclick = () => {
-      const sameSel = activeSubs && activeSubs.size === g.subs.length && g.subs.every(s => activeSubs.has(s));
-      M_STATE.activeSubs = sameSel ? null : new Set(g.subs);
-      renderModalLegend(); renderModalChart();
-    };
-    legend.appendChild(item);
-  });
   for (const sub of all) {
     const [cat, subType] = sub.split('-');
     const item = document.createElement('div');
