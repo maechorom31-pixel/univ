@@ -697,11 +697,30 @@ function currentConnectors(univ, dept, filterCats, opts) {
   opts = opts || {};
   const out = [];
   categoryGroups(univ, dept, filterCats).forEach(g => {
+    let added = 0;
     Object.keys(g.raw).forEach(sub => {
       if (opts.subFilter && !opts.subFilter.has(sub)) return;
       if (!(g.raw[sub][2025] || g.raw[sub][2026])) return; // 현재(25/26) 없는 유형은 제외
       out.push(connectorDS(sub, combinedSeries(g, sub), subColor(sub), opts.prefix));
+      added++;
     });
+    // 과거 전용 연도(현재 전형이 없는 해)의 줄기값을 라벨로 한 번만 표시
+    if (added > 0 && opts.pastLabels) {
+      const pastYears = YEARS.map((y, i) => {
+        const hasCur = Object.keys(g.raw).some(s =>
+          (g.raw[s][2025] || g.raw[s][2026]) && g.raw[s][y]);
+        return (!hasCur && g.series[i] != null) ? g.series[i] : null;
+      });
+      if (pastYears.some(v => v != null)) {
+        out.push({label: g.cat + ' 과거', data: pastYears, showLine: false,
+          pointRadius: 4, pointBackgroundColor: '#9ca3af', borderColor: '#9ca3af', order: 99,
+          datalabels: {display: true, color: '#6b7790', backgroundColor: '#fff',
+            borderColor: '#d1d5db', borderWidth: 1, borderRadius: 4,
+            padding: {top:1,bottom:1,left:4,right:4}, font: {size:10, weight:700},
+            anchor: 'center', align: 'bottom', offset: 6,
+            formatter: v => v != null ? v.toFixed(2) : ''}});
+      }
+    }
   });
   return out;
 }
@@ -1024,7 +1043,7 @@ function renderModalChart() {
   }
   // 이름이 바뀌어 끊긴 추이를 '줄기+현재유형' 점선으로 연결 (선택 시 그 유형만)
   const subFilter = (activeSubs && activeSubs.size > 0) ? activeSubs : null;
-  datasets.push(...currentConnectors(univ, dept, F.cats, {subFilter}));
+  datasets.push(...currentConnectors(univ, dept, F.cats, {subFilter, pastLabels:true}));
   const allVals = datasets.flatMap(d => d.data).filter(v => v != null);
   const yMin = allVals.length ? Math.max(1, Math.min(...allVals) - 0.3) : 1;
   const yMax = allVals.length ? Math.min(9, Math.max(...allVals) + 0.3) : 9;
