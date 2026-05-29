@@ -677,10 +677,10 @@ function categoryGroups(univ, dept, filterCats) {
   }
   return groups;
 }
-// 점선 데이터셋 한 줄 만들기
-function connectorDS(cat, series, prefix) {
-  return {label: (prefix || '') + cat + ' (연결)', data: series,
-    borderColor: CAT_COLOR[cat] || '#999', borderDash: [5,4], borderWidth: 1.5,
+// 점선 데이터셋 한 줄 만들기 (색은 해당 세부유형 색)
+function connectorDS(sub, series, color, prefix) {
+  return {label: (prefix || '') + sub.split('-')[1] + ' (연결)', data: series,
+    borderColor: color, borderDash: [5,4], borderWidth: 1.5,
     pointRadius: 0, tension: .3, spanGaps: true, fill: false, order: 99,
     datalabels: {display: false}};
 }
@@ -700,7 +700,7 @@ function currentConnectors(univ, dept, filterCats, opts) {
     Object.keys(g.raw).forEach(sub => {
       if (opts.subFilter && !opts.subFilter.has(sub)) return;
       if (!(g.raw[sub][2025] || g.raw[sub][2026])) return; // 현재(25/26) 없는 유형은 제외
-      out.push(connectorDS(g.cat, combinedSeries(g, sub), opts.prefix));
+      out.push(connectorDS(sub, combinedSeries(g, sub), subColor(sub), opts.prefix));
     });
   });
   return out;
