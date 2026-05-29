@@ -886,6 +886,13 @@ function renderScatter(rs) {
   scatterChart = new Chart(document.getElementById('chart-scatter').getContext('2d'), {
     type:'scatter', data:{datasets},
     options:{responsive:true, maintainAspectRatio:false,
+      onClick:(evt, els, chart) => {
+        const hits = chart.getElementsAtEventForMode(evt, 'nearest', {intersect:true}, false);
+        if (!hits.length) return;
+        const p = chart.data.datasets[hits[0].datasetIndex].data[hits[0].index];
+        if (p) openModal(p.univ, p.dept);
+      },
+      onHover:(evt, els) => { evt.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
       scales:{x:scatterScale(dx, data.map(d=>d.x)),
               y:scatterScale(dy, data.map(d=>d.y))},
       plugins:{datalabels:{display:false}, tooltip:{callbacks:{
