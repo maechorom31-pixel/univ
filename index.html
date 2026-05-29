@@ -229,7 +229,32 @@ tbody tr:hover{background:var(--hover)}
         </div>
         <div class="cards" id="cards-list"></div>
       </div>
-      <div class="view" id="view-scatter"><div class="chart-wrap"><canvas id="chart-scatter"></canvas></div></div>
+      <div class="view" id="view-scatter">
+        <div class="scatter-axes" style="display:flex;gap:14px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+          <label style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">X축
+            <select class="sort-select" id="scatter-x">
+              <option value="g70" selected>내신 등급 70%cut</option>
+              <option value="g50">내신 등급 50%cut</option>
+              <option value="comp">경쟁률</option>
+              <option value="recruit">모집인원</option>
+              <option value="apply">지원인원</option>
+              <option value="year">연도</option>
+            </select>
+          </label>
+          <label style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">Y축
+            <select class="sort-select" id="scatter-y">
+              <option value="g70">내신 등급 70%cut</option>
+              <option value="g50">내신 등급 50%cut</option>
+              <option value="comp" selected>경쟁률</option>
+              <option value="recruit">모집인원</option>
+              <option value="apply">지원인원</option>
+              <option value="year">연도</option>
+            </select>
+          </label>
+          <span style="font-size:11px;color:var(--muted)">축을 바꾸면 그래프가 데이터에 맞춰 자동 조정됩니다</span>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-scatter"></canvas></div>
+      </div>
       <div class="view" id="view-trend"><div class="chart-wrap"><canvas id="chart-trend"></canvas></div></div>
       <div class="view" id="view-table">
         <div class="table-wrap"><table><thead><tr>
@@ -365,6 +390,8 @@ document.getElementById('grade-active').onchange = e => { setGradeActive(e.targe
 document.getElementById('grade-target').oninput = e => { F.grade = parseFloat(e.target.value) || 3.0; if(!F.gradeActive) setGradeActive(true); rangeDisp(); update(); };
 document.getElementById('grade-range').oninput = e => { F.range = parseFloat(e.target.value) || 0.5; if(!F.gradeActive) setGradeActive(true); rangeDisp(); update(); };
 document.getElementById('sort-by').onchange = e => { F.sort = e.target.value; update(); };
+document.getElementById('scatter-x').onchange = () => renderScatter(filtered());
+document.getElementById('scatter-y').onchange = () => renderScatter(filtered());
 function rangeDisp() {
   document.getElementById('range-display').textContent =
     F.gradeActive ? `${(F.grade-F.range).toFixed(1)} ~ ${(F.grade+F.range).toFixed(1)}` : '전체 등급';
@@ -700,9 +727,34 @@ function renderTable(rs) {
 }
 
 let scatterChart, trendChart;
+// 산점도 축으로 쓸 수 있는 항목 (동적 X/Y 선택)
+const SCATTER_AXES = {
+  g70:    {label:'내신 등급 70%cut', col:'등급70', grade:true,  fmt:v=>v.toFixed(2)},
+  g50:    {label:'내신 등급 50%cut', col:'등급50', grade:true,  fmt:v=>v.toFixed(2)},
+  comp:   {label:'경쟁률',           col:'경쟁률', zero:true,    fmt:v=>v.toFixed(1)},
+  recruit:{label:'모집인원',         col:'모집',   zero:true,    fmt:v=>String(v)},
+  apply:  {label:'지원인원',         col:'지원',   zero:true,    fmt:v=>String(v)},
+  year:   {label:'연도',             col:'연도',   year:true,    fmt:v=>String(v)},
+};
+function scatterScale(def, vals) {
+  const s = {title:{display:true, text:def.label}};
+  if (def.grade) s.reverse = true;          // 등급은 낮을수록 좋음 → 축 뒤집기
+  if (vals.length) {
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    const pad = (mx - mn) * 0.08 || (def.grade ? 0.3 : 1);
+    if (def.grade) { s.min = Math.max(1, mn - pad); s.max = Math.min(9, mx + pad); }
+    else if (def.year) { s.min = mn - 0.5; s.max = mx + 0.5; s.ticks = {stepSize:1}; }
+    else { s.min = Math.max(0, def.zero ? 0 : mn - pad); s.max = mx + pad; }
+  }
+  return s;
+}
 function renderScatter(rs) {
-  const data = rs.filter(r => r[COL['등급70']] != null && r[COL['경쟁률']] != null)
-    .map(r => ({x:r[COL['등급70']], y:r[COL['경쟁률']], univ:r[COL['대학']], dept:r[COL['학과']], cat:r[COL['카테고리']]}));
+  const xKey = document.getElementById('scatter-x').value;
+  const yKey = document.getElementById('scatter-y').value;
+  const dx = SCATTER_AXES[xKey], dy = SCATTER_AXES[yKey];
+  const cx = COL[dx.col], cy = COL[dy.col];
+  const data = rs.filter(r => r[cx] != null && r[cy] != null)
+    .map(r => ({x:r[cx], y:r[cy], univ:r[COL['대학']], dept:r[COL['학과']], cat:r[COL['카테고리']]}));
   if (scatterChart) scatterChart.destroy();
   const CC = {'교과':'#16a34a','종합':'#eab308','논술':'#dc2626','실기':'#7c3aed'};
   const datasets = ['교과','종합','논술','실기'].map(c => ({
@@ -711,10 +763,10 @@ function renderScatter(rs) {
   scatterChart = new Chart(document.getElementById('chart-scatter').getContext('2d'), {
     type:'scatter', data:{datasets},
     options:{responsive:true, maintainAspectRatio:false,
-      scales:{x:{title:{display:true, text:'내신 등급 70%cut'}, min:1, max:9, reverse:true},
-              y:{title:{display:true, text:'경쟁률'}, beginAtZero:true}},
+      scales:{x:scatterScale(dx, data.map(d=>d.x)),
+              y:scatterScale(dy, data.map(d=>d.y))},
       plugins:{datalabels:{display:false}, tooltip:{callbacks:{
-        label:ctx => `${ctx.raw.univ} ${ctx.raw.dept} | ${ctx.raw.x?.toFixed(2)} | ${ctx.raw.y?.toFixed(1)}`}}}}});
+        label:ctx => `${ctx.raw.univ} ${ctx.raw.dept} | ${dx.label}: ${dx.fmt(ctx.raw.x)} | ${dy.label}: ${dy.fmt(ctx.raw.y)}`}}}}});
 }
 
 function renderTrend(rs) {
