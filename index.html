@@ -142,22 +142,61 @@ tbody tr:hover{background:var(--hover)}
 #sub-toolbar .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 #sub-toolbar .head .ttl{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
 #sub-toolbar .head .clear{font-size:10px;color:var(--pri);cursor:pointer;font-weight:600}
+/* 모바일 필터 드로어 토글 (데스크탑에선 숨김) */
+.nav-toggle{display:none;position:fixed;left:16px;bottom:18px;z-index:950;
+  background:var(--pri);color:#fff;border:none;border-radius:24px;
+  padding:12px 20px;font-size:14px;font-weight:700;box-shadow:var(--shadow-lg);cursor:pointer}
+.nav-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:899}
 @media print{
   .sidebar,.toolbar,.tabs,#sub-toolbar,.recommend-box{display:none!important}
   .app{grid-template-columns:1fr}
   .card{break-inside:avoid;box-shadow:none;border:1px solid #ccc}
   .header-bar{box-shadow:none;border:1px solid #ccc}
 }
-@media(max-width:1000px){
+@media(max-width:900px){
   .app{grid-template-columns:1fr}
-  .sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  /* 사이드바를 좌측 드로어로 전환 */
+  .sidebar{position:fixed;top:0;left:0;height:100vh;width:84%;max-width:320px;z-index:900;
+           transform:translateX(-100%);transition:transform .25s ease;
+           border-right:1px solid var(--line);box-shadow:var(--shadow-xl)}
+  .app.nav-open .sidebar{transform:none}
+  .app.nav-open .nav-backdrop{display:block}
+  .nav-toggle{display:block}
+  .main{padding:16px 14px}
+  .header-bar{padding:16px 16px}
+  .title{font-size:18px}
   .stats{grid-template-columns:repeat(2,1fr)}
+  .cards{grid-template-columns:1fr}
+  .chart-wrap{height:400px}
+  .table-wrap{overflow-x:auto}
+  .table-wrap table{min-width:680px}
+  .table-wrap th{white-space:nowrap}
   .search-bar-field{order:-1}
+  .tab{padding:9px;font-size:12px}
+}
+@media(max-width:560px){
+  .main{padding:12px 10px}
+  .stats{grid-template-columns:repeat(2,1fr);gap:8px}
+  .title{font-size:16px}
+  .chart-wrap{height:340px}
+  .scatter-axes{gap:8px}
+  .scatter-axes label{font-size:12px}
+  .recommend-list{grid-template-columns:repeat(2,1fr)}
+  .modal-overlay{padding:0;align-items:flex-end}
+  .modal{border-radius:16px 16px 0 0;max-height:94vh}
+  .modal-header{padding:14px 16px}
+  .modal-header .dept-name{font-size:18px}
+  .modal-body{padding:14px 16px 24px}
+  .modal-trend{height:240px;padding:8px}
+  .input-row{gap:10px}
+  .grade-box{padding:8px 10px}
 }
 </style>
 </head>
 <body>
+<button class="nav-toggle" id="nav-toggle" aria-label="필터 열기">☰ 필터</button>
 <div class="app">
+  <div class="nav-backdrop" id="nav-backdrop"></div>
   <aside class="sidebar">
     <div class="brand">🎓 수시입결검색기</div>
     <div class="brand-sub" id="brand-sub">2022~2026 5년치 · 만든이 나주고</div>
@@ -392,6 +431,13 @@ document.getElementById('grade-range').oninput = e => { F.range = parseFloat(e.t
 document.getElementById('sort-by').onchange = e => { F.sort = e.target.value; update(); };
 document.getElementById('scatter-x').onchange = () => renderScatter(filtered());
 document.getElementById('scatter-y').onchange = () => renderScatter(filtered());
+
+// 모바일 필터 드로어 토글
+const appEl = document.querySelector('.app');
+function setNav(open){ appEl.classList.toggle('nav-open', open);
+  document.getElementById('nav-toggle').textContent = open ? '✕ 닫기' : '☰ 필터'; }
+document.getElementById('nav-toggle').onclick = () => setNav(!appEl.classList.contains('nav-open'));
+document.getElementById('nav-backdrop').onclick = () => setNav(false);
 function rangeDisp() {
   document.getElementById('range-display').textContent =
     F.gradeActive ? `${(F.grade-F.range).toFixed(1)} ~ ${(F.grade+F.range).toFixed(1)}` : '전체 등급';
@@ -404,6 +450,7 @@ document.addEventListener('keydown', e => {
     document.getElementById('search-dept').focus();
   } else if (e.key === 'Escape') {
     if (document.getElementById('modal').classList.contains('show')) closeModal();
+    else if (appEl.classList.contains('nav-open')) setNav(false);
   }
 });
 
