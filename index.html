@@ -732,6 +732,14 @@ function combinedSeries(group, sub) {
     return (own && own.length) ? Math.min(...own) : group.series[i];
   });
 }
+// 특정 전형의 그래프 선을 구성하는 전형 집합 = 그 전형이 속한 묶음의 줄기(picked) + 자기 자신.
+// (예: 면접형 → 지역·일반·면접 / 서류형 → 지역·일반·면접 + 서류) 묶음이 없으면 자기 자신만.
+function connectorSubs(univ, dept, sub) {
+  for (const g of categoryGroups(univ, dept, F.cats)) {
+    if (g.subs.includes(sub) || g.branches.includes(sub)) return new Set([...g.subs, sub]);
+  }
+  return new Set([sub]);
+}
 // 연결 점선: 25/26에 존재하는(현재) 세부유형만 대상으로, '나눠지기 전(줄기)+해당유형'을 잇는다.
 // 갈라진 경우 각 현재 갈래마다 줄기를 중복해서 보여줌. (과거에만 있던 유형은 줄기 일부로만 쓰임)
 function currentConnectors(univ, dept, filterCats, opts) {
@@ -1110,9 +1118,18 @@ function renderModalChart() {
     .sort((a,b) => b[COL['연도']] - a[COL['연도']] || a[COL['카테고리']].localeCompare(b[COL['카테고리']]));
   const tb = document.getElementById('m-table');
   tb.innerHTML = '';
-  // 상세 표는 항상 전체 이력(2022~2026) 표시 — 그래프에서 과거를 숨겨도 여기선 모집·경쟁률 비교 가능
+  // 전체 보기: 전체 이력. 특정 전형 선택 시: 그 전형 그래프 선에 올라가는 전형(줄기 포함)만.
+  let showSubs = null;
+  if (activeSubs && activeSubs.size > 0) {
+    showSubs = new Set();
+    activeSubs.forEach(s => connectorSubs(univ, dept, s).forEach(x => showSubs.add(x)));
+  }
   const filteredItems = items.filter(r => {
     if (F.cats.size && !F.cats.has(r[COL['카테고리']])) return false;
+    if (showSubs) {
+      const sub = classifyType(r[COL['카테고리']], r[COL['전형']], univ, dept);
+      if (!showSubs.has(sub)) return false;
+    }
     return true;
   });
   filteredItems.forEach(r => {
