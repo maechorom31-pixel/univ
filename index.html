@@ -342,6 +342,34 @@ const DOMINANT_SUB = {"건국대|KU자유전공학부|종합":"종합-추천형"
 const COL = {};
 DATA.columns.forEach((c, i) => COL[c] = i);
 
+// 분할 레코드 병합: 같은 (대학·학과·연도·카테고리)가 '딱 2행'이고 경쟁률 동일 +
+// 전형명 부분일치 + 한쪽은 모집만/한쪽은 등급만 → 같은 모집단위가 쪼개진 것이므로 한 행으로 합침.
+// (단과대 집계처럼 3행 이상인 경우는 건드리지 않음)
+(function mergeSplitRows() {
+  const C = COL, gradeOf = r => r[C['등급70']] ?? r[C['등급50']];
+  const rel = (a, b) => { a = String(a||''); b = String(b||''); return a.includes(b) || b.includes(a); };
+  const groups = new Map();
+  DATA.rows.forEach((r, i) => {
+    const k = r[C['대학']] + '|' + r[C['학과']] + '|' + r[C['연도']] + '|' + r[C['카테고리']];
+    (groups.get(k) || groups.set(k, []).get(k)).push(i);
+  });
+  const remove = new Set();
+  groups.forEach(idxs => {
+    if (idxs.length !== 2) return;
+    const a = DATA.rows[idxs[0]], b = DATA.rows[idxs[1]];
+    const ca = a[C['경쟁률']], cb = b[C['경쟁률']];
+    if (ca == null || cb == null || Math.abs(ca - cb) > 1e-6) return;
+    const ma = a[C['모집']], mb = b[C['모집']], ga = gradeOf(a), gb = gradeOf(b);
+    const condA = (ma != null && ga == null) && (mb == null && gb != null);
+    const condB = (mb != null && gb == null) && (ma == null && ga != null);
+    if (!((condA || condB) && rel(a[C['전형']], b[C['전형']]))) return;
+    const base = (ma != null) ? a : b, other = (ma != null) ? b : a;
+    ['등급70','등급50','지원'].forEach(f => { if (base[C[f]] == null && other[C[f]] != null) base[C[f]] = other[C[f]]; });
+    remove.add(other === a ? idxs[0] : idxs[1]);
+  });
+  if (remove.size) DATA.rows = DATA.rows.filter((_, i) => !remove.has(i));
+})();
+
 function baseClassify(cat, t) {
   const s = String(t || '').toLowerCase();
   if (s.includes('지역인재') || s.includes('지역균형') || s.includes('지역')) return cat + '-지역인재';
