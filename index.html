@@ -208,7 +208,6 @@ tbody tr:hover{background:var(--hover)}
     <div class="filter-grp"><h2>계열 <span class="clear" data-clear="naturals">초기화</span></h2><div class="options" id="filter-natural"></div></div>
     <div class="filter-grp"><h2>전형 카테고리 <span class="clear" data-clear="cats">초기화</span></h2><div class="options" id="filter-cat"></div></div>
     <div class="filter-grp"><h2>연도 <span class="clear" data-clear="years">초기화</span></h2><div class="options" id="filter-year"></div></div>
-    <div class="filter-grp"><h2>대학명 검색</h2><input type="text" class="search-input" id="filter-univ" placeholder="예: 전남, 서울대..."></div>
   </aside>
   <main class="main">
     <div class="header-bar">
@@ -216,8 +215,8 @@ tbody tr:hover{background:var(--hover)}
         <div style="font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap">대학 공개자료 기준</div></div>
       <div class="subtitle">학과 클릭 시 전형별 5년 추이 / 태그 클릭 시 필터 자동 적용</div>
       <div class="input-row">
-        <div class="field search-bar-field"><label>학과 키워드 (부분 일치)</label>
-          <input type="text" id="search-dept" placeholder="예: 경영, 간호, 컴퓨터...">
+        <div class="field search-bar-field"><label>대학·학과 검색 (띄어쓰기로 같이 입력)</label>
+          <input type="text" id="search-q" placeholder="예: 전남대 / 간호 / 전남대 간호">
         </div>
         <div class="field"><label>등급 필터</label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;height:36px">
@@ -410,7 +409,16 @@ function subColor(s) {
 }
 
 const F = {regions:new Set(),naturals:new Set(),cats:new Set(),subs:new Set(),years:new Set([2026]),
-           univ:'',dept:'',grade:3.0,range:0.5,gradeActive:false,sort:'g70'};
+           q:'',grade:3.0,range:0.5,gradeActive:false,sort:'g70'};
+// 통합 검색: 띄어쓰기로 나눈 각 단어가 (대학+학과) 합친 문자열에 모두 포함되면 매칭
+// 예) "전남대" / "간호" / "전남대 간호" 모두 가능. (토큰은 쿼리당 1회만 분해해 캐싱)
+let _qCache = null, _qToks = [];
+function matchQuery(r) {
+  if (!F.q) return true;
+  if (F.q !== _qCache) { _qCache = F.q; _qToks = F.q.split(/\s+/).filter(Boolean); }
+  const hay = (r[COL['대학']] || '') + ' ' + (r[COL['학과']] || '');
+  return _qToks.every(tok => hay.includes(tok));
+}
 
 // ===== 검색조건 URL 공유 =====
 function serializeState() {
@@ -420,8 +428,7 @@ function serializeState() {
   if (F.cats.size)     p.set('c', [...F.cats].join(','));
   if (F.subs.size)     p.set('s', [...F.subs].join(','));
   if (F.years.size)    p.set('y', [...F.years].join(','));
-  if (F.univ)          p.set('u', F.univ);
-  if (F.dept)          p.set('d', F.dept);
+  if (F.q)             p.set('q', F.q);
   if (F.sort !== 'g70') p.set('o', F.sort);
   if (F.gradeActive)   { p.set('ga','1'); p.set('g', F.grade); p.set('gr', F.range); }
   const qs = p.toString();
@@ -438,8 +445,7 @@ function applyStateFromURL() {
   };
   setFrom('r', F.regions);  setFrom('n', F.naturals); setFrom('c', F.cats);
   setFrom('s', F.subs);     setFrom('y', F.years, true);
-  if (p.has('u')) F.univ = p.get('u');
-  if (p.has('d')) F.dept = p.get('d');
+  if (p.has('q')) F.q = p.get('q');
   if (p.has('o')) F.sort = p.get('o');
   if (p.get('ga') === '1') {
     F.gradeActive = true;
@@ -493,8 +499,15 @@ renderChips(document.getElementById('filter-year'), [2022,2023,2024,2025,2026], 
 updateClear();
 document.getElementById('brand-sub').textContent = `2022~2026 · ${new Set(DATA.rows.map(r=>r[COL['대학']])).size}개 대학 · ${DATA.rows.length.toLocaleString()}건 · 만든이 나주고 3학년실`;
 
-document.getElementById('filter-univ').oninput = e => { F.univ = e.target.value.trim(); update(); };
-document.getElementById('search-dept').oninput = e => { F.dept = e.target.value.trim(); update(); };
+// 통합 검색 입력 — 한글 조합(IME) 중에는 렌더 보류해서 타이핑 렉/끊김 방지
+(function(){
+  const qi = document.getElementById('search-q');
+  let composing = false;
+  const apply = () => { F.q = qi.value.trim(); update(); };
+  qi.addEventListener('compositionstart', () => { composing = true; });
+  qi.addEventListener('compositionend', () => { composing = false; apply(); });
+  qi.addEventListener('input', () => { if (!composing) apply(); });
+})();
 function setGradeActive(on) {
   F.gradeActive = on;
   document.getElementById('grade-active').checked = on;
@@ -534,7 +547,7 @@ function rangeDisp() {
 document.addEventListener('keydown', e => {
   if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
     e.preventDefault();
-    document.getElementById('search-dept').focus();
+    document.getElementById('search-q').focus();
   } else if (e.key === 'Escape') {
     if (document.getElementById('modal').classList.contains('show')) closeModal();
     else if (appEl.classList.contains('nav-open')) setNav(false);
@@ -575,15 +588,14 @@ function filtered() {
     if (F.naturals.size && !F.naturals.has(r[COL['계열']])) return false;
     if (F.cats.size && !F.cats.has(r[COL['카테고리']])) return false;
     if (F.years.size && !F.years.has(r[COL['연도']])) return false;
-    if (F.univ && !String(r[COL['대학']]||'').includes(F.univ)) return false;
-    if (F.dept && !String(r[COL['학과']]||'').includes(F.dept)) return false;
+    if (!matchQuery(r)) return false;
     if (F.subs.size) {
       const sub = classifyType(r[COL['카테고리']], r[COL['전형']], r[COL['대학']], r[COL['학과']]);
       if (!F.subs.has(sub)) return false;
     }
     const g = r[COL['등급70']] ?? r[COL['등급50']];
     if (F.gradeActive && g != null && (g < gLo || g > gHi)) return false;
-    if (g == null && !F.dept && !F.univ) return false;
+    if (g == null && !F.q) return false;
     return true;
   });
 }
@@ -760,8 +772,7 @@ function renderSubChips() {
     if (F.naturals.size && !F.naturals.has(r[COL['계열']])) return false;
     if (F.cats.size && !F.cats.has(r[COL['카테고리']])) return false;
     if (F.years.size && !F.years.has(r[COL['연도']])) return false;
-    if (F.univ && !String(r[COL['대학']]||'').includes(F.univ)) return false;
-    if (F.dept && !String(r[COL['학과']]||'').includes(F.dept)) return false;
+    if (!matchQuery(r)) return false;
     return true;
   });
   const subCount = {};
@@ -799,8 +810,7 @@ function renderRecommend() {
     if (F.naturals.size && !F.naturals.has(r[COL['계열']])) return false;
     if (F.cats.size && !F.cats.has(r[COL['카테고리']])) return false;
     if (F.years.size && !F.years.has(r[COL['연도']])) return false;
-    if (F.univ && !String(r[COL['대학']]||'').includes(F.univ)) return false;
-    if (F.dept && !String(r[COL['학과']]||'').includes(F.dept)) return false;
+    if (!matchQuery(r)) return false;
     if (F.subs.size) {
       const sub = classifyType(r[COL['카테고리']], r[COL['전형']], r[COL['대학']], r[COL['학과']]);
       if (!F.subs.has(sub)) return false;
@@ -895,7 +905,7 @@ function renderCards(rs) {
       const tg = e.target.closest('[data-f]');
       if (tg) { e.stopPropagation(); applyTagFilter(tg.dataset.f, tg.dataset.v); return; }
       const u = e.target.closest('.univ');
-      if (u) { e.stopPropagation(); F.univ = r[COL['대학']]; document.getElementById('filter-univ').value = F.univ; update(); return; }
+      if (u) { e.stopPropagation(); F.q = r[COL['대학']]; document.getElementById('search-q').value = F.q; update(); return; }
       openModal(r[COL['대학']], r[COL['학과']]);
     };
     c.appendChild(card);
@@ -1178,8 +1188,7 @@ function closeModal() { document.getElementById('modal').classList.remove('show'
 document.getElementById('modal').onclick = closeModal;
 
 // URL에서 불러온 조건을 입력 UI에 반영 (칩은 렌더 시 이미 반영됨)
-document.getElementById('filter-univ').value = F.univ;
-document.getElementById('search-dept').value = F.dept;
+document.getElementById('search-q').value = F.q;
 document.getElementById('sort-by').value = F.sort;
 document.getElementById('grade-target').value = F.grade;
 document.getElementById('grade-range').value = F.range;
