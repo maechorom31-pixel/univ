@@ -1058,12 +1058,9 @@ function renderModalChart() {
     .sort((a,b) => b[COL['연도']] - a[COL['연도']] || a[COL['카테고리']].localeCompare(b[COL['카테고리']]));
   const tb = document.getElementById('m-table');
   tb.innerHTML = '';
+  // 상세 표는 항상 전체 이력(2022~2026) 표시 — 그래프에서 과거를 숨겨도 여기선 모집·경쟁률 비교 가능
   const filteredItems = items.filter(r => {
     if (F.cats.size && !F.cats.has(r[COL['카테고리']])) return false;
-    if (activeSubs && activeSubs.size > 0) {
-      const sub = classifyType(r[COL['카테고리']], r[COL['전형']], univ, dept);
-      if (!activeSubs.has(sub)) return false;
-    }
     return true;
   });
   filteredItems.forEach(r => {
