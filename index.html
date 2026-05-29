@@ -1046,11 +1046,24 @@ function renderTrend(rs) {
 
 const M_STATE = {activeSubs:null, univ:null, dept:null};
 let modalChart;
-// 현재(2025/2026)에 있는 세부유형만. 과거(예: 22·23만 있는 것)는 점선 줄기로만 보이고 따로 출력 안 함.
+// 2025/2026에 '존재'하는(등급 유무 무관) 세부유형 집합. 등급이 아직 없어도 현재 전형이면 포함.
+function presentSubs(univ, dept, filterCats) {
+  const set = new Set();
+  DATA.rows.forEach(r => {
+    if (r[COL['대학']] !== univ || r[COL['학과']] !== dept) return;
+    if (filterCats && filterCats.size && !filterCats.has(r[COL['카테고리']])) return;
+    if (r[COL['연도']] !== 2025 && r[COL['연도']] !== 2026) return;
+    set.add(classifyType(r[COL['카테고리']], r[COL['전형']], univ, dept));
+  });
+  return set;
+}
+// 현재(25/26) 존재하는 전형만 범례·실선으로. 과거 전용은 점선 줄기로만.
+// 판단 기준 = 등급 유무가 아니라 '25/26 행의 존재'. (등급 미발표여도 현재 전형이면 표시)
 // 단, 전부 과거뿐인 학과는 빈 화면 방지를 위해 전체 반환.
-function currentSubsOf(bySub) {
+function currentSubsOf(univ, dept, bySub) {
+  const present = presentSubs(univ, dept, F.cats);
   const all = Object.keys(bySub);
-  const cur = all.filter(s => bySub[s][3] != null || bySub[s][4] != null);
+  const cur = all.filter(s => present.has(s));
   return cur.length ? cur : all;
 }
 function renderModalChart() {
@@ -1058,7 +1071,7 @@ function renderModalChart() {
   if (!univ) return;
   const bySub = getTrendBySub(univ, dept, F.cats);
   const datasets = [];
-  const subList = activeSubs && activeSubs.size > 0 ? [...activeSubs] : currentSubsOf(bySub);
+  const subList = activeSubs && activeSubs.size > 0 ? [...activeSubs] : currentSubsOf(univ, dept, bySub);
   for (const sub of subList) {
     if (!bySub[sub]) continue;
     datasets.push({label:sub, data:bySub[sub], borderColor:subColor(sub),
@@ -1107,7 +1120,7 @@ function renderModalLegend() {
   const bySub = getTrendBySub(univ, dept, F.cats);
   const legend = document.getElementById('m-legend');
   legend.innerHTML = '';
-  const all = currentSubsOf(bySub); // 현재(25/26) 전형만 칩으로
+  const all = currentSubsOf(univ, dept, bySub); // 현재(25/26) 전형만 칩으로
   if (all.length === 0) { legend.innerHTML = '<span style="color:var(--muted);font-size:12px">등급 데이터 없음</span>'; return; }
   const allChip = document.createElement('div');
   const isAll = !activeSubs || activeSubs.size === 0;
