@@ -999,12 +999,19 @@ function renderTrend(rs) {
 
 const M_STATE = {activeSubs:null, univ:null, dept:null};
 let modalChart;
+// 현재(2025/2026)에 있는 세부유형만. 과거(예: 22·23만 있는 것)는 점선 줄기로만 보이고 따로 출력 안 함.
+// 단, 전부 과거뿐인 학과는 빈 화면 방지를 위해 전체 반환.
+function currentSubsOf(bySub) {
+  const all = Object.keys(bySub);
+  const cur = all.filter(s => bySub[s][3] != null || bySub[s][4] != null);
+  return cur.length ? cur : all;
+}
 function renderModalChart() {
   const {univ, dept, activeSubs} = M_STATE;
   if (!univ) return;
   const bySub = getTrendBySub(univ, dept, F.cats);
   const datasets = [];
-  const subList = activeSubs && activeSubs.size > 0 ? [...activeSubs] : Object.keys(bySub);
+  const subList = activeSubs && activeSubs.size > 0 ? [...activeSubs] : currentSubsOf(bySub);
   for (const sub of subList) {
     if (!bySub[sub]) continue;
     datasets.push({label:sub, data:bySub[sub], borderColor:subColor(sub),
@@ -1056,7 +1063,7 @@ function renderModalLegend() {
   const bySub = getTrendBySub(univ, dept, F.cats);
   const legend = document.getElementById('m-legend');
   legend.innerHTML = '';
-  const all = Object.keys(bySub);
+  const all = currentSubsOf(bySub); // 현재(25/26) 전형만 칩으로
   if (all.length === 0) { legend.innerHTML = '<span style="color:var(--muted);font-size:12px">등급 데이터 없음</span>'; return; }
   const allChip = document.createElement('div');
   const isAll = !activeSubs || activeSubs.size === 0;
