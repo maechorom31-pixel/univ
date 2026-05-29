@@ -178,10 +178,14 @@ tbody tr:hover{background:var(--hover)}
         <div class="field search-bar-field"><label>학과 키워드 (부분 일치)</label>
           <input type="text" id="search-dept" placeholder="예: 경영, 간호, 컴퓨터...">
         </div>
-        <div class="field"><label>내신등급</label><input type="number" id="grade-target" min="1" max="9" step="0.1" value="3.0"></div>
-        <div class="field"><label>± 범위</label><input type="number" id="grade-range" min="0.1" max="3" step="0.1" value="0.5"></div>
+        <div class="field"><label>등급 필터</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;height:36px">
+            <input type="checkbox" id="grade-active" style="width:16px;height:16px;cursor:pointer"> 적용
+          </label></div>
+        <div class="field"><label>내신등급</label><input type="number" id="grade-target" min="1" max="9" step="0.1" value="3.0" disabled></div>
+        <div class="field"><label>± 범위</label><input type="number" id="grade-range" min="0.1" max="3" step="0.1" value="0.5" disabled></div>
         <div class="grade-box"><span style="font-size:11px;color:var(--muted);font-weight:600">범위</span>
-          <span class="range-display" id="range-display">2.5 ~ 3.5</span></div>
+          <span class="range-display" id="range-display">전체 등급</span></div>
       </div>
     </div>
     <!-- 추천 박스 -->
@@ -311,7 +315,7 @@ function subColor(s) {
 }
 
 const F = {regions:new Set(),naturals:new Set(),cats:new Set(),subs:new Set(),years:new Set([2026]),
-           univ:'',dept:'',grade:3.0,range:0.5,sort:'g70'};
+           univ:'',dept:'',grade:3.0,range:0.5,gradeActive:false,sort:'g70'};
 
 function uniqueValues(idx) {
   const s = new Set();
@@ -346,14 +350,25 @@ renderChips(document.getElementById('filter-natural'), uniqueValues(COL['계열'
 renderChips(document.getElementById('filter-cat'), uniqueValues(COL['카테고리']), 'cats');
 renderChips(document.getElementById('filter-year'), [2022,2023,2024,2025,2026], 'years');
 updateClear();
-document.getElementById('brand-sub').textContent = `2022~2026 · ${new Set(DATA.rows.map(r=>r[COL['대학']])).size}개 대학 · ${DATA.rows.length.toLocaleString()}건`;
+document.getElementById('brand-sub').textContent = `2022~2026 · ${new Set(DATA.rows.map(r=>r[COL['대학']])).size}개 대학 · ${DATA.rows.length.toLocaleString()}건 · 만든이 나주고`;
 
 document.getElementById('filter-univ').oninput = e => { F.univ = e.target.value.trim(); update(); };
 document.getElementById('search-dept').oninput = e => { F.dept = e.target.value.trim(); update(); };
-document.getElementById('grade-target').oninput = e => { F.grade = parseFloat(e.target.value) || 3.0; rangeDisp(); update(); };
-document.getElementById('grade-range').oninput = e => { F.range = parseFloat(e.target.value) || 0.5; rangeDisp(); update(); };
+function setGradeActive(on) {
+  F.gradeActive = on;
+  document.getElementById('grade-active').checked = on;
+  document.getElementById('grade-target').disabled = !on;
+  document.getElementById('grade-range').disabled = !on;
+  rangeDisp();
+}
+document.getElementById('grade-active').onchange = e => { setGradeActive(e.target.checked); update(); };
+document.getElementById('grade-target').oninput = e => { F.grade = parseFloat(e.target.value) || 3.0; if(!F.gradeActive) setGradeActive(true); rangeDisp(); update(); };
+document.getElementById('grade-range').oninput = e => { F.range = parseFloat(e.target.value) || 0.5; if(!F.gradeActive) setGradeActive(true); rangeDisp(); update(); };
 document.getElementById('sort-by').onchange = e => { F.sort = e.target.value; update(); };
-function rangeDisp() { document.getElementById('range-display').textContent = `${(F.grade-F.range).toFixed(1)} ~ ${(F.grade+F.range).toFixed(1)}`; }
+function rangeDisp() {
+  document.getElementById('range-display').textContent =
+    F.gradeActive ? `${(F.grade-F.range).toFixed(1)} ~ ${(F.grade+F.range).toFixed(1)}` : '전체 등급';
+}
 
 // 키보드 단축키
 document.addEventListener('keydown', e => {
@@ -406,7 +421,7 @@ function filtered() {
       if (!F.subs.has(sub)) return false;
     }
     const g = r[COL['등급70']] ?? r[COL['등급50']];
-    if (g != null && (g < gLo || g > gHi)) return false;
+    if (F.gradeActive && g != null && (g < gLo || g > gHi)) return false;
     if (g == null && !F.dept && !F.univ) return false;
     return true;
   });
@@ -524,6 +539,8 @@ document.getElementById('sub-clear-btn').onclick = () => { F.subs.clear(); updat
 // 추천 학과: 선택한 조건(지역·계열·카테고리·연도·전형·대학)에 맞는 데이터 중
 // 입력 등급 ± 범위 안에서 등급이 가장 가까운 대학·학과 8개
 function renderRecommend() {
+  const box = document.getElementById('recommend-box');
+  if (!F.gradeActive) { box.style.display = 'none'; return; }
   const gLo = F.grade - F.range, gHi = F.grade + F.range;
   const candidates = DATA.rows.filter(r => {
     if (F.regions.size && !F.regions.has(r[COL['지역']])) return false;
@@ -558,7 +575,6 @@ function renderRecommend() {
     const gb = b[COL['등급70']] ?? b[COL['등급50']];
     return Math.abs(ga - F.grade) - Math.abs(gb - F.grade);
   }).slice(0, 8);
-  const box = document.getElementById('recommend-box');
   const list = document.getElementById('recommend-list');
   if (sorted.length === 0) { box.style.display = 'none'; return; }
   box.style.display = 'block';
