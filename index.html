@@ -635,42 +635,59 @@ function getTrendBySub(univ, dept, filterCats) {
   return result;
 }
 
-// 카테고리별 대표 추이 (같은 해 여러 sub면 더 좋은=낮은 등급을 대표로) → 점선 연결용
 const CAT_COLOR = {'교과':'#16a34a','종합':'#eab308','논술':'#dc2626','실기':'#7c3aed'};
-function getTrendByCat(univ, dept, filterCats) {
-  const byCat = {}, subsByCat = {};
+const YEARS = [2022,2023,2024,2025,2026];
+// '묶음' 후보 찾기: 같은 카테고리 안에서, 같은 해에 겹치지 않는(연속) 세부유형들을
+// 최대한 길게 한 묶음으로. (예: 종합 지역→일반→면접 은 묶고, 같은 해 공존하는 서류는 제외)
+function categoryGroups(univ, dept, filterCats) {
+  // cat -> sub -> {year -> [grades]}
+  const data = {};
   DATA.rows.forEach(r => {
     if (r[COL['대학']] !== univ || r[COL['학과']] !== dept) return;
     const cat = r[COL['카테고리']];
     if (filterCats && filterCats.size && !filterCats.has(cat)) return;
     const g = r[COL['등급70']] ?? r[COL['등급50']];
     if (g == null) return;
-    (byCat[cat] = byCat[cat] || {});
-    (byCat[cat][r[COL['연도']]] = byCat[cat][r[COL['연도']]] || []).push(g);
-    (subsByCat[cat] = subsByCat[cat] || new Set())
-      .add(classifyType(r[COL['카테고리']], r[COL['전형']], r[COL['대학']], r[COL['학과']]));
+    const sub = classifyType(cat, r[COL['전형']], univ, dept);
+    const c = (data[cat] = data[cat] || {});
+    const s = (c[sub] = c[sub] || {});
+    (s[r[COL['연도']]] = s[r[COL['연도']]] || []).push(g);
   });
-  const result = {};
-  for (const cat in byCat) {
-    if ((subsByCat[cat] ? subsByCat[cat].size : 0) < 2) continue; // 단일 sub면 실선이 이미 연결
-    result[cat] = [2022,2023,2024,2025,2026].map(y => {
-      const arr = byCat[cat][y] || [];
-      return arr.length ? Math.min(...arr) : null; // 대표 = 더 좋은(낮은) 등급
+  const groups = [];
+  for (const cat in data) {
+    const subs = Object.keys(data[cat]);
+    if (subs.length < 2) continue; // 단일 세부유형은 이미 실선으로 연속
+    // 연도 폭 넓은 순으로 그리디하게, 서로 연도가 안 겹치는 것만 한 묶음에 추가
+    const yearsOf = sub => new Set(Object.keys(data[cat][sub]).map(Number));
+    subs.sort((a,b) => yearsOf(b).size - yearsOf(a).size
+      || Math.min(...yearsOf(a)) - Math.min(...yearsOf(b)));
+    const picked = [], usedYears = new Set();
+    for (const sub of subs) {
+      const ys = [...yearsOf(sub)];
+      if (ys.some(y => usedYears.has(y))) continue; // 같은 해 겹치면 제외
+      picked.push(sub); ys.forEach(y => usedYears.add(y));
+    }
+    if (picked.length < 2) continue; // 묶을 게 2개 이상일 때만
+    const series = YEARS.map(y => {
+      const vals = picked.flatMap(sub => data[cat][sub][y] || []);
+      return vals.length ? Math.min(...vals) : null; // 대표 = 더 좋은(낮은) 등급
     });
+    groups.push({cat, subs: picked, series});
   }
-  return result;
+  return groups;
 }
-// 끊긴 카테고리를 잇는 점선 데이터셋 생성
+// 묶음(연속) 점선 데이터셋
 function catConnectorDatasets(univ, dept, filterCats, opts) {
   opts = opts || {};
-  const byCat = getTrendByCat(univ, dept, filterCats);
-  return Object.entries(byCat).map(([cat, data]) => ({
-    label: (opts.prefix || '') + cat + ' (연결)',
-    data, borderColor: CAT_COLOR[cat] || '#999',
-    borderDash: [5,4], borderWidth: 1.5, pointRadius: 0,
-    tension: .3, spanGaps: true, fill: false, order: 99,
-    datalabels: {display: false}
-  }));
+  return categoryGroups(univ, dept, filterCats)
+    .filter(g => !opts.onlyCats || opts.onlyCats.has(g.cat))
+    .map(g => ({
+      label: (opts.prefix || '') + g.cat + ' (연결)',
+      data: g.series, borderColor: CAT_COLOR[g.cat] || '#999',
+      borderDash: [5,4], borderWidth: 1.5, pointRadius: 0,
+      tension: .3, spanGaps: true, fill: false, order: 99,
+      datalabels: {display: false}
+    }));
 }
 
 function renderSubChips() {
@@ -982,10 +999,15 @@ function renderModalChart() {
         font:{size:11, weight:700}, anchor:'end', align:'top', offset:6,
         formatter:v => v != null ? v.toFixed(2) : ''}});
   }
-  // 세부유형 이름이 바뀌어 끊긴 카테고리를 점선으로 연결 (전체 보기일 때만)
-  if (!(activeSubs && activeSubs.size > 0)) {
-    datasets.push(...catConnectorDatasets(univ, dept, F.cats));
+  // 세부유형 이름이 바뀌어 끊긴 카테고리를 점선으로 연결
+  // 전체 보기이거나, 묶음(카테고리 전체)을 선택했을 때 그 카테고리만 점선 표시
+  let onlyCats = null;
+  if (activeSubs && activeSubs.size > 0) {
+    onlyCats = new Set(categoryGroups(univ, dept, F.cats)
+      .filter(g => g.subs.every(s => activeSubs.has(s)))
+      .map(g => g.cat));
   }
+  datasets.push(...catConnectorDatasets(univ, dept, F.cats, {onlyCats}));
   const allVals = datasets.flatMap(d => d.data).filter(v => v != null);
   const yMin = allVals.length ? Math.max(1, Math.min(...allVals) - 0.3) : 1;
   const yMax = allVals.length ? Math.min(9, Math.max(...allVals) + 0.3) : 9;
@@ -1033,6 +1055,26 @@ function renderModalLegend() {
   allChip.innerHTML = `<span style="font-weight:700">전체 보기</span>`;
   allChip.onclick = () => { M_STATE.activeSubs = null; renderModalLegend(); renderModalChart(); };
   legend.appendChild(allChip);
+  // 묶음 칩: 이름만 바뀌고 연속인 세부유형들을 한 번에 선택 (점선 연결과 동일 기준)
+  const groups = categoryGroups(univ, dept, F.cats);
+  groups.forEach(g => {
+    const item = document.createElement('div');
+    const isActive = activeSubs && activeSubs.size === g.subs.length && g.subs.every(s => activeSubs.has(s));
+    const col = CAT_COLOR[g.cat] || '#999';
+    item.className = 'legend-item';
+    item.style.borderStyle = 'dashed';
+    if (isActive) { item.style.background = col+'22'; item.style.borderColor = col; item.style.borderWidth = '2px'; }
+    const names = g.subs.map(s => s.split('-')[1]).join('·');
+    item.innerHTML = `<span class="legend-dot" style="background:${col}"></span>
+                     <span class="cat-badge tag-${g.cat}">${g.cat}</span>묶음 (${names})`;
+    item.title = '이름만 바뀐 연속 전형을 한 줄로 보기';
+    item.onclick = () => {
+      const sameSel = activeSubs && activeSubs.size === g.subs.length && g.subs.every(s => activeSubs.has(s));
+      M_STATE.activeSubs = sameSel ? null : new Set(g.subs);
+      renderModalLegend(); renderModalChart();
+    };
+    legend.appendChild(item);
+  });
   for (const sub of all) {
     const [cat, subType] = sub.split('-');
     const item = document.createElement('div');
