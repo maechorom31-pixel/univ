@@ -71,7 +71,7 @@ body{font-family:'Pretendard','-apple-system','Noto Sans KR','맑은 고딕',san
 .results{background:#fff;border-radius:14px;box-shadow:var(--shadow);padding:20px;min-height:480px}
 .view{display:none}.view.active{display:block}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
-.card{padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff;transition:all .15s;cursor:pointer;position:relative}
+.card{padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff;transition:all .15s;cursor:pointer;position:relative;overflow:hidden}
 .card:hover{border-color:var(--pri);box-shadow:var(--shadow-lg);transform:translateY(-2px)}
 .card .row1{display:flex;justify-content:space-between;align-items:start;gap:8px;margin-bottom:10px}
 .card .ud{min-width:0;flex:1}
@@ -92,7 +92,8 @@ body{font-family:'Pretendard','-apple-system','Noto Sans KR','맑은 고딕',san
 /* 등급 게이지 */
 .gauge{width:100%;height:6px;background:linear-gradient(to right,#0d8a4f 0%,#16a34a 20%,#65a30d 35%,#eab308 50%,#f97316 65%,#dc2626 85%,#991b1b 100%);border-radius:3px;position:relative;margin-top:6px}
 .gauge::after{content:"";position:absolute;top:-2px;width:3px;height:10px;background:#1a2332;border-radius:2px;left:var(--pos);box-shadow:0 0 0 2px #fff}
-.card .trend{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);height:60px;position:relative}
+.card .trend{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);height:60px;position:relative;overflow:hidden}
+.card .trend canvas{position:absolute!important;top:10px;left:0;width:100%!important;height:50px!important;display:block}
 .g-1{color:#0d8a4f}.g-2{color:#16a34a}.g-3{color:#65a30d}.g-4{color:#eab308}
 .g-5{color:#f97316}.g-6{color:#ea580c}.g-7{color:#dc2626}.g-8{color:#991b1b}.g-9{color:#7c0a0a}
 table{width:100%;border-collapse:collapse;font-size:12px}
