@@ -768,7 +768,7 @@ function currentConnectors(univ, dept, filterCats, opts) {
           datalabels: {display: true, color: '#6b7790', backgroundColor: '#fff',
             borderColor: '#d1d5db', borderWidth: 1, borderRadius: 4,
             padding: {top:1,bottom:1,left:4,right:4}, font: {size:10, weight:700},
-            anchor: 'center', align: dynLabelAlign, offset: 6, clamp: true,
+            anchor: 'center', align: dynLabelAlign, offset: dynLabelOffset, clamp: true,
             formatter: v => v != null ? v.toFixed(2) : ''}});
       }
     }
@@ -1087,16 +1087,10 @@ function currentSubsOf(univ, dept, bySub) {
   const cur = all.filter(s => present.has(s));
   return cur.length ? cur : all;
 }
-// 라벨 위치 동적 결정: ①가장자리(상/하단) 잘림 방지 ②같은 연도에서 값이 가까운
-// 라벨끼리는 위/아래로 번갈아 배치해 겹침 회피 (숨기지 않고 둘 다 표시)
-function dynLabelAlign(ctx) {
-  const v = ctx.dataset.data[ctx.dataIndex];
-  if (v == null) return 'top';
+// 같은 연도에서 라벨 픽셀이 가까운(겹치는) 데이터셋들을 모아 순위/가장자리 정보 반환
+function labelGroup(ctx) {
   const y = ctx.chart.scales.y;
-  const px = y.getPixelForValue(v);
-  if (px - y.top < 18) return 'bottom';     // 상단 근처(1등급 등) → 무조건 아래로
-  if (y.bottom - px < 18) return 'top';      // 하단 근처 → 무조건 위로
-  // 같은 x(연도)에서 라벨 픽셀이 가까운 데이터셋들을 모아 순서대로 위/아래 교차
+  const px = y.getPixelForValue(ctx.dataset.data[ctx.dataIndex]);
   const i = ctx.dataIndex, near = [];
   ctx.chart.data.datasets.forEach((ds, di) => {
     const dv = ds.data[i];
@@ -1104,8 +1098,27 @@ function dynLabelAlign(ctx) {
     if (ds.datalabels && ds.datalabels.display === false) return; // 점선 등 라벨 없는 건 제외
     if (Math.abs(y.getPixelForValue(dv) - px) < 16) near.push(di);
   });
-  if (near.length > 1) return near.indexOf(ctx.datasetIndex) % 2 === 0 ? 'top' : 'bottom';
+  let edge = null;
+  if (px - y.top < 18) edge = 'top';            // 상단 근처(1등급 등) → 아래로만
+  else if (y.bottom - px < 18) edge = 'bottom'; // 하단 근처 → 위로만
+  return {rank: Math.max(0, near.indexOf(ctx.datasetIndex)), size: near.length, edge};
+}
+// 라벨 방향: 가장자리 잘림 방지 우선, 그 외엔 겹치는 라벨끼리 위/아래 교차
+function dynLabelAlign(ctx) {
+  if (ctx.dataset.data[ctx.dataIndex] == null) return 'top';
+  const g = labelGroup(ctx);
+  if (g.edge === 'top') return 'bottom';
+  if (g.edge === 'bottom') return 'top';
+  if (g.size > 1) return g.rank % 2 === 0 ? 'top' : 'bottom';
   return 'top';
+}
+// 라벨 거리: 3개 이상 겹치면 순위마다 더 멀리 떨어뜨려 바깥으로 쌓음
+function dynLabelOffset(ctx) {
+  if (ctx.dataset.data[ctx.dataIndex] == null) return 6;
+  const g = labelGroup(ctx);
+  if (g.size <= 1) return 6;
+  if (g.edge) return 6 + g.rank * 15;          // 한 방향 스택
+  return 6 + Math.floor(g.rank / 2) * 15;        // 위/아래 교차 + 쌍마다 멀리
 }
 function renderModalChart() {
   const {univ, dept, activeSubs} = M_STATE;
@@ -1120,7 +1133,7 @@ function renderModalChart() {
       pointBackgroundColor:subColor(sub),
       datalabels:{display:true, color:subColor(sub), backgroundColor:'#fff', borderColor:subColor(sub),
         borderWidth:1, borderRadius:4, padding:{top:2,bottom:2,left:5,right:5},
-        font:{size:11, weight:700}, anchor:'end', align:dynLabelAlign, offset:6, clamp:true,
+        font:{size:11, weight:700}, anchor:'end', align:dynLabelAlign, offset:dynLabelOffset, clamp:true,
         formatter:v => v != null ? v.toFixed(2) : ''}});
   }
   // 이름이 바뀌어 끊긴 추이를 '줄기+현재유형' 점선으로 연결 (선택 시 그 유형만)
