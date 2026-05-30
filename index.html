@@ -23,7 +23,8 @@ body{font-family:'Pretendard','-apple-system','Noto Sans KR','맑은 고딕',san
 .sidebar{background:#fff;border-right:1px solid var(--line);padding:20px 18px;overflow-y:auto;
          position:sticky;top:0;height:100vh}
 .brand{font-size:18px;font-weight:800;color:var(--pri);margin-bottom:4px}
-.brand-sub{font-size:11px;color:var(--muted);margin-bottom:16px}
+.brand-sub{font-size:11px;color:var(--muted);margin-bottom:2px}
+.brand-maker{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:16px}
 .shortcut-hint{font-size:10px;color:var(--muted);background:var(--bg);padding:8px 10px;border-radius:6px;margin-bottom:18px}
 .shortcut-hint kbd{display:inline-block;padding:1px 6px;background:#fff;border:1px solid var(--line);border-radius:3px;font-family:monospace;font-size:10px;font-weight:600}
 .filter-grp{margin-bottom:22px}
@@ -200,7 +201,8 @@ tbody tr:hover{background:var(--hover)}
   <div class="nav-backdrop" id="nav-backdrop"></div>
   <aside class="sidebar">
     <div class="brand">🎓 수시입결검색기</div>
-    <div class="brand-sub" id="brand-sub">2022~2026 5년치 · 만든이 나주고 3학년실</div>
+    <div class="brand-sub" id="brand-sub">2022~2026 5년치</div>
+    <div class="brand-maker" id="brand-maker">만든이 나주고 3학년실</div>
     <div class="shortcut-hint">
       <kbd>/</kbd> 학과 검색 · <kbd>Esc</kbd> 모달 닫기
     </div>
@@ -497,7 +499,7 @@ renderChips(document.getElementById('filter-natural'), uniqueValues(COL['계열'
 renderChips(document.getElementById('filter-cat'), uniqueValues(COL['카테고리']), 'cats');
 renderChips(document.getElementById('filter-year'), [2022,2023,2024,2025,2026], 'years');
 updateClear();
-document.getElementById('brand-sub').textContent = `2022~2026 · ${new Set(DATA.rows.map(r=>r[COL['대학']])).size}개 대학 · ${DATA.rows.length.toLocaleString()}건 · 만든이 나주고 3학년실`;
+document.getElementById('brand-sub').textContent = `2022~2026 · ${new Set(DATA.rows.map(r=>r[COL['대학']])).size}개 대학 · ${DATA.rows.length.toLocaleString()}건`;
 
 // 통합 검색 입력 — 한글 조합(IME) 중에는 렌더 보류해서 타이핑 렉/끊김 방지
 (function(){
