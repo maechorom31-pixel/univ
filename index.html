@@ -662,7 +662,7 @@ function getTrendBySub(univ, dept, filterCats) {
     if (r[COL['대학']] !== univ || r[COL['학과']] !== dept) return;
     if (filterCats && filterCats.size && !filterCats.has(r[COL['카테고리']])) return;
     const subKey = classifyType(r[COL['카테고리']], r[COL['전형']], r[COL['대학']], r[COL['학과']]);
-    const g = r[COL['등급70']] ?? r[COL['등급50']];
+    const g = r[COL['등급70']]; // 그래프는 등급70 추이 → 미공개(등급70 null)는 점 없음(등급50 폴백 안 함)
     if (g == null) return;
     if (!bySub[subKey]) bySub[subKey] = {};
     if (!bySub[subKey][r[COL['연도']]]) bySub[subKey][r[COL['연도']]] = [];
@@ -689,7 +689,7 @@ function categoryGroups(univ, dept, filterCats) {
     if (r[COL['대학']] !== univ || r[COL['학과']] !== dept) return;
     const cat = r[COL['카테고리']];
     if (filterCats && filterCats.size && !filterCats.has(cat)) return;
-    const g = r[COL['등급70']] ?? r[COL['등급50']];
+    const g = r[COL['등급70']]; // 연결선도 등급70 기준 (미공개는 제외)
     if (g == null) return;
     const sub = classifyType(cat, r[COL['전형']], univ, dept);
     const c = (data[cat] = data[cat] || {});
@@ -1117,13 +1117,20 @@ const modalLabelsPlugin = {
     // 같은 x(연도)열별로 묶어 위→아래 밀어내기, 차트 영역 안으로 클램프
     const cols = {};
     labels.forEach(l => { const k = Math.round(l.x); (cols[k] = cols[k] || []).push(l); });
+    const topLim = area.top + h / 2, botLim = area.bottom - h / 2, avail = botLim - topLim;
     Object.values(cols).forEach(group => {
       group.sort((a, b) => a.y - b.y);
+      if (group.length > 1 && (group.length - 1) * gap > avail) {
+        // 영역보다 라벨이 많으면 균등 압축해서 위/아래 잘림 방지
+        const step = avail / (group.length - 1);
+        group.forEach((l, k) => l.y = topLim + k * step);
+        return;
+      }
       for (let k = 1; k < group.length; k++)
         if (group[k].y - group[k - 1].y < gap) group[k].y = group[k - 1].y + gap;
-      const over = group[group.length - 1].y - (area.bottom - h / 2);
+      const over = group[group.length - 1].y - botLim;
       if (over > 0) group.forEach(l => l.y -= over);
-      const under = (area.top + h / 2) - group[0].y;
+      const under = topLim - group[0].y;
       if (under > 0) group.forEach(l => l.y += under);
     });
     ctx.save();
