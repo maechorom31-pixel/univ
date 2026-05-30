@@ -765,11 +765,7 @@ function currentConnectors(univ, dept, filterCats, opts) {
       if (pastYears.some(v => v != null)) {
         out.push({label: g.cat + ' 과거', data: pastYears, showLine: false,
           pointRadius: 4, pointBackgroundColor: '#9ca3af', borderColor: '#9ca3af', order: 99,
-          datalabels: {display: true, color: '#6b7790', backgroundColor: '#fff',
-            borderColor: '#d1d5db', borderWidth: 1, borderRadius: 4,
-            padding: {top:1,bottom:1,left:4,right:4}, font: () => ({size:Math.max(8, uiLabelFont()-1), weight:700}),
-            anchor: 'center', align: dynLabelAlign, offset: dynLabelOffset, clamp: true,
-            formatter: v => v != null ? v.toFixed(2) : ''}});
+          _vlabel: true, _vcolor: '#6b7790', datalabels: {display: false}});
       }
     }
   });
@@ -1090,40 +1086,59 @@ function currentSubsOf(univ, dept, bySub) {
 // 화면 폭에 따라 라벨 폰트·간격을 반응형으로 (작은 화면일수록 작게)
 function uiLabelFont() { const w = window.innerWidth; return w < 480 ? 9 : w < 768 ? 10 : 11; }
 function labelH() { return uiLabelFont() + 11; } // 폰트+패딩+여유 (9→20, 10→21, 11→22)
-// 같은 연도에서 라벨 픽셀이 가까운(겹치는) 데이터셋들을 모아 순위/가장자리 정보 반환
-function labelGroup(ctx) {
-  const y = ctx.chart.scales.y;
-  const px = y.getPixelForValue(ctx.dataset.data[ctx.dataIndex]);
-  const i = ctx.dataIndex, near = [], H = labelH();
-  ctx.chart.data.datasets.forEach((ds, di) => {
-    const dv = ds.data[i];
-    if (dv == null) return;
-    if (ds.datalabels && ds.datalabels.display === false) return; // 점선 등 라벨 없는 건 제외
-    if (Math.abs(y.getPixelForValue(dv) - px) < H) near.push(di);
-  });
-  let edge = null;
-  if (px - y.top < 18) edge = 'top';            // 상단 근처(1등급 등) → 아래로만
-  else if (y.bottom - px < 18) edge = 'bottom'; // 하단 근처 → 위로만
-  return {rank: Math.max(0, near.indexOf(ctx.datasetIndex)), size: near.length, edge};
+function rrect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
-// 라벨 방향: 가장자리 잘림 방지 우선, 그 외엔 겹치는 라벨끼리 위/아래 교차
-function dynLabelAlign(ctx) {
-  if (ctx.dataset.data[ctx.dataIndex] == null) return 'top';
-  const g = labelGroup(ctx);
-  if (g.edge === 'top') return 'bottom';
-  if (g.edge === 'bottom') return 'top';
-  if (g.size > 1) return g.rank % 2 === 0 ? 'top' : 'bottom';
-  return 'top';
-}
-// 라벨 거리: 3개 이상 겹치면 순위마다 더 멀리 떨어뜨려 바깥으로 쌓음
-function dynLabelOffset(ctx) {
-  if (ctx.dataset.data[ctx.dataIndex] == null) return 6;
-  const g = labelGroup(ctx);
-  if (g.size <= 1) return 6;
-  const H = labelH();
-  if (g.edge) return 6 + g.rank * H;          // 한 방향 스택
-  return 6 + Math.floor(g.rank / 2) * H;        // 위/아래 교차 + 쌍마다 멀리
-}
+// 라벨 충돌 해소 커스텀 플러그인: 실제 박스를 계산해 같은 x열에서 겹치면 서로 밀어냄
+const modalLabelsPlugin = {
+  id: 'modalLabels',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx, area = chart.chartArea;
+    const fs = uiLabelFont(), h = fs + 8, gap = labelH();
+    const labels = [];
+    chart.data.datasets.forEach((ds, di) => {
+      if (!ds._vlabel) return;
+      const meta = chart.getDatasetMeta(di);
+      if (meta.hidden) return;
+      ds.data.forEach((v, i) => {
+        if (v == null) return;
+        const pt = meta.data[i];
+        if (!pt) return;
+        labels.push({ x: pt.x, y: pt.y - 11, color: ds._vcolor || ds.borderColor, text: (+v).toFixed(2) });
+      });
+    });
+    if (!labels.length) return;
+    // 같은 x(연도)열별로 묶어 위→아래 밀어내기, 차트 영역 안으로 클램프
+    const cols = {};
+    labels.forEach(l => { const k = Math.round(l.x); (cols[k] = cols[k] || []).push(l); });
+    Object.values(cols).forEach(group => {
+      group.sort((a, b) => a.y - b.y);
+      for (let k = 1; k < group.length; k++)
+        if (group[k].y - group[k - 1].y < gap) group[k].y = group[k - 1].y + gap;
+      const over = group[group.length - 1].y - (area.bottom - h / 2);
+      if (over > 0) group.forEach(l => l.y -= over);
+      const under = (area.top + h / 2) - group[0].y;
+      if (under > 0) group.forEach(l => l.y += under);
+    });
+    ctx.save();
+    ctx.font = `700 ${fs}px -apple-system,'Noto Sans KR',sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    labels.forEach(l => {
+      const w = ctx.measureText(l.text).width + 10;
+      rrect(ctx, l.x - w / 2, l.y - h / 2, w, h, 4);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.strokeStyle = l.color; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = l.color; ctx.fillText(l.text, l.x, l.y);
+    });
+    ctx.restore();
+  }
+};
 function renderModalChart() {
   const {univ, dept, activeSubs} = M_STATE;
   if (!univ) return;
@@ -1135,10 +1150,7 @@ function renderModalChart() {
     datasets.push({label:sub, data:bySub[sub], borderColor:subColor(sub),
       backgroundColor:subColor(sub)+'22', tension:.3, pointRadius:7, borderWidth:3, spanGaps:true,
       pointBackgroundColor:subColor(sub),
-      datalabels:{display:true, color:subColor(sub), backgroundColor:'#fff', borderColor:subColor(sub),
-        borderWidth:1, borderRadius:4, padding:{top:2,bottom:2,left:5,right:5},
-        font:() => ({size:uiLabelFont(), weight:700}), anchor:'end', align:dynLabelAlign, offset:dynLabelOffset, clamp:true,
-        formatter:v => v != null ? v.toFixed(2) : ''}});
+      _vlabel:true, _vcolor:subColor(sub), datalabels:{display:false}});
   }
   // 이름이 바뀌어 끊긴 추이를 '줄기+현재유형' 점선으로 연결 (선택 시 그 유형만)
   const subFilter = (activeSubs && activeSubs.size > 0) ? activeSubs : null;
@@ -1152,7 +1164,7 @@ function renderModalChart() {
     options:{responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:20, bottom:10, right:14, left:4}},
       scales:{y:{title:{display:true, text:'등급'}, reverse:true, min:yMin, max:yMax, ticks:{stepSize:0.2}}},
-      plugins:{legend:{display:false}}}, plugins:[ChartDataLabels]});
+      plugins:{legend:{display:false}, datalabels:{display:false}}}, plugins:[modalLabelsPlugin]});
   
   const items = DATA.rows.filter(r => r[COL['대학']] === univ && r[COL['학과']] === dept)
     .sort((a,b) => b[COL['연도']] - a[COL['연도']] || a[COL['카테고리']].localeCompare(b[COL['카테고리']]));
