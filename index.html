@@ -121,13 +121,13 @@ tbody tr:hover{background:var(--hover)}
 /* 모달 */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
 .modal-overlay.show{display:flex}
-.modal{background:#fff;border-radius:16px;max-width:1000px;width:100%;max-height:92vh;overflow:auto;box-shadow:var(--shadow-xl)}
-.modal-header{padding:20px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:start;position:sticky;top:0;background:#fff;z-index:2}
+.modal{background:#fff;border-radius:16px;max-width:1000px;width:100%;max-height:92vh;max-height:92dvh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow-xl)}
+.modal-header{padding:20px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:start;background:#fff;z-index:2;flex-shrink:0}
 .modal-header .univ-name{font-size:13px;color:var(--muted);font-weight:600}
 .modal-header .dept-name{font-size:22px;font-weight:800;margin-top:2px}
 .modal-header .close{font-size:24px;color:var(--muted);cursor:pointer;padding:4px 12px;border-radius:6px;transition:all .15s}
 .modal-header .close:hover{background:var(--bg);color:var(--text)}
-.modal-body{padding:20px 24px 30px}
+.modal-body{padding:20px 24px 30px;overflow-y:auto;flex:1 1 auto;min-height:0;-webkit-overflow-scrolling:touch}
 .modal-section{margin-bottom:24px}
 .modal-section h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;font-weight:700}
 .modal-trend{height:340px;background:#fafbfc;border-radius:10px;padding:14px;position:relative}
@@ -186,7 +186,7 @@ tbody tr:hover{background:var(--hover)}
   .scatter-axes label{font-size:12px}
   .recommend-list{grid-template-columns:repeat(2,1fr)}
   .modal-overlay{padding:0;align-items:flex-end}
-  .modal{border-radius:16px 16px 0 0;max-height:94vh}
+  .modal{border-radius:16px 16px 0 0;max-height:94vh;max-height:94dvh}
   .modal-header{padding:14px 16px}
   .modal-header .dept-name{font-size:18px}
   .modal-body{padding:14px 16px 24px}
