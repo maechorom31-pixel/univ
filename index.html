@@ -1087,6 +1087,8 @@ function currentSubsOf(univ, dept, bySub) {
   const cur = all.filter(s => present.has(s));
   return cur.length ? cur : all;
 }
+// 라벨 한 줄 높이(겹침 판정·간격 기준). 라벨 폰트+패딩보다 넉넉히.
+const LABEL_H = 22;
 // 같은 연도에서 라벨 픽셀이 가까운(겹치는) 데이터셋들을 모아 순위/가장자리 정보 반환
 function labelGroup(ctx) {
   const y = ctx.chart.scales.y;
@@ -1096,7 +1098,7 @@ function labelGroup(ctx) {
     const dv = ds.data[i];
     if (dv == null) return;
     if (ds.datalabels && ds.datalabels.display === false) return; // 점선 등 라벨 없는 건 제외
-    if (Math.abs(y.getPixelForValue(dv) - px) < 16) near.push(di);
+    if (Math.abs(y.getPixelForValue(dv) - px) < LABEL_H) near.push(di);
   });
   let edge = null;
   if (px - y.top < 18) edge = 'top';            // 상단 근처(1등급 등) → 아래로만
@@ -1117,8 +1119,8 @@ function dynLabelOffset(ctx) {
   if (ctx.dataset.data[ctx.dataIndex] == null) return 6;
   const g = labelGroup(ctx);
   if (g.size <= 1) return 6;
-  if (g.edge) return 6 + g.rank * 15;          // 한 방향 스택
-  return 6 + Math.floor(g.rank / 2) * 15;        // 위/아래 교차 + 쌍마다 멀리
+  if (g.edge) return 6 + g.rank * LABEL_H;          // 한 방향 스택
+  return 6 + Math.floor(g.rank / 2) * LABEL_H;        // 위/아래 교차 + 쌍마다 멀리
 }
 function renderModalChart() {
   const {univ, dept, activeSubs} = M_STATE;
