@@ -766,7 +766,7 @@ function currentConnectors(univ, dept, filterCats, opts) {
           datalabels: {display: true, color: '#6b7790', backgroundColor: '#fff',
             borderColor: '#d1d5db', borderWidth: 1, borderRadius: 4,
             padding: {top:1,bottom:1,left:4,right:4}, font: {size:10, weight:700},
-            anchor: 'center', align: 'bottom', offset: 6,
+            anchor: 'center', align: dynLabelAlign, offset: 6,
             formatter: v => v != null ? v.toFixed(2) : ''}});
       }
     }
@@ -1085,6 +1085,16 @@ function currentSubsOf(univ, dept, bySub) {
   const cur = all.filter(s => present.has(s));
   return cur.length ? cur : all;
 }
+// 라벨 위치 동적 결정: 차트 상단에 가까우면 아래로, 하단에 가까우면 위로 (잘림 방지)
+function dynLabelAlign(ctx) {
+  const v = ctx.dataset.data[ctx.dataIndex];
+  if (v == null) return 'top';
+  const y = ctx.chart.scales.y;
+  const px = y.getPixelForValue(v);
+  if (px - y.top < 18) return 'bottom';     // 1등급 등 상단 근처 → 라벨 아래로
+  if (y.bottom - px < 18) return 'top';      // 하단 근처 → 위로
+  return 'top';
+}
 function renderModalChart() {
   const {univ, dept, activeSubs} = M_STATE;
   if (!univ) return;
@@ -1098,7 +1108,7 @@ function renderModalChart() {
       pointBackgroundColor:subColor(sub),
       datalabels:{display:true, color:subColor(sub), backgroundColor:'#fff', borderColor:subColor(sub),
         borderWidth:1, borderRadius:4, padding:{top:2,bottom:2,left:5,right:5},
-        font:{size:11, weight:700}, anchor:'end', align:'top', offset:6,
+        font:{size:11, weight:700}, anchor:'end', align:dynLabelAlign, offset:6,
         formatter:v => v != null ? v.toFixed(2) : ''}});
   }
   // 이름이 바뀌어 끊긴 추이를 '줄기+현재유형' 점선으로 연결 (선택 시 그 유형만)
@@ -1111,6 +1121,7 @@ function renderModalChart() {
   modalChart = new Chart(document.getElementById('m-trend').getContext('2d'), {
     type:'line', data:{labels:['2022','2023','2024','2025','2026'], datasets},
     options:{responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:20, bottom:10, right:14, left:4}},
       scales:{y:{title:{display:true, text:'등급'}, reverse:true, min:yMin, max:yMax, ticks:{stepSize:0.2}}},
       plugins:{legend:{display:false}}}, plugins:[ChartDataLabels]});
   
