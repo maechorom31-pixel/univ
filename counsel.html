@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>내신 중심 진학상담 보드</title>
+<title>나주고등학교 3학년 진학상담</title>
 <style>
 :root{
   --bg:#f4f6fa;--card:#ffffff;--line:#e3e8f0;--text:#1e2a3a;--mut:#64748b;--mut2:#94a3b8;
@@ -47,6 +47,9 @@ table.grid td{padding:6px 8px;border:1px solid var(--line);text-align:center;whi
 .banchip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 input.search{flex:1;min-width:200px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;outline:none}
 input.search:focus{border-color:var(--acc)}
+.minsel{font-size:11px;border:1px solid var(--line);border-radius:7px;padding:1px 4px;background:#fff;color:#334155;vertical-align:1px}
+.ipcell{cursor:pointer}.ipcell:hover{outline:2px solid var(--acc);outline-offset:-2px}
+.ipedited{position:relative}.ipedited::after{content:'✎';position:absolute;top:0;right:1px;font-size:8px;color:var(--gold)}
 .results{display:flex;flex-direction:column;gap:4px;max-height:300px;overflow-y:auto}
 .resitem{display:flex;gap:8px;align-items:center;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;cursor:pointer;font-size:13px}
 .resitem:hover{background:#eef2f8}
@@ -102,7 +105,7 @@ textarea.memo{width:100%;border:1px solid var(--line);border-radius:10px;padding
 </head>
 <body>
 <header>
-  <h1>🎓 내신 중심 진학상담</h1>
+  <h1>🎓 나주고등학교 3학년 진학상담</h1>
   <button class="tabbtn on" data-tab="student" onclick="switchTab('student')">👥 학생</button>
   <button class="tabbtn" data-tab="major" onclick="switchTab('major')">🏫 학과</button>
   <div class="hright">
@@ -134,10 +137,12 @@ textarea.memo{width:100%;border:1px solid var(--line);border-radius:10px;padding
     </div>
     <div id="majorDetail"></div>
   </section>
+  <footer style="text-align:center;color:var(--mut2);font-size:11px;padding:18px 0 10px">나주고 3학년실</footer>
 </main>
 <div class="modal-bg" id="modalGuide"><div class="modal"><button class="x" onclick="closeModal('modalGuide')">✕</button><h2>📖 분석 기법 안내</h2><div class="guide" id="guideBody"></div></div></div>
 <div class="modal-bg" id="modalSettings"><div class="modal" style="max-width:560px"><button class="x" onclick="closeModal('modalSettings')">✕</button><h2>⚙️ 설정</h2>
-  <div class="setrow"><label>Apps Script 웹앱 URL</label><input id="cfgUrl" placeholder="https://script.google.com/macros/s/AKfy.../exec"></div>
+  <div class="setrow"><label>Apps Script 웹앱 URL (학생·최저·상담·수정 동기화)</label><input id="cfgUrl" placeholder="https://script.google.com/macros/s/AKfy.../exec"></div>
+  <div class="setrow"><label>입결 게시-CSV URL (선택 · 공개자료라 빠른 로딩용)</label><input id="cfgCsv" placeholder="https://docs.google.com/.../pub?gid=...&single=true&output=csv"></div>
   <div class="setrow"><label>현재 학년 (학번 앞자리)</label><input id="cfgGrade" value="3" style="width:80px"></div>
   <div style="display:flex;gap:8px"><button class="btn btn-pri" onclick="saveSettings()">저장 후 연결</button><button class="btn btn-sub" onclick="closeModal('modalSettings')">닫기</button></div>
   <p class="small" style="margin-top:12px">데이터는 선생님 구글시트에만 저장됩니다. 이 파일에는 학생 정보가 내장되지 않습니다.<br>시트 구성: <b>학과입결 · 최저타깃 · 내신1반~내신6반 · 모고 · 상담</b> (설치가이드 참조)</p>
@@ -148,10 +153,10 @@ textarea.memo{width:100%;border:1px solid var(--line);border-radius:10px;padding
    설정 · 통신
 ================================================================ */
 const CFG_KEY='counsel_cfg_v1';
-let CFG={url:'',grade:'3'};
+let CFG={url:'',ipCsv:'',grade:'3'};
 try{const s=JSON.parse(localStorage.getItem(CFG_KEY)||'null'); if(s)Object.assign(CFG,s);}catch(e){}
-function openSettings(){document.getElementById('cfgUrl').value=CFG.url;document.getElementById('cfgGrade').value=CFG.grade;document.getElementById('modalSettings').classList.add('on');}
-function saveSettings(){CFG.url=document.getElementById('cfgUrl').value.trim();CFG.grade=document.getElementById('cfgGrade').value.trim()||'3';localStorage.setItem(CFG_KEY,JSON.stringify(CFG));closeModal('modalSettings');initLoad();}
+function openSettings(){document.getElementById('cfgUrl').value=CFG.url;document.getElementById('cfgCsv').value=CFG.ipCsv||'';document.getElementById('cfgGrade').value=CFG.grade;document.getElementById('modalSettings').classList.add('on');}
+function saveSettings(){CFG.url=document.getElementById('cfgUrl').value.trim();CFG.ipCsv=document.getElementById('cfgCsv').value.trim();CFG.grade=document.getElementById('cfgGrade').value.trim()||'3';localStorage.setItem(CFG_KEY,JSON.stringify(CFG));closeModal('modalSettings');initLoad();}
 function closeModal(id){document.getElementById(id).classList.remove('on');}
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2200);}
 function jsonp(url){return new Promise((res,rej)=>{
@@ -167,7 +172,7 @@ function jsonp(url){return new Promise((res,rej)=>{
 /* ================================================================
    전역 상태
 ================================================================ */
-let DATA={ip:[],ipCols:{},minT:[],students:{},counsel:[],mock:{}};
+let DATA={ip:[],ipCols:{},minT:[],students:{},counsel:[],mock:{},ipEdits:[]};
 let UI={tab:'student',curStu:null,curMajor:null,demo:true};
 const MONTH_ORDER=['3월','4월','5월','6월','7월','8월','9월','10월','11월'];
 const SEM_ORDER=['1-1','1-2','2-1','2-2','3-1'];
@@ -283,22 +288,22 @@ function erf(x){const s=x<0?-1:1;x=Math.abs(x);const t=1/(1+0.3275911*x);
 function phi(z){return 0.5*(1+erf(z/Math.SQRT2));}
 const GLOBAL_SPREAD_SIGMA=0.38;        // 등급70−등급50 중앙값 0.20 / 0.524 (n=47,128 검증)
 const REBOUND_COEF=-0.38;              // 격년효과 회귀계수 (corr −0.38, n=12,995 검증)
-function predictCut(series){ // series:[{year,cut70,cut50}] 정렬됨 → 예측·변동성
+function predictCut(series){ // series:[{year,cut70,cut50}] → 백테스트 최적식(P6 절충) + 68% 보정밴드
   const pts=series.filter(s=>s.cut70!=null);
   if(pts.length<2)return null;
-  const w=pts.map((p,i)=>1+0.45*i);                       // 최근 가중
-  const wsum=w.reduce((a,b)=>a+b,0);
-  let center=pts.reduce((a,p,i)=>a+p.cut70*w[i],0)/wsum;
-  const mean=pts.reduce((a,p)=>a+p.cut70,0)/pts.length;
-  const sigma=Math.sqrt(pts.reduce((a,p)=>a+(p.cut70-mean)**2,0)/pts.length);
-  let rebound=null;
-  if(pts.length>=2){
-    const d=pts[pts.length-1].cut70-pts[pts.length-2].cut70;
-    if(Math.abs(d)>=0.5){const adj=REBOUND_COEF*d;center+=adj;rebound={lastDelta:d,adj};}
-  }
-  const band=Math.max(sigma,0.2);
+  const cuts=pts.map(p=>p.cut70);
+  const w=cuts.map((_,i)=>1+0.45*i); const wsum=w.reduce((a,b)=>a+b,0);
+  const wm=cuts.reduce((a,v,i)=>a+v*w[i],0)/wsum;           // 가중평균
+  const last=cuts[cuts.length-1];
+  const d=last-cuts[cuts.length-2];
+  let rebound=null,adj=0;
+  if(Math.abs(d)>=0.5){adj=0.5*REBOUND_COEF*d;rebound={lastDelta:d,adj};}
+  const center=0.5*last+0.5*wm+adj;                          // P6: 직전값·가중평균 절충 + 급변시 반동 절반
+  const mean=cuts.reduce((a,b)=>a+b)/cuts.length;
+  const sigma=Math.sqrt(cuts.reduce((a,b)=>a+(b-mean)**2,0)/cuts.length);
+  const band=1.6*Math.max(sigma,0.2);                        // 백테스트 68% 커버 보정
   const vola=sigma<0.15?'낮음':(sigma<=0.40?'보통':'높음');
-  return {center,lo:center-band,hi:center+band,sigma,vola,rebound,n:pts.length};
+  return {center,lo:center-band,hi:center+band,sigma,vola,rebound,n:cuts.length};
 }
 function percentileEst(series,grade){ // 합격자 분포 내 위치 (50/70컷 2분위 → μ,σ)
   const recent=series.filter(s=>s.cut70!=null).slice(-2);
@@ -307,9 +312,15 @@ function percentileEst(series,grade){ // 합격자 분포 내 위치 (50/70컷 2
   const r50=recent.filter(s=>s.cut50!=null);
   let mu,sd;
   if(r50.length){const cut50=r50.reduce((a,s)=>a+s.cut50,0)/r50.length;
-    mu=cut50;sd=Math.max((cut70-cut50)/0.524,0.18);}
+    mu=cut50;sd=Math.min(Math.max((cut70-cut50)/0.524,0.18),1.5);} // σ 상한: 비정상 spread 방어
   else{sd=GLOBAL_SPREAD_SIGMA;mu=cut70-0.524*sd;}
   return {pct:phi((grade-mu)/sd)*100,mu,sd};
+}
+function pctLabel(pct){ // 극단값 명확화 + 한 줄 해석
+  if(pct==null)return '';
+  if(pct>=95)return '합격선 미만 추정 (상향)';
+  if(pct<=5)return '합격자 상위권 수준 (여유)';
+  return `합격자 중 상위 ~${Math.round(Math.min(99,Math.max(1,pct)))}% 위치`;
 }
 function judgeBadge(pct,vola){
   if(pct==null)return {cls:'b-gray',label:'판정불가'};
@@ -359,11 +370,16 @@ function checkOneSeg(seg,sc){
   if(tg.length){tanVal=avg2?(tg.length===2?(tg[0]+tg[1])/2:tg[0]):tg[0];}
   let eng=sc.eng;
   if(/영\s*2\s*등급?은?\s*1/.test(seg)&&eng===2)eng=1;
+  // 수학 응시영역 제약 (미/기 지정 시 확통 응시자는 수학 인정 불가, 반대도)
+  let mathVal=sc.math;
+  const mtype=/확률과\s*통계|확통/.test(sc.mathSub||'')?'hwak':(/미적분|기하/.test(sc.mathSub||'')?'miki':null);
+  if(/수\s*\(\s*미\s*\/?\s*기|미적분\/?기하|미\s*·\s*기/.test(seg)&&mtype==='hwak')mathVal=null;
+  if(/수\s*\(\s*확\s*\)|확통\s*지정|확률과\s*통계\s*지정/.test(seg)&&mtype==='miki')mathVal=null;
   const has={국:/국/.test(seg),수:/수/.test(seg),영:/영/.test(seg),탐:/탐|과\s*\(|사\s*\(/.test(seg)};
   const useAll=Object.values(has).filter(Boolean).length<N; // 영역 나열 생략 문구 → 전 영역 후보
   const areas=[];
   if((has.국||useAll)&&sc.kor!=null)areas.push({k:'국',v:sc.kor});
-  if((has.수||useAll)&&sc.math!=null)areas.push({k:'수',v:sc.math});
+  if((has.수||useAll)&&mathVal!=null)areas.push({k:'수',v:mathVal});
   if((has.영||useAll)&&eng!=null)areas.push({k:'영',v:eng});
   if((has.탐||useAll)&&tanVal!=null)areas.push({k:'탐',v:tanVal});
   if(areas.length<N)return 'unknown';
@@ -381,28 +397,62 @@ function checkOneSeg(seg,sc){
    데이터 로드
 ================================================================ */
 function setConn(ok,msg){const c=document.getElementById('connChip');c.textContent=msg;c.className='chip '+(ok?'ok':'bad');}
+const DEFAULT_IP_URL='https://raw.githubusercontent.com/maechorom31-pixel/univ/claude/practical-galileo-GA5dQ/ipgyeol.json';
+async function fetchCsv(url){
+  const res=await fetch(url+(url.includes('?')?'&':'?')+'_t='+Date.now(),{cache:'no-store'});
+  if(!res.ok)throw new Error('CSV HTTP '+res.status);
+  return parseCSV(await res.text());
+}
+async function loadIpFromWeb(){ // 공개자료 입결을 웹에서 직접 로드 (CFG.ipCsv > 기본 JSON URL)
+  if(CFG.ipCsv){ applyIp(await fetchCsv(CFG.ipCsv)); return '게시-CSV'; }
+  const res=await fetch(DEFAULT_IP_URL,{cache:'force-cache'});
+  if(!res.ok)throw new Error('입결 HTTP '+res.status);
+  const j=await res.json();
+  applyIp([j.columns,...j.rows]);
+  return '웹';
+}
 async function initLoad(){
-  if(!CFG.url){setConn(false,'데모 모드');loadDemo();renderAll();return;}
   setConn(false,'연결 중…');
+  // 1) 입결 — 항상 웹에서(공개자료). 실패 시 Apps Script static, 그래도 실패면 데모.
+  let ipOk=false;
   try{
-    document.getElementById('ipStatus').innerHTML='<span class="spin"></span>입결 데이터 로드 중 (수 초~수십 초)';
-    const live=await jsonp(CFG.url+'?action=live');
-    if(live.error)throw new Error(live.error);
-    applyLive(live);
-    UI.demo=false;renderAll();
-    setConn(true,'학생 연결됨');
-    const st=await jsonp(CFG.url+'?action=static');
-    if(st.error)throw new Error(st.error);
-    applyStatic(st);
-    setConn(true,'전체 연결됨');
-    document.getElementById('ipStatus').textContent='입결 '+DATA.ip.length.toLocaleString()+'행 · 최저 '+DATA.minT.length+'행';
-    renderAll();
-  }catch(e){setConn(false,'연결 실패');toast('연결 실패: '+e.message);}
+    document.getElementById('ipStatus').innerHTML='<span class="spin"></span>입결 데이터 로드 중';
+    const src=await loadIpFromWeb(); ipOk=true;
+    document.getElementById('ipStatus').textContent='입결 '+DATA.ip.length.toLocaleString()+'행 ('+src+')';
+  }catch(e){ console.warn('웹 입결 실패',e); }
+  // 2) 학생·최저·상담 — Apps Script (없으면 데모 학생)
+  try{
+    if(CFG.url){
+      const live=await jsonp(CFG.url+'?action=live');
+      if(live.error)throw new Error(live.error);
+      applyLive(live);
+      if(!ipOk){ const st=await jsonp(CFG.url+'?action=static'); if(st.sheets&&st.sheets['학과입결']){applyIp(st.sheets['학과입결']);ipOk=true;} }
+      UI.demo=false; setConn(true,'전체 연결됨');
+    }else{
+      if(!ipOk){loadDemo();UI.demo=true;setConn(false,'데모 모드');}
+      else{loadDemoStudents();UI.demo=true;setConn(true,'입결 연결됨 (학생 데모)');}
+    }
+  }catch(e){ setConn(false,'학생 연결 실패'); toast('학생 데이터 연결 실패: '+e.message); }
+  buildIpIndex();
+  document.getElementById('ipStatus').textContent='입결 '+DATA.ip.length.toLocaleString()+'행 · 최저 '+DATA.minT.length+'행'+(DATA.ipEdits.length?' · 수정 '+DATA.ipEdits.length:'');
+  renderAll();
 }
 async function reloadLive(){
   if(!CFG.url){toast('설정에서 URL을 먼저 연결하세요');return;}
-  try{const live=await jsonp(CFG.url+'?action=live&t='+Date.now());applyLive(live);renderAll();toast('학생·상담 데이터 새로고침 완료');}
+  try{const live=await jsonp(CFG.url+'?action=live&t='+Date.now());applyLive(live);buildIpIndex();renderAll();toast('새로고침 완료 (수정분 포함)');}
   catch(e){toast('새로고침 실패: '+e.message);}
+}
+async function reloadIp(){ // 입결 원본까지 다시 (게시-CSV 갱신용)
+  if(!CFG.ipCsv){return reloadLive();}
+  try{applyIp(await fetchCsv(CFG.ipCsv));buildIpIndex();renderAll();toast('입결 원본 새로고침 완료');}
+  catch(e){toast('입결 새로고침 실패: '+e.message);}
+}
+/* 입결 원본 행 적용 (게시-CSV 또는 Apps Script 공용) */
+function applyIp(ip){
+  if(!ip||ip.length<2)return;
+  const hdr=ip[0];const c={};hdr.forEach((h,i)=>c[String(h).trim()]=i);
+  DATA.ipCols=c;
+  DATA.ip=ip.slice(1).filter(r=>r&&r[c['대학']]);
 }
 function applyLive(live){
   const sh=live.sheets||{};
@@ -427,21 +477,39 @@ function applyLive(live){
     DATA.counsel.push({ts:String(r[0]||''),name:String(r[1]||''),ban:String(r[2]||''),no:String(r[3]||''),
       univ:String(r[4]||''),major:String(r[5]||''),type:String(r[6]||''),prio:String(r[7]||''),kind:String(r[8]||'memo'),memo:String(r[9]||'')});
   }
-}
-function applyStatic(st){
-  const sh=st.sheets||{};
-  const ip=sh['학과입결']||[];
-  if(ip.length>1){
-    const hdr=ip[0];const c={};hdr.forEach((h,i)=>c[String(h).trim()]=i);
-    DATA.ipCols=c;
-    DATA.ip=ip.slice(1).filter(r=>r&&r[c['대학']]);
-  }
+  // 최저타깃 (동일 키는 나중 행의 비어있지 않은 값이 우선 — 도구 수정분 병합)
+  const mtMap={};
   const mt=sh['최저타깃']||[];
-  DATA.minT=[];
   for(let i=1;i<mt.length;i++){const r=mt[i];if(!r||!r[0])continue;
-    DATA.minT.push({univ:String(r[0]).trim(),cat:String(r[1]||'').trim(),type:String(r[2]||'').trim(),major:String(r[3]||'').trim(),
-      y23:String(r[4]||'').trim(),y24:String(r[5]||'').trim(),y25:String(r[6]||'').trim(),y26:String(r[7]||'').trim(),memo:String(r[8]||'').trim()});}
-  buildIpIndex();
+    const rec={univ:String(r[0]).trim(),cat:String(r[1]||'').trim(),type:String(r[2]||'').trim(),major:String(r[3]||'').trim(),
+      y23:String(r[4]||'').trim(),y24:String(r[5]||'').trim(),y25:String(r[6]||'').trim(),y26:String(r[7]||'').trim(),
+      memo:String(r[8]||'').trim(),y27:String(r[9]||'').trim()};
+    const key=rec.univ+'|'+normT(rec.type)+'|'+normD(rec.major);
+    if(!mtMap[key])mtMap[key]=rec;
+    else{const o=mtMap[key];['cat','type','y23','y24','y25','y26','y27','memo'].forEach(f=>{if(rec[f])o[f]=rec[f];});}
+  }
+  DATA.minT=Object.values(mtMap);
+  // 트랙안내 (3학년 선택과목 수강여부 → 3-1 학점 자동산출: 공통6 + 선택×3)
+  DATA.track={};
+  const tv=sh['트랙안내']||[];
+  if(tv.length>1){
+    let hi=tv.findIndex(r=>r&&String(r[0]).trim()==='학번');
+    if(hi>=0){
+      const subjects=tv[hi].slice(2).map(s=>String(s||'').trim());
+      for(let i=hi+1;i<tv.length;i++){const r=tv[i];if(!r)continue;
+        const hak=String(r[0]||'').trim();if(!/^\d{4}$/.test(hak))continue;
+        const taken=[];
+        subjects.forEach((nm,j)=>{const v=String(r[j+2]??'').trim();if(nm&&v&&v!=='0')taken.push(nm);});
+        DATA.track[hak]={subjects:taken,credits:6+3*taken.length};
+      }
+    }
+  }
+  // 입결수정 패치  (열: 대학|카테고리|전형|학과|연도|필드|값  · 값 빈칸=삭제표시)
+  DATA.ipEdits=[];
+  const ev=sh['입결수정']||[];
+  for(let i=1;i<ev.length;i++){const r=ev[i];if(!r||!r[0])continue;
+    DATA.ipEdits.push({univ:String(r[0]).trim(),cat:String(r[1]||'').trim(),type:String(r[2]||'').trim(),major:String(r[3]||'').trim(),
+      year:String(r[4]||'').trim(),field:String(r[5]||'').trim(),val:String(r[6]==null?'':r[6]).trim(),ts:String(r[7]||'')});}
 }
 /* ---- 입결 인덱스 ---- */
 let IPX={byUM:{},univs:[],regions:[]};
@@ -463,11 +531,48 @@ function buildIpIndex(){
     const cur={cut70:fnum(r[c['등급70']]),cut50:fnum(r[c['등급50']]),mo:fnum(r[c['모집']]),cr:fnum(r[c['경쟁률']]),ji:fnum(r[c['지원']])};
     if(!prev||((prev.cut70==null)&&cur.cut70!=null))t.years[y]=cur;
   });
+  applyIpEdits();
   IPX.univs=[...IPX.univs].sort();IPX.regions=[...IPX.regions].sort();
   const sel=document.getElementById('regionSel');
-  sel.innerHTML='<option value="">전체 지역</option>'+IPX.regions.map(r=>`<option>${r}</option>`).join('');
+  if(sel)sel.innerHTML='<option value="">전체 지역</option>'+IPX.regions.map(r=>`<option>${r}</option>`).join('');
+}
+const IP_FIELD={'등급70':'cut70','등급50':'cut50','모집':'mo','경쟁률':'cr','지원':'ji'};
+/* 입결수정 패치를 인덱스에 덮어쓰기 (값 빈칸=null) */
+function applyIpEdits(){
+  (DATA.ipEdits||[]).forEach(e=>{
+    const k=e.univ+'|'+normD(e.major);
+    let entry=IPX.byUM[k];
+    if(!entry){ // 신규 학과/27 행 추가 허용
+      entry=IPX.byUM[k]={univ:e.univ,major:e.major,region:e.region||'',types:{}};IPX.univs.add(e.univ);
+    }
+    const tk=(e.cat||'교과')+'|'+normT(e.type);
+    const t=entry.types[tk]||(entry.types[tk]={cat:e.cat||'교과',names:new Set([e.type||'']),years:{}});
+    if(e.type)t.names.add(e.type);
+    const y=+e.year; if(!y)return;
+    const yr=t.years[y]||(t.years[y]={cut70:null,cut50:null,mo:null,cr:null,ji:null});
+    const f=IP_FIELD[e.field]; if(!f)return;
+    yr[f]=e.val===''?null:fnum(e.val);
+    yr._edited=true;
+  });
+}
+async function editIp(univ,cat,type,major,year,fieldKr,cell){
+  const cur=cell?cell.textContent.trim().replace(/^·$/,''):'';
+  const v=prompt(`${univ} ${major}\n[${type}] ${year}년 ${fieldKr}\n\n값 입력 (빈칸=삭제):`,cur);
+  if(v===null)return;
+  const ok=await saveIpEdit(univ,cat,type,major,year,fieldKr,v.trim());
+  if(ok||UI.demo){if(UI.demo){DATA.ipEdits.push({univ,cat,type,major,year:String(year),field:fieldKr,val:v.trim()});buildIpIndex();}
+    toast('수정 저장됨 (시트 동기화)');renderMajorDetail();}
+}
+async function saveIpEdit(univ,cat,type,major,year,field,val){
+  if(!CFG.url){toast('연결 후 저장됩니다');return false;}
+  const q='action=saveip&'+['univ','cat','type','major','year','field','val'].map((k,i)=>k+'='+encodeURIComponent([univ,cat,type,major,year,field,val][i]??'')).join('&');
+  try{const r=await jsonp(CFG.url+'?'+q);if(r.error)throw new Error(r.error);
+    DATA.ipEdits.push({univ,cat,type,major,year:String(year),field,val:String(val)});
+    buildIpIndex();return true;
+  }catch(e){toast('수정 저장 실패: '+e.message);return false;}
 }
 function typeSeries(t){ return [2022,2023,2024,2025,2026].map(y=>({year:y,...(t.years[y]||{cut70:null,cut50:null,mo:null,cr:null})})); }
+function typeSeries27(t){ return [2022,2023,2024,2025,2026,2027].map(y=>({year:y,...(t.years[y]||{cut70:null,cut50:null,mo:null,cr:null})})); }
 function findMinT(univ,major,typeName){
   const nd=normD(major);
   const cands=DATA.minT.filter(m=>m.univ===univ&&(normD(m.major)===nd||nd.includes(normD(m.major))||normD(m.major).includes(nd)));
@@ -480,6 +585,54 @@ function findMinT(univ,major,typeName){
 /* ---- 상담 레코드: (학생×학과) 단위 ---- */
 function counselFor({name,univ,major}){
   return DATA.counsel.filter(r=>(!name||r.name===name)&&(!univ||r.univ===univ)&&(!major||r.major===major));
+}
+/* 최저 충족 — 수동 보정(상담 kind=최저) 우선, 없으면 자동 판정 */
+function minOverride(name,univ,major,type){
+  const rs=DATA.counsel.filter(r=>r.kind==='최저'&&r.name===name&&r.univ===univ&&r.major===major&&(!type||!r.type||r.type===type));
+  if(!rs.length)return null;
+  return rs[rs.length-1].memo; // '충족' | '미충족' | '' (자동복귀)
+}
+function minStatus(stu,minT,tname){ // → {status:'pass|fail|none|unknown', manual:bool, latest, criteria}
+  if(!minT)return null;
+  const latest=minT.y26||minT.y25||minT.y24||minT.y23;
+  let auto='unknown';
+  if(stu.mock){const months=MONTH_ORDER.filter(m=>stu.mock.months[m]);const lm=months[months.length-1];
+    if(lm)auto=checkMinReq(latest,stu.mock.months[lm]);}
+  const ov=minOverride(stu.name,minT.univ,minT.major,tname);
+  if(ov==='충족')return {status:'pass',manual:true,latest};
+  if(ov==='미충족')return {status:'fail',manual:true,latest};
+  return {status:auto,manual:false,latest};
+}
+function minChipHtml(ms){
+  if(!ms)return '';
+  const m=ms.status,man=ms.manual?' ✎':'';
+  const c=m==='pass'?'<span class="badge b-safe">최저 충족'+man+'</span>'
+    :m==='fail'?'<span class="badge b-high">최저 미충족'+man+'</span>'
+    :m==='none'?'<span class="badge b-gray">최저 없음</span>'
+    :'<span class="badge b-warn">최저 확인</span>';
+  return c;
+}
+/* 3-1 예정 학점 — 수동입력 > 트랙안내 자동산출(공통6+선택×3) > 추정 */
+function plan31Credit(stu,totC){
+  const rs=DATA.counsel.filter(r=>r.kind==='예정학점'&&r.name===stu.name&&String(r.ban)===String(stu.ban));
+  if(rs.length){const v=parseFloat(rs[rs.length-1].memo); if(isFinite(v)&&v>0)return {val:v,manual:true,src:'수동'};}
+  const hak=String(CFG.grade||'3')+stu.ban+String(stu.no).padStart(2,'0');
+  const tr=(DATA.track||{})[hak];
+  if(tr)return {val:tr.credits,manual:false,src:'트랙',subjects:tr.subjects};
+  return {val:Math.max(1,Math.round(totC/4)),manual:false,src:'추정'};
+}
+async function setPlan31(stuKey,val){
+  const stu=DATA.students[stuKey];if(!stu)return;
+  const v=parseFloat(val); if(!isFinite(v)||v<=0){toast('학점을 숫자로 입력하세요');return;}
+  const ok=await saveCounsel({name:stu.name,ban:stu.ban,no:stu.no,univ:'',major:'',type:'',prio:'',kind:'예정학점',memo:String(v)});
+  if(ok||UI.demo){if(UI.demo)DATA.counsel.push({ts:'(데모)',name:stu.name,ban:String(stu.ban),no:String(stu.no),univ:'',major:'',type:'',kind:'예정학점',memo:String(v)});
+    toast('3-1 예정학점 '+v+'학점 저장');renderStuDetail();}
+}
+async function setMinOverride(stuKey,univ,major,type,val){
+  const stu=DATA.students[stuKey];if(!stu)return;
+  const ok=await saveCounsel({name:stu.name,ban:stu.ban,no:stu.no,univ,major,type:type||'',prio:'',kind:'최저',memo:val});
+  if(ok||UI.demo){if(UI.demo)DATA.counsel.push({ts:'(데모)',name:stu.name,ban:String(stu.ban),no:String(stu.no),univ,major,type:type||'',kind:'최저',memo:val});
+    toast(val?('최저 '+val+'(으)로 보정'):'자동 판정으로 복귀');renderStuDetail();if(UI.curMajor)renderMajorDetail();}
 }
 function wishesOf(stu){ // 학생의 활성 희망 학과 목록 (kind=del 이전 제외)
   const mine=DATA.counsel.filter(r=>r.name===stu.name&&String(r.ban)===String(stu.ban));
@@ -568,6 +721,7 @@ function fmtG(v){return v==null?'·':(Math.round(v*100)/100).toFixed(2).replace(
 /* ================================================================
    학생 탭 렌더
 ================================================================ */
+function js(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'\\x3c');} // onclick 인자 안전 이스케이프
 function switchTab(t){UI.tab=t;
   document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   document.getElementById('view-student').hidden=(t!=='student');
@@ -621,16 +775,22 @@ function renderStuDetail(){
         <button class="info-i" onclick="openGuide('theilsen')">i</button>
         <span class="small">Theil-Sen 추세 — 한 학기 이변에 둔감한 중앙값 기울기</span></div>`;
     }
-    /* 3-1 시나리오 */
+    /* 3-1 시나리오 (예정 학점 입력·동기화) */
     if(!stu.sems['3-1']&&c.all!=null){
       const totC=Object.values(stu.sems).reduce((a,s)=>a+(s.creditsG||0),0);
-      const est31=Math.round(totC/4);
-      html+=`<div class="statline"><span class="small">📐 3-1 시나리오 (예상 ${est31}학점):</span>`;
+      const cr31=plan31Credit(stu,totC); // 수동입력 우선, 없으면 추정
+      const sk=stu.ban+'-'+stu.no;
+      const srcTag=cr31.src==='수동'?'<span class="small" style="color:#b45309">✎ 수동</span>'
+        :cr31.src==='트랙'?`<span class="small" style="color:#15803d">트랙: 공통6+선택${(cr31.subjects||[]).length}×3${cr31.subjects&&cr31.subjects.length?' ('+cr31.subjects.join('·')+')':''}</span>`
+        :'<span class="small muted">(추정 — 트랙안내 시트 연결 시 자동산출)</span>';
+      html+=`<div class="statline"><span class="small">📐 3-1 시나리오 —</span>
+        <span class="stat">예정학점 <input type="number" min="1" max="40" value="${cr31.val}" style="width:52px" onchange="setPlan31('${js(sk)}',this.value)"> 학점</span> ${srcTag}</div>`;
+      html+=`<div class="statline">`;
       [c.all-1,c.all-0.5,c.all,c.all+0.5].forEach(g=>{
         if(g<1||g>9)return;
-        const fin=(c.all*totC+g*est31)/(totC+est31);
+        const fin=(c.all*totC+g*cr31.val)/(totC+cr31.val);
         html+=`<span class="stat">3-1에 <b>${fmtG(g)}</b> → 최종 <b>${fmtG(fin)}</b></span>`;});
-      html+=`</div>`;
+      html+=`<span class="small muted">현재 누적 ${totC}학점 기준 · 화작/영독작·미적분·윤사·한지·사문 등 3-1 석차반영 학점</span></div>`;
     }
   }
   html+='</div>';
@@ -660,6 +820,18 @@ function renderStuDetail(){
     const lastM=months[months.length-1];
     const mAvg=mockAvg(lastM);
     const gap=(stu.cum?.kmet!=null&&mAvg!=null)?stu.cum.kmet-mAvg:null;
+    /* 모고 월별 등급 + N합 표 (최저 판정용 합산 자동 계산) */
+    const bestSums=x=>{const t=[x.t1,x.t2].filter(v=>v!=null);const tb=t.length?Math.min(...t):null;
+      const a=[x.kor,x.math,x.eng,tb].filter(v=>v!=null).sort((p,q)=>p-q);
+      return {s1:a[0]??null,s2:a.length>=2?a[0]+a[1]:null,s3:a.length>=3?a[0]+a[1]+a[2]:null,s4:a.length>=4?a[0]+a[1]+a[2]+a[3]:null};};
+    html+=`<div class="card"><h2>📝 모의고사 월별 등급·합 <span class="sub">합은 국·수·영·탐(best1) 중 좋은 영역부터 — 최저 대조용</span></h2>
+      <div style="overflow-x:auto"><table class="grid"><tr><th>월</th><th>국</th><th>수</th><th>영</th><th>탐1</th><th>탐2</th><th>한</th><th style="background:#eef6ff">1합</th><th style="background:#eef6ff">2합</th><th style="background:#eef6ff">3합</th><th style="background:#eef6ff">4합</th></tr>`;
+    months.forEach(m=>{const x=mock.months[m];const bs=bestSums(x);
+      html+=`<tr><td><b>${m}</b></td>`;
+      [x.kor,x.math,x.eng,x.t1,x.t2,x.hist].forEach(v=>{html+=`<td><span class="gcell" style="${gradeBg(v)};display:block">${v==null?'·':v}</span></td>`;});
+      [bs.s1,bs.s2,bs.s3,bs.s4].forEach(v=>{html+=`<td style="background:#f8fafc"><b>${v==null?'·':v}</b></td>`;});
+      html+='</tr>';});
+    html+=`</table></div><div class="small muted">예) "2개 합 7" 기준이면 2합 칸과 바로 대조. 탐구는 최우선 1과목 기준(2과목 평균·과탐 한정 등 세부는 학과 카드의 자동판정이 처리).</div></div>`;
     html+=`<div class="card"><h2>⚖️ 내신 × 모고 비교 <button class="info-i" onclick="openGuide('gap')">i</button></h2>`;
     html+=svgChart({labels:months,series:[
       {label:'모고 평균(국수영탐)',pts:months.map(mockAvg),color:'#7c3aed',width:2.4},
@@ -668,8 +840,8 @@ function renderStuDetail(){
     if(gap!=null){
       const dir=gap>0.6?'모고 우위':(gap<-0.6?'내신 우위':'균형');
       html+=`<div class="statline">
-        <span class="stat">내신(국영수탐) <b>${fmtG(stu.cum.kmet)}</b></span>
-        <span class="stat">최근 모고(${lastM}) <b>${fmtG(mAvg)}</b></span>
+        <span class="stat">내신 누적(국영수탐) <b>${fmtG(stu.cum.kmet)}</b></span>
+        <span class="stat">모고 평균등급(${lastM} · 국수영탐best1 4영역) <b>${fmtG(mAvg)}</b></span>
         <span class="stat">격차 <b>${gap>0?'+':''}${gap.toFixed(2)}</b> → <b>${dir}</b></span></div>`;
     }
     /* 모고 영역별 월 추이 */
@@ -705,13 +877,14 @@ function renderPortfolio(stu){
     const grp=bj.label.startsWith('안정')?'안정':bj.label.startsWith('적정')?'적정':bj.label.startsWith('소신')?'소신':bj.label.startsWith('상향')?'상향':'판정불가';
     const minT=findMinT(w.univ,w.major,tname);
     let minHtml='';
-    if(minT){
-      const latest=minT.y26||minT.y25;
-      let st='unknown';
-      if(stu.mock){const months=MONTH_ORDER.filter(m=>stu.mock.months[m]);const lm=months[months.length-1];
-        if(lm)st=checkMinReq(latest,stu.mock.months[lm]);}
-      const stChip=st==='pass'?'<span class="badge b-safe">최저 충족</span>':st==='fail'?'<span class="badge b-high">최저 미충족</span>':st==='none'?'<span class="badge b-gray">최저 없음</span>':'<span class="badge b-warn">최저 확인</span>';
-      minHtml=`<div class="small">${stChip} ${latest||''}</div>`;
+    const ms=minStatus(stu,minT,tname);
+    if(ms){
+      minHtml=`<div class="small">${minChipHtml(ms)} <span class="muted">${ms.latest||''}</span>
+        <select class="minsel" onclick="event.stopPropagation()" onchange="setMinOverride('${js(stu.ban+'-'+stu.no)}','${js(w.univ)}','${js(w.major)}','${js(tname)}',this.value)" title="최저 통과여부 수동 보정(시트 동기화)">
+          <option value=""${!ms.manual?' selected':''}>자동</option>
+          <option value="충족"${ms.manual&&ms.status==='pass'?' selected':''}>충족</option>
+          <option value="미충족"${ms.manual&&ms.status==='fail'?' selected':''}>미충족</option>
+        </select></div>`;
     }
     groups[grp].push({w,tname,pred,pctE,bj,minHtml,um});
   });
@@ -724,7 +897,7 @@ function renderPortfolio(stu){
       html+=`<div class="pitem" onclick="openMajorFromWish('${it.w.univ}','${it.w.major.replace(/'/g,"\\'")}')">
         <b>${it.w.univ}</b> ${it.w.major}<br><span class="small">${it.tname||''}</span>${reb}<br>
         ${it.pred?`<span class="small">예상컷 ${fmtG(it.pred.lo)}~${fmtG(it.pred.hi)} (중심 ${fmtG(it.pred.center)})</span><br>`:''}
-        ${it.pctE?`<span class="small">분포 내 위치 상위 ~${Math.round(it.pctE.pct)}%</span><br>`:''}
+        ${it.pctE?`<span class="small">${pctLabel(it.pctE.pct)}</span><br>`:''}
         ${it.minHtml}
         <div style="margin-top:5px;display:flex;gap:5px">
           <button class="btn btn-sub" style="padding:3px 9px;font-size:11px" onclick="event.stopPropagation();openMemo('${stu.ban}-${stu.no}','${it.w.univ}','${it.w.major.replace(/'/g,"\\'")}','${(it.tname||'').replace(/'/g,"\\'")}')">💬 메모</button>
@@ -803,6 +976,15 @@ function renderMajorDetail(){
   let html=`<div class="card"><h2>🏫 ${um.univ} — ${um.major} <span class="sub">${um.region}</span>
     ${curStu?`<span class="badge b-fit">기준 학생: ${curStu.name} (국영수탐 ${fmtG(curStu.cum?.kmet)})</span>`:''}
     <button class="info-i" onclick="openGuide('predict')">i</button></h2>`;
+  /* 교과↔종합 컷 격차 (통계B: 전체 평균 종합이 교과보다 0.53등급 낮음) */
+  const catAvg=cat=>{const vs=[];Object.values(um.types).forEach(t=>{if(t.cat!==cat)return;[2025,2026].forEach(y=>{if(t.years[y]?.cut70!=null)vs.push(t.years[y].cut70);});});return vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:null;};
+  const gk=catAvg('교과'),gj=catAvg('종합');
+  if(gk!=null&&gj!=null){
+    const diff=gj-gk;
+    html+=`<div class="statline"><span class="stat">교과 평균컷 <b>${fmtG(gk)}</b></span><span class="stat">종합 평균컷 <b>${fmtG(gj)}</b></span>
+      <span class="badge ${diff>0.2?'b-fit':diff<-0.2?'b-reach':'b-gray'}">${diff>0?'종합이 '+diff.toFixed(2)+'등급 낮음(여유)':diff<0?'교과가 '+(-diff).toFixed(2)+'등급 낮음':'비슷'}</span>
+      <span class="small muted">전체 평균은 종합이 0.53등급 낮음 — 내신 애매하면 종합 고려</span></div>`;
+  }
   /* 희망 학생 */
   const wishers=wishersOf(um.univ,um.major);
   if(wishers.length){
@@ -828,17 +1010,28 @@ function renderMajorDetail(){
       html+=` <span class="badge ${pred.vola==='높음'?'b-warn':'b-gray'}">변동성 ${pred.vola} (σ ${pred.sigma.toFixed(2)})</span>`;
       if(pred.rebound)html+=` <span class="badge b-warn" title="직전년 ${pred.rebound.lastDelta>0?'하락(빵꾸)':'급상승'} ${Math.abs(pred.rebound.lastDelta).toFixed(2)}등급 → 평균회귀 보정 ${pred.rebound.adj>0?'+':''}${pred.rebound.adj.toFixed(2)}">↩️ 반동주의</span>`;
     }
+    const latestMo=(t.years[2026]?.mo??t.years[2025]?.mo);
+    if(latestMo!=null&&latestMo<=5)html+=` <span class="badge b-warn" title="소수모집은 합격선이 해마다 출렁여 예측 신뢰도가 낮습니다">⚠ 소수모집 ${latestMo}명</span>`;
     html+='</h3>';
-    /* 표 */
-    html+='<div style="overflow-x:auto"><table class="grid"><tr><th></th>'+years.map(y=>`<th>${y}</th>`).join('')+'<th style="background:#fef3c7">27예측</th></tr>';
+    /* 표 (전 셀 클릭수정 · 2027 입력 컬럼 · 최하단 수능최저 행) */
+    const ed=`'${js(um.univ)}','${js(t.cat)}','${js(dispName)}','${js(um.major)}'`;
+    const series27=typeSeries27(t);
+    const yearsAll=[2022,2023,2024,2025,2026,2027];
+    const minT=findMinT(um.univ,um.major,dispName);
+    html+='<div style="overflow-x:auto"><table class="grid"><tr><th>📝클릭수정</th>'+yearsAll.map(y=>`<th${y===2027?' style="background:#eef6ff"':''}>${y===2027?'2027<span style="font-weight:400;font-size:9px"> 입력</span>':y}</th>`).join('')+'<th style="background:#fef3c7">27예측</th></tr>';
     const rows=[['등급70','cut70'],['등급50','cut50'],['모집','mo'],['경쟁률','cr']];
     rows.forEach(([nm,f])=>{
-      html+=`<tr><td><b>${nm}</b></td>`+series.map(s=>{
-        const v=s[f];
-        return `<td>${f.startsWith('cut')?`<span class="gcell" style="${gradeBg(v)};display:block">${fmtG(v)}</span>`:(v==null?'·':v)}</td>`;}).join('');
+      html+=`<tr><td><b>${nm}</b></td>`+series27.map(s=>{
+        const v=s[f];const edited=s._edited;
+        const disp=f.startsWith('cut')?`<span class="gcell" style="${gradeBg(v)};display:block">${fmtG(v)}</span>`:(v==null?'·':v);
+        return `<td class="ipcell${edited?' ipedited':''}${s.year===2027?' y27':''}" title="클릭하여 수정" onclick="editIp(${ed},${s.year},'${nm}',this)">${disp}</td>`;}).join('');
       html+=(f==='cut70'&&pred)?`<td style="background:#fffbeb"><b>${fmtG(pred.lo)}~${fmtG(pred.hi)}</b></td>`:'<td></td>';
       html+='</tr>';});
-    html+='</table></div>';
+    /* 수능최저 행 (연도 정렬) */
+    const mvals={2022:'',2023:minT?.y23||'',2024:minT?.y24||'',2025:minT?.y25||'',2026:minT?.y26||'',2027:minT?.y27||''};
+    html+=`<tr style="border-top:2px solid var(--pri)"><td><b>수능최저</b></td>`+yearsAll.map(y=>
+      `<td class="ipcell${y===2027?' y27':''}" style="font-size:11px;max-width:120px;white-space:normal" title="클릭하여 수정(최저타깃 시트 동기화)" onclick="editMin(${ed},${y},this)">${y===2022?'':(mvals[y]||'·')}</td>`).join('')+'<td></td></tr>';
+    html+='</table><div class="small" style="color:var(--mut)">모든 셀 클릭 수정 → 시트 동기화 (입결값은 입결수정 탭, 최저는 최저타깃 탭에 누적). 빈칸 저장=삭제.</div></div>';
     /* 차트 */
     const chartOpt={labels:years.map(String),series:[
       {label:'등급70',pts:series.map(s=>s.cut70),color:'#1e3a5f',width:2.4},
@@ -853,7 +1046,7 @@ function renderMajorDetail(){
       const pctE=percentileEst(series,curStu.cum.kmet);
       const bj=judgeBadge(pctE?.pct,pred.vola);
       html+=`<div class="statline"><span class="badge ${bj.cls}">${bj.label}</span>`;
-      if(pctE)html+=`<span class="stat">합격자 분포 내 위치(추정) <b>상위 ~${Math.round(pctE.pct)}%</b></span>`;
+      if(pctE)html+=`<span class="stat">합격자 분포 내 위치(추정) <b>${pctLabel(pctE.pct)}</b></span>`;
       html+=`<span class="stat">여유 <b>${(pred.center-curStu.cum.kmet)>0?'+':''}${(pred.center-curStu.cum.kmet).toFixed(2)}</b>등급</span>
         <button class="info-i" onclick="openGuide('judge')">i</button></div>`;
     }
@@ -866,31 +1059,52 @@ function renderMajorDetail(){
           html+=`<div class="small">ℹ️ ${b.year}년 컷 ${dCut<0?'상승':'하락'}(${Math.abs(dCut).toFixed(2)})은 경쟁률 ${dCr>0?'급등':'급락'}(${a.cr}→${b.cr}) 동반 — 전체 데이터 상관 −0.33</div>`;}
       }
     }
-    /* 수능최저 4년 */
-    const minT=findMinT(um.univ,um.major,dispName);
+    /* 수능최저 — 기준은 표 하단 행에 통합, 여기는 학생 판정만 */
     if(minT){
-      html+=`<div class="minrow"><b style="font-size:12px">수능최저</b>`;
-      [['23',minT.y23],['24',minT.y24],['25',minT.y25],['26',minT.y26]].forEach(([y,v])=>{
-        if(v)html+=`<span class="yr">${y}: <b>${v}</b></span>`;});
-      if(minT.memo)html+=`<span class="yr" style="background:#fff7ed">📝 ${minT.memo}</span>`;
-      html+='</div>';
-      if(curStu?.mock){
-        const months=MONTH_ORDER.filter(m=>curStu.mock.months[m]);
+      if(minT.memo)html+=`<div class="minrow"><span class="yr" style="background:#fff7ed">📝 ${minT.memo}</span></div>`;
+      if(curStu){
+        const months=curStu.mock?MONTH_ORDER.filter(m=>curStu.mock.months[m]):[];
         const latest=minT.y26||minT.y25;
+        const ms=minStatus(curStu,minT,dispName);
+        html+=`<div class="minrow"><span class="small">판정(${curStu.name}):</span> ${minChipHtml(ms)}
+          <select class="minsel" onchange="setMinOverride('${js(curStu.ban+'-'+curStu.no)}','${js(um.univ)}','${js(um.major)}','${js(dispName)}',this.value)" title="수동 보정(시트 동기화)">
+            <option value=""${!ms.manual?' selected':''}>자동</option>
+            <option value="충족"${ms.manual&&ms.status==='pass'?' selected':''}>충족</option>
+            <option value="미충족"${ms.manual&&ms.status==='fail'?' selected':''}>미충족</option>
+          </select>${ms.manual?'<span class="small" style="color:#b45309">수동 보정됨</span>':''}
+          <button class="info-i" onclick="openGuide('minreq')">i</button></div>`;
         if(latest&&months.length){
-          html+=`<div class="minrow"><span class="small">충족 추이(${curStu.name}):</span><div class="monthchips">`;
+          html+=`<div class="minrow"><span class="small">월별 충족(자동):</span><div class="monthchips">`;
           months.forEach(m=>{
             const r=checkMinReq(latest,curStu.mock.months[m]);
             html+=`<span class="mchip ${r==='pass'?'y':r==='fail'?'n':'u'}">${m} ${r==='pass'?'✓':r==='fail'?'✕':'?'}</span>`;});
-          html+=`</div><button class="info-i" onclick="openGuide('minreq')">i</button></div>`;
+          html+=`</div></div>`;
         }
       }
     }else{
-      html+=`<div class="small">수능최저: 최저타깃 시트에 미입력 (타깃 학과면 시트에 추가)</div>`;
+      html+=`<div class="small">수능최저 미입력 — 표의 수능최저 행 셀을 클릭해 바로 입력할 수 있습니다.</div>`;
     }
     html+='</div>';
   });
   el.innerHTML=html;
+}
+/* 수능최저 셀 수정 → 최저타깃 시트에 누가(최신우선 병합) */
+async function editMin(univ,cat,type,major,year,cell){
+  const cur=cell?cell.textContent.trim().replace(/^·$/,''):'';
+  const v=prompt(`${univ} ${major}\n[${type}] ${year}학년도 수능최저\n\n예: "국·수·영·탐(1) 중 2개 합 8" / "없음" (빈칸=삭제):`,cur);
+  if(v===null)return;
+  if(!CFG.url&&!UI.demo){toast('연결 후 저장됩니다');return;}
+  const rec={univ,cat,type,major,['y'+String(year).slice(2)]:v.trim()};
+  if(CFG.url){
+    const q='action=savemin&'+['univ','cat','type','major','year','val'].map((k,i)=>k+'='+encodeURIComponent([univ,cat,type,major,year,v.trim()][i]??'')).join('&');
+    try{const r=await jsonp(CFG.url+'?'+q);if(r.error)throw new Error(r.error);}
+    catch(e){toast('최저 저장 실패: '+e.message);return;}
+  }
+  // 로컬 병합
+  let hit=DATA.minT.find(m=>m.univ===univ&&normD(m.major)===normD(major)&&(normT(m.type)===normT(type)||!m.type));
+  if(!hit){hit={univ,cat,type,major,y23:'',y24:'',y25:'',y26:'',y27:'',memo:''};DATA.minT.push(hit);}
+  hit['y'+String(year).slice(2)]=v.trim();
+  toast('수능최저 저장됨 (시트 동기화)');renderMajorDetail();renderStuDetail();
 }
 
 /* ================================================================
@@ -914,23 +1128,33 @@ const GUIDE_HTML=`
 
 <h3 id="g-predict">3. 27학년도 예상컷 밴드 · 변동성 등급</h3>
 <p><b>무엇:</b> 학과·전형의 다음 해 등급70 컷을 <b>점이 아닌 범위</b>로 제시합니다.</p>
-<p><b>어떻게:</b></p>
-<ul>
-<li>중심값 = 최근 연도에 가중치를 더 둔 5년 가중평균 (최신 반영, 1회성 이변 완충)</li>
-<li>밴드 폭 = 그 학과 5년 컷의 표준편차 σ (최소 ±0.2등급)</li>
-<li>변동성 등급: σ&lt;0.15 낮음 / ~0.40 보통 / &gt;0.40 높음 — 전체 8,933개 학과의 σ 중앙값 0.24, 75분위 0.40을 기준으로 구간화</li>
-</ul>
-<div class="ev">왜 범위인가: 같은 "컷과 0.3등급 차이"라도 σ=0.1인 학과는 사실상 확정, σ=0.5인 학과는 도박입니다. 점 추정은 이 차이를 숨깁니다.</div>
-<div class="warn">주의: 전형 개편(통합·신설·모집인원 급변)이 있으면 과거 추이의 의미가 약해집니다. ⚠️·메모를 함께 확인하세요.</div>
+<p><b>어떻게 (백테스트로 선정):</b> 과거 데이터에서 "이전 연도들만 보고 다음 해를 맞히는" 모의 예측을 16,293건 수행해, 후보 예측식 6개 중 오차가 가장 작은 식을 채택했습니다.</p>
+<div class="formula">중심값 = ½ × 직전년 컷 + ½ × 5년 가중평균 (+ 직전년 급변 시 반동 보정 ½ × (−0.38 × 직전 변화량))<br>밴드 = 중심값 ± 1.6 × max(그 학과 컷의 σ, 0.2)</div>
+<div class="ev">백테스트 평균절대오차(MAE): 직전값 그대로 0.444 / 가중평균 0.422 / <b>채택식 0.420</b>. 이전 버전(가중평균+반동 전부)은 0.457로 오히려 나빠 <b>폐기</b>했습니다 — 가중평균이 이미 평균회귀를 일부 반영하는데 반동을 또 더하면 과보정되기 때문입니다.<br>
+밴드 ±1.6σ는 실제 다음해 컷을 <b>약 68%(10건 중 7건)</b> 포함하도록 보정한 폭입니다. 밴드 밖으로 튀는 해가 10건 중 3건은 나온다는 뜻이니, 밴드는 "확정 범위"가 아니라 "보통의 변동 폭"으로 읽으세요.</div>
+<ul><li>변동성 등급: σ&lt;0.15 낮음 / ~0.40 보통 / &gt;0.40 높음 — 전체 8,933개 학과 σ 중앙값 0.24, 75분위 0.40 기준</li></ul>
+<div class="warn">주의: 전형 개편(통합·신설·모집인원 급변) 시 과거 추이의 의미가 약해집니다. 표의 2027 컬럼에 확정 정보를 입력하면 그 값이 우선합니다.</div>
 
 <h3 id="g-rebound">4. 격년 반동(평균회귀) 보정 ↩️</h3>
-<p><b>무엇:</b> 직전 해에 컷이 급변(±0.5등급 이상)한 학과는 다음 해에 일부 되돌아오는 경향을 예측에 반영합니다.</p>
-<div class="ev">근거(이 데이터 자체로 검증): 연속 3개년 데이터가 있는 12,995개 사례에서 연속 변화량의 상관 = <b>−0.38</b>.<br>
-· 컷이 0.5등급 이상 <b>급상승(빡세짐)</b>한 학과 → 다음 해 평균 <b>+0.26등급 완화</b> (1,682사례)<br>
-· 컷이 0.5등급 이상 <b>하락(빵꾸)</b>한 학과 → 다음 해 평균 <b>−0.44등급 회복</b> (1,832사례)</div>
-<p><b>적용:</b> 직전년 변화량 × (−0.38)을 예측 중심값에 더하고 ↩️ 배지로 표시합니다.</p>
+<p><b>무엇:</b> 직전 해에 컷이 급변(±0.5등급 이상)한 학과는 다음 해에 일부 되돌아오는 경향을 예측 중심값에 (절반 가중으로) 반영하고 ↩️ 배지로 표시합니다.</p>
+<div class="ev">근거(이 데이터 자체로 검증): 연속 3개년이 있는 12,995개 사례에서 연속 변화량의 상관 = <b>−0.38</b>.<br>
+· 컷 0.5등급+ <b>급상승(빡세짐)</b> → 다음 해 평균 <b>+0.26등급 완화</b> (1,682사례)<br>
+· 컷 0.5등급+ <b>하락(빵꾸)</b> → 다음 해 평균 <b>−0.44등급 회복</b> (1,832사례)<br>
+단, 백테스트 결과 반동을 <b>전액</b> 반영하면 과보정이라 <b>절반</b>만 반영하는 식이 더 정확했습니다.</div>
 <p><b>상담 포인트:</b> "작년에 빵꾸 난 학과"는 그 사실이 알려져 지원이 몰리며 평균 0.4등급 이상 회복됩니다. 작년 컷만 보고 지원선을 잡는 것은 위험합니다.</p>
-<div class="warn">함께 기각된 통념: "전년 경쟁률이 오른 학과는 다음 해 컷이 변한다"는 가설은 같은 데이터(14,098사례)에서 상관 0.004로 <b>예측력이 없어</b> 이 도구에 넣지 않았습니다.</div>
+<div class="warn">함께 기각된 통념: "전년 경쟁률이 오른 학과는 다음 해 컷이 변한다"는 같은 데이터(14,098사례)에서 상관 0.004로 <b>예측력이 없어</b> 넣지 않았습니다.</div>
+
+<h3 id="g-catgap">4-1. 교과 vs 종합 컷 격차</h3>
+<p><b>무엇:</b> 같은 학과에서 종합전형 합격컷이 교과보다 얼마나 낮은지(내신 여유가 얼마인지) 보여줍니다.</p>
+<div class="ev">검증: 같은 대학·학과의 교과·종합 등급70을 직접 비교한 4,741개 사례에서 <b>종합 컷이 교과보다 평균 0.53등급(중앙값 0.53) 낮았습니다.</b> 즉 종합은 같은 학과라도 내신 0.5등급가량 낮아도 합격선에 듭니다.</div>
+<p><b>활용:</b> 내신이 교과 기준으로 애매(소신·상향)하면, 같은 학과의 종합전형을 함께 검토하세요. 화면엔 그 학과의 <b>실제</b> 교과·종합 평균컷과 차이를 함께 표시합니다(전체 평균 0.53은 참고선).</p>
+<div class="warn">주의: 종합은 컷이 낮은 대신 서류·면접 변수가 크고, 내신 외 활동을 봅니다. "컷이 낮다=쉽다"가 아니라 "내신 컷의 여유가 있다"로 읽으세요.</div>
+
+<h3 id="g-trend">4-2. 추세는 연장하지 않는다 (검증 결과)</h3>
+<div class="ev">2년 연속 같은 방향으로 움직인 컷이 3년째도 같은 방향인 경우는 36%뿐, <b>64%는 반대로 꺾였습니다</b>(10,467사례). 즉 "2년째 오르니 올해도 오른다"식 추세 연장은 틀립니다. 그래서 이 도구는 추세추종을 쓰지 않고 <b>평균회귀(직전값·평균 절충)</b>로 예측합니다.</div>
+
+<h3 id="g-small">4-3. 소수모집(≤5명) 신뢰도 ⚠</h3>
+<p>모집 5명 이하 학과는 합격자 수가 적어 컷이 해마다 크게 출렁입니다. 예측·판정의 신뢰도가 낮으므로 ⚠ 배지로 표시하고, 분포 추정 시 최소 산포(σ≥0.18)를 적용해 과신을 막습니다.</p>
 
 <h3 id="g-judge">5. 합격자 분포 내 위치(percentile)와 판정 배지</h3>
 <p><b>무엇:</b> "컷과 몇 등급 차이"보다 정보가 많은, <b>합격자 분포에서 학생이 어디쯤인지</b>를 추정합니다.</p>
@@ -954,10 +1178,12 @@ const GUIDE_HTML=`
 <p><b>무엇:</b> 최저타깃 시트에 적은 기준 텍스트(예: "국·수·영·탐(1) 중 3개 합 7")를 해석해 학생의 모의고사 월별 충족 여부를 표시합니다.</p>
 <p><b>인식 규칙:</b> "N개 합 M" 패턴, 한국사 제한, 탐구 1과목/2과목 평균, 과탐/사탐 한정, "수학 포함" 류 필수 지정. 해석 불가한 문구는 ?로 표시하고 원문을 그대로 보여줍니다.</p>
 <p><b>충족 추이를 보는 이유:</b> 한 번의 충족보다 "몇 월부터 안정적으로 충족하는가"가 실제 리스크 판단 기준입니다. 6월·9월 평가원 모고의 충족 여부에 가중을 두고 보세요.</p>
-<div class="warn">한계: 영어 환산 특례, 절사 규정 등 세칙은 단순화되어 있습니다. 최종 지원 전 반드시 모집요강 원문을 확인하세요. 최저는 어디까지나 <b>보조 지표</b>입니다.</div>
+<p><b>수동 보정(✎):</b> 통합 모집단위, 탐구 통합 산정, 절사 규칙 등 자동 판정이 어려운 경우 학과 화면·포트폴리오의 <b>[자동/충족/미충족]</b> 드롭다운으로 직접 지정할 수 있습니다. 수동 보정값은 자동 판정보다 우선하며 ✎ 표시가 붙고, 구글시트 <code>상담</code> 탭에 누가 저장되어 동기화됩니다. '자동'으로 되돌리면 다시 엔진 판정을 따릅니다.</p>
+<div class="warn">한계: 영어 환산 특례, 절사 규정 등 세칙은 단순화되어 있습니다. 최종 지원 전 반드시 모집요강 원문을 확인하세요. 최저는 어디까지나 <b>보조 지표</b>이며, 애매하면 위 수동 보정으로 선생님 판단을 우선하세요.</div>
 
-<h3>8. 데이터 출처·동기화</h3>
-<p>학과 입결(5년)·수능최저(타깃 학과 직접 입력)·내신(나이스 원본을 반별 시트에 붙여넣기)·모고·상담메모 전부 선생님의 구글시트에서 실시간으로 읽습니다. <b>시트를 수정하면 🔄 새로고침 시 즉시 반영</b>되며, 이 HTML 파일에는 어떤 학생 정보도 저장되지 않습니다.</p>`;
+<h3>8. 데이터 출처·동기화·수정</h3>
+<p>학과 입결(5년)·수능최저·내신(나이스 원본)·모고·상담 전부 선생님의 구글시트에서 읽습니다. 입결은 공개자료라 <b>웹 게시-CSV로 빠르게</b> 불러오고, 학생·최저·상담·수정분은 Apps Script로 즉시 동기화합니다. 이 HTML에는 어떤 학생 정보도 저장되지 않습니다.</p>
+<p><b>모든 값 수정 가능:</b> 학과 화면의 입결 표에서 <b>셀을 클릭</b>하면 등급70·등급50·모집·경쟁률 등 어떤 값이든 고쳐 시트(<code>입결수정</code> 탭)에 저장합니다. 원본 위에 덮어써서 보이고(✎ 표시), 빈칸 저장 시 값이 삭제됩니다. <b>27학년도 신설 행·신규 학과</b>도 "27행 입력"으로 추가할 수 있습니다. 원본 CSV는 건드리지 않으므로 안전하며, 수정 이력이 <code>입결수정</code> 탭에 누적됩니다.</p>`;
 function openGuide(anchor){
   document.getElementById('guideBody').innerHTML=GUIDE_HTML;
   document.getElementById('modalGuide').classList.add('on');
@@ -967,6 +1193,25 @@ function openGuide(anchor){
 /* ================================================================
    데모 데이터 (연결 전 미리보기용 · 가상 인물)
 ================================================================ */
+function loadDemoStudents(){ // 웹 입결은 유지, 학생만 데모로
+  const demoNeis=[
+   ['번 호','성  명','학 년','학 기','교 과','과 목','학점수','원점수','성취도','석차등급',''],
+   ['1','김데모','1','1','국어','국어','3','','B(120)','6'],
+   ['','','','','','수학','4','','C(120)','6'],['','','','','','영어','4','','D(120)','6'],
+   ['','','','','','한국사','3','','C(120)','5'],['','','','','','통합사회','3','','C(120)','5'],
+   ['','','','','','통합과학','4','','B(120)','6'],['','','','','','과학탐구실험','1','','A(120)',''],
+   ['1','김데모','2','1','수학','미적분','4','','D(119)','7'],['','','','','','영어Ⅰ','3','','D(119)','7'],
+   ['','','','','','문학','3','','C(119)','3'],['','','','','','생활과 윤리','3','','B(40)','4'],
+  ];
+  DATA.students={};
+  Object.values(parseNeisSheet(demoNeis,1)).forEach(s=>DATA.students['1-'+s.no]=s);
+  const stu=DATA.students['1-1'];
+  if(stu)stu.mock={hak:'3101',ban:1,no:1,name:'김데모',months:{
+    '3월':{kor:5,math:6,eng:5,t1:4,t2:5,hist:4,mathSub:'확률과 통계',t1Sub:'생활과 윤리',t2Sub:'사회·문화'},
+    '6월':{kor:5,math:5,eng:4,t1:4,t2:4,hist:3,mathSub:'확률과 통계',t1Sub:'생활과 윤리',t2Sub:'사회·문화'},
+    '9월':{kor:4,math:5,eng:4,t1:3,t2:4,hist:3,mathSub:'확률과 통계',t1Sub:'생활과 윤리',t2Sub:'사회·문화'}}};
+  DATA.counsel=[];DATA.track={'3101':{subjects:['미적분','생활과 윤리'],credits:12}};
+}
 function loadDemo(){
   const demoNeis=[
    ['번 호','성  명','학 년','학 기','교 과','과 목','학점수','원점수','성취도','석차등급',''],
@@ -998,9 +1243,11 @@ function loadDemo(){
   const mk=(u,y,t,m,mo,cr,c5,c7)=>DATA.ip.push(['데모',u,y,'교과',t,m,'자연',mo,cr,c5,c7,Math.round(mo*cr)]);
   [[2022,20,8.1,4.4,4.55],[2023,20,6.9,4.52,4.7],[2024,22,7.5,4.3,4.46],[2025,22,9.2,4.05,4.18],[2026,22,8.8,4.12,4.3]].forEach(([y,mo,cr,c5,c7])=>mk('데모대',y,'교과(일반)','간호학과',mo,cr,c5,c7));
   [[2022,15,5.5,5.2,5.5],[2023,15,6.1,4.7,4.9],[2024,15,4.2,5.6,5.9],[2025,15,7.8,4.9,5.05],[2026,15,6.5,5.1,5.3]].forEach(([y,mo,cr,c5,c7])=>mk('데모대',y,'교과(지역)','물리치료학과',mo,cr,c5,c7));
-  DATA.minT=[{univ:'데모대',cat:'교과',type:'교과(일반)',major:'간호학과',y23:'2개 합 9',y24:'2개 합 9',y25:'2개 합 8',y26:'국·수·영·탐(1) 중 2개 합 8',memo:'27: 합 7로 강화 예고'}];
+  DATA.minT=[{univ:'데모대',cat:'교과',type:'교과(일반)',major:'간호학과',y23:'2개 합 9',y24:'2개 합 9',y25:'2개 합 8',y26:'국·수·영·탐(1) 중 2개 합 8',y27:'',memo:''}];
+  DATA.ipEdits=[];
+  DATA.track={'3101':{subjects:['미적분','윤리와 사상','한국지리','사회문화'],credits:18}};
   DATA.counsel=[{ts:'(데모)',name:'김데모',ban:'1',no:'1',univ:'데모대',major:'간호학과',type:'교과(일반)',prio:'1',kind:'wish',memo:'희망 등록'},
-    {ts:'(데모)',name:'김데모',ban:'1',no:'1',univ:'데모대',major:'간호학과',type:'교과(일반)',prio:'',kind:'memo',memo:'최저 2합8 — 9월 모고 기준 충족. 27 강화 예고 확인 필요.'}];
+    {ts:'(데모)',name:'김데모',ban:'1',no:'1',univ:'데모대',major:'간호학과',type:'교과(일반)',prio:'',kind:'memo',memo:'최저 2합8 — 9월 모고 기준 충족.'}];
   buildIpIndex();
 }
 
