@@ -326,6 +326,19 @@ tbody tr:hover{background:var(--hover)}
         <div class="legend-grid" id="m-legend"></div>
         <div class="modal-trend"><canvas id="m-trend"></canvas></div>
       </div>
+      <div class="modal-section" id="m-stats-section">
+        <h3>📊 전형별 통계 요약 <span style="font-weight:600;font-size:11px;color:var(--muted)">(등급70 · 연도별 평균 기준)</span></h3>
+        <table class="modal-table" id="m-stats-tbl">
+          <thead><tr><th>전형종류</th><th>26등급</th><th>Δ전년</th><th>추세(연간)</th><th>기록 밴드</th><th>변동폭</th><th>연수</th></tr></thead>
+          <tbody id="m-stats"></tbody></table>
+        <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:7px">
+          Δ전년 = 26−25 등급70 (▼음수 = 합격선 강화·더 치열, ▲양수 = 완화) ·
+          추세 = 연도쌍 기울기의 중앙값(Theil–Sen, 3개년 이상일 때만) ·
+          밴드 = 공개 연도 최저~최고 등급(지원선 참고 구간) ·
+          변동폭 ≤0.3 <b>안정</b> / ≤0.7 <b>보통</b> / &gt;0.7 <b>변동 큼</b> ·
+          ⚠ 표본이 2~5개년으로 작아 참고용입니다
+        </div>
+      </div>
       <div class="modal-section">
         <h3>📋 연도·전형별 상세</h3>
         <table class="modal-table">
@@ -682,6 +695,80 @@ function getTrendBySub(univ, dept, filterCats) {
 
 const CAT_COLOR = {'교과':'#16a34a','종합':'#eab308','논술':'#dc2626','실기':'#7c3aed'};
 const YEARS = [2022,2023,2024,2025,2026];
+
+// ── 학과 통계: 소표본(2~5개년)에 안전한 로버스트 지표만 사용 ──
+// Theil–Sen: 모든 연도쌍 기울기의 중앙값. 이상 연도 1개에 흔들리지 않음.
+function theilSen(pairs) { // pairs: [[year, value], ...]
+  if (pairs.length < 3) return null;
+  const slopes = [];
+  for (let i = 0; i < pairs.length; i++)
+    for (let j = i + 1; j < pairs.length; j++)
+      slopes.push((pairs[j][1] - pairs[i][1]) / (pairs[j][0] - pairs[i][0]));
+  slopes.sort((a, b) => a - b);
+  const m = Math.floor(slopes.length / 2);
+  return slopes.length % 2 ? slopes[m] : (slopes[m-1] + slopes[m]) / 2;
+}
+function renderModalStats() {
+  const {univ, dept} = M_STATE;
+  const bySub = getTrendBySub(univ, dept, F.cats);
+  // 26년 경쟁률(전형종류별 평균) 별도 집계
+  const comp26 = {};
+  DATA.rows.forEach(r => {
+    if (r[COL['대학']] !== univ || r[COL['학과']] !== dept || r[COL['연도']] !== 2026) return;
+    if (F.cats.size && !F.cats.has(r[COL['카테고리']])) return;
+    const c = r[COL['경쟁률']];
+    if (c == null) return;
+    const sub = classifyType(r[COL['카테고리']], r[COL['전형']], univ, dept);
+    (comp26[sub] = comp26[sub] || []).push(c);
+  });
+  const tb = document.getElementById('m-stats');
+  tb.innerHTML = '';
+  const rows = [];
+  for (const sub in bySub) {
+    const series = bySub[sub]; // [22,23,24,25,26] 평균 or null
+    const pairs = YEARS.map((y,i)=>[y, series[i]]).filter(p=>p[1]!=null);
+    if (!pairs.length) continue;
+    const vals = pairs.map(p=>p[1]);
+    const cur = series[4], prev = series[3];
+    rows.push({sub, cur, latest: pairs[pairs.length-1],
+      delta: (cur!=null&&prev!=null) ? cur-prev : null,
+      slope: theilSen(pairs),
+      lo: Math.min(...vals), hi: Math.max(...vals), n: pairs.length});
+  }
+  if (!rows.length) { document.getElementById('m-stats-section').style.display='none'; return; }
+  document.getElementById('m-stats-section').style.display='block';
+  rows.sort((a,b)=> a.sub.localeCompare(b.sub,'ko') );
+  const f2 = v => v==null?'—':v.toFixed(2);
+  rows.forEach(s => {
+    const [cat, subType] = s.sub.split('-');
+    let dCell = '—';
+    if (s.delta != null) {
+      if (Math.abs(s.delta) < 0.005) dCell = '<span style="color:var(--muted);font-weight:700">— 유지</span>';
+      else if (s.delta < 0) dCell = `<span style="color:#b45309;font-weight:700">▼${s.delta.toFixed(2)} 강화</span>`;
+      else dCell = `<span style="color:#0d8a4f;font-weight:700">▲+${s.delta.toFixed(2)} 완화</span>`;
+    }
+    let tCell = '—';
+    if (s.slope != null) {
+      if (Math.abs(s.slope) < 0.05) tCell = '<span style="color:var(--muted);font-weight:700">→ 유지</span>';
+      else if (s.slope < 0) tCell = `<span style="color:#b45309;font-weight:700">▼ ${s.slope.toFixed(2)}/년 강화</span>`;
+      else tCell = `<span style="color:#0d8a4f;font-weight:700">▲ +${s.slope.toFixed(2)}/년 완화</span>`;
+    }
+    const spread = s.hi - s.lo;
+    const stab = s.n < 2 ? '—' : spread <= 0.3 ? '<b>안정</b>' : spread <= 0.7 ? '보통' : '<span style="color:#b45309;font-weight:700">변동 큼</span>';
+    const curTxt = s.cur != null ? `<b>${f2(s.cur)}</b>` : `<span style="color:var(--muted)">${f2(s.latest[1])}<span style="font-size:10px">(${String(s.latest[0]).slice(2)})</span></span>`;
+    const compArr = comp26[s.sub];
+    const compTxt = compArr ? ` <span style="color:var(--muted);font-size:10.5px">${(compArr.reduce((a,b)=>a+b,0)/compArr.length).toFixed(1)}:1</span>` : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><span class="legend-dot" style="background:${subColor(s.sub)};display:inline-block;width:8px;height:8px;border-radius:99px;margin-right:4px"></span><span class="tag tag-${cat}">${cat}</span> <b>${subType}</b></td>
+      <td style="font-variant-numeric:tabular-nums">${curTxt}${compTxt}</td>
+      <td style="font-variant-numeric:tabular-nums">${dCell}</td>
+      <td style="font-variant-numeric:tabular-nums">${tCell}</td>
+      <td style="font-variant-numeric:tabular-nums">${f2(s.lo)} ~ ${f2(s.hi)}</td>
+      <td style="font-variant-numeric:tabular-nums">${s.n<2?'—':spread.toFixed(2)} ${stab}</td>
+      <td>${s.n}년</td>`;
+    tb.appendChild(tr);
+  });
+}
 // '묶음' 후보 찾기: 같은 카테고리 안에서, 같은 해에 겹치지 않는(연속) 세부유형들을
 // 최대한 길게 한 묶음으로. (예: 종합 지역→일반→면접 은 묶고, 같은 해 공존하는 서류는 제외)
 function categoryGroups(univ, dept, filterCats) {
@@ -1240,7 +1327,7 @@ function openModal(univ, dept) {
   document.getElementById('m-univ').textContent = univ;
   document.getElementById('m-dept').textContent = dept;
   document.getElementById('modal').classList.add('show'); // 먼저 보여줘야 캔버스 크기가 잡혀 차트가 정상 렌더됨
-  renderModalLegend(); renderModalChart();
+  renderModalLegend(); renderModalChart(); renderModalStats();
   const related = new Set();
   const keywords = [...dept.matchAll(/[가-힣]{2,}/g)].map(m => m[0]).filter(k => k.length >= 2 && !['학과','학부','전공','계열'].includes(k));
   DATA.rows.forEach(r => {
