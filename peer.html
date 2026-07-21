@@ -90,6 +90,10 @@ body{font-family:'Pretendard','-apple-system','Noto Sans KR','맑은 고딕',san
 .badge.cat종합{background:var(--warn-light);color:#a17d05}
 .badge.prob{background:var(--pri-light);color:var(--pri-dark);border-color:transparent}
 .badge.jong{background:var(--warn-light);color:#a17d05;border-color:transparent}
+.badge.coarse{background:var(--bg);color:var(--muted);border-color:var(--line)}
+.badge.mr-ok{background:var(--ok-light);color:var(--ok);border-color:transparent}
+.badge.mr-no{background:var(--up-light);color:var(--up);border-color:transparent}
+.badge.mr-chk{background:var(--bg);color:var(--muted)}
 .prob-bar{height:7px;border-radius:4px;background:var(--line);overflow:hidden;margin:7px 0}
 .prob-bar>i{display:block;height:100%;border-radius:4px}
 .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:9px;font-size:11px}
@@ -99,6 +103,7 @@ body{font-family:'Pretendard','-apple-system','Noto Sans KR','맑은 고딕',san
 .spark{margin-top:9px}
 .peerline{font-size:11.5px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--line-soft)}
 .peerline b{color:var(--text)}
+.mrline{font-size:11px;margin-top:7px;padding:6px 8px;border-radius:7px;background:var(--bg);color:var(--muted);line-height:1.5}
 .senior-mini{margin-top:7px;font-size:11px}
 .senior-mini .sr{display:flex;justify-content:space-between;padding:2px 0;color:var(--muted)}
 .senior-mini .sr .rr{font-weight:700}
@@ -120,7 +125,6 @@ th{background:var(--bg);font-weight:700;color:var(--muted);font-size:11px;positi
 .empty{padding:40px;text-align:center;color:var(--muted)}
 .note{font-size:11px;color:var(--muted);background:var(--warn-light);border-radius:8px;padding:9px 12px;margin-bottom:12px}
 .muted{color:var(--muted)}
-.hide{display:none}
 .chip-mini{font-size:10px;padding:1px 7px;border-radius:9px;background:var(--bg);border:1px solid var(--line);color:var(--muted)}
 .menu-btn{display:none}
 @media(max-width:820px){
@@ -153,11 +157,13 @@ th{background:var(--bg);font-weight:700;color:var(--muted);font-size:11px;positi
         <div class="gselect">기준 조합
           <select id="gcombo">
             <option value="auto">자동(전과목·국수영사과)</option>
-            <option value="전과목">전과목</option>
-            <option value="국수영사과">국·수·영·사·과</option>
-            <option value="국영수사">국·영·수·사</option>
-            <option value="국영수과">국·영·수·과</option>
-            <option value="국영수">국·영·수</option>
+            <option value="0">전과목</option>
+            <option value="1">국·수·영·사·과</option>
+            <option value="2">국·영·수·사</option>
+            <option value="3">국·영·수·과</option>
+            <option value="4">국·영·수</option>
+            <option value="5">국·영·사</option>
+            <option value="6">수·영·과</option>
           </select>
         </div>
       </div>
@@ -181,13 +187,14 @@ th{background:var(--bg);font-weight:700;color:var(--muted);font-size:11px;positi
       <input class="search-input" id="mq" placeholder="학과 키워드 (예: 간호)">
     </div>
     <div class="filter-grp">
-      <h2>수능 등급 (선택 · 최저 참고)</h2>
+      <h2>수능 등급 (선택 · 최저 판정)</h2>
       <div class="sat-grid">
         <label>국어<input type="number" id="s_kor" min="1" max="9" step="1"></label>
         <label>수학<input type="number" id="s_math" min="1" max="9" step="1"></label>
         <label>영어<input type="number" id="s_eng" min="1" max="9" step="1"></label>
         <label>탐구평균<input type="number" id="s_tam" min="1" max="9" step="0.5"></label>
       </div>
+      <div class="muted" style="font-size:10px;margin-top:5px">입력하면 나주고 자료에 최저 원문이 있는 곳은 충족 여부를 추정해 표시합니다.</div>
     </div>
   </aside>
 
@@ -215,8 +222,8 @@ if(!window.PEER){
   throw new Error('PEER data missing');
 }
 const P=window.PEER, JN=P.jn, NJ=P.nj, IP=P.ip;
-const U=P.U, Mj=P.Mj, Rg=P.Rg, CAT=P.CAT, TRK=P.TRK, U_inip=P.U_inip;
-const CATC={교과:0,종합:1,논술:2,실기:3,수능:4,기타:5};
+const U=P.U, Mj=P.Mj, Rg=P.Rg, CAT=P.CAT, TRK=P.TRK, MR=P.MR||[];
+const MODEL=P.probModel, SHRINK_M=P.shrinkM||4;
 
 // ---------- 공통 유틸 ----------
 function normMajor(m){return (m||'').replace(/[\s·ㆍ()\[\]/]/g,'').replace(/^\[통합\]|^\[야\]/,'');}
@@ -224,6 +231,14 @@ function majorGroup(m){return normMajor(m).replace(/(학부|학과|학전공|전
 function median(a){if(!a.length)return null;const b=[...a].sort((x,y)=>x-y);const h=b.length>>1;
   return b.length%2?b[h]:(b[h-1]+b[h])/2;}
 function fmt(x,d=2){return x==null?'–':(+x).toFixed(d);}
+function sig(z){return 1/(1+Math.exp(-Math.max(-30,Math.min(30,z))));}
+// Wilson 95% 신뢰구간
+function wilson(k,n){
+  if(!n)return null;
+  const z=1.96, p=k/n, z2=z*z;
+  const den=1+z2/n, mid=p+z2/(2*n), half=z*Math.sqrt(p*(1-p)/n+z2/(4*n*n));
+  return [Math.max(0,(mid-half)/den), Math.min(1,(mid+half)/den)];
+}
 
 // ---------- 입결 인덱스 ----------
 const ipYCM=new Map(), ipYM=new Map(), ipYC=new Map(), ipUCM=new Map();
@@ -236,18 +251,29 @@ const ipYCM=new Map(), ipYM=new Map(), ipYC=new Map(), ipUCM=new Map();
     push(ipYCM,y+'|'+u+'|'+c+'|'+nm);
     push(ipYM,y+'|'+u+'|'+nm);
     push(ipYC,y+'|'+u+'|'+c);
-    push(ipUCM,u+'|'+c+'|'+nm);   // 연도 무관(추이·최신용)
+    push(ipUCM,u+'|'+c+'|'+nm);
   }
 })();
+// 조인 (연도 고정): level 0=카테고리+학과 1=학과 2=대학+카테고리(폴백)
 function joinG50(y,u,c,nm){
-  for(const [map,k] of [[ipYCM,y+'|'+u+'|'+c+'|'+nm],[ipYM,y+'|'+u+'|'+nm],[ipYC,y+'|'+u+'|'+c]]){
-    const a=map.get(k); if(a){const v=a.filter(r=>r.g50!=null).map(r=>r.g50); if(v.length)return median(v);}
+  const tries=[[ipYCM,y+'|'+u+'|'+c+'|'+nm,0],[ipYM,y+'|'+u+'|'+nm,1],[ipYC,y+'|'+u+'|'+c,2]];
+  for(const [map,k,lvl] of tries){
+    const a=map.get(k);
+    if(a){const v=a.filter(r=>r.g50!=null).map(r=>r.g50);
+      if(v.length)return {g50:median(v), cr:median(a.filter(r=>r.cr!=null).map(r=>r.cr)), lvl};}
   }
   return null;
 }
-// 표시용: (대학,카테고리,학과)의 최신연도 대표 입결 + 최근 3년 등급50 추이
+// 추천 표시용: 최신연도 우선 + 최근 등급50 추이
 function ipCard(u,c,nm){
-  const a=ipUCM.get(u+'|'+c+'|'+nm); if(!a)return null;
+  let a=ipUCM.get(u+'|'+c+'|'+nm), lvl=0;
+  if(!a){ // 학과 폴백 없이 대학+카테고리 평균으로
+    for(let y=P.meta.latest_ip_year;y>=P.meta.latest_ip_year-4;y--){
+      const b=ipYC.get(y+'|'+u+'|'+c);
+      if(b){a=b.map(r=>({...r,y})); lvl=2; break;}
+    }
+    if(!a)return null;
+  }
   const years=[...new Set(a.map(r=>r.y))].sort((x,y)=>y-x);
   const latest=years[0];
   const at=y=>a.filter(r=>r.y===y);
@@ -255,42 +281,87 @@ function ipCard(u,c,nm){
   const g50=median(rep.filter(r=>r.g50!=null).map(r=>r.g50));
   const g70=median(rep.filter(r=>r.g70!=null).map(r=>r.g70));
   const cr=median(rep.filter(r=>r.cr!=null).map(r=>r.cr));
-  const mo=rep.reduce((s,r)=>s+(r.mo||0),0);
-  const trend=years.slice(0,4).reverse().map(y=>({y,g50:median(at(y).filter(r=>r.g50!=null).map(r=>r.g50))}));
-  return {latest,g50,g70,cr,mo,trend};
+  const mo=lvl===0?rep.reduce((s,r)=>s+(r.mo||0),0):null;
+  const trend=lvl===0?years.slice(0,4).reverse().map(y=>({y,g50:median(at(y).filter(r=>r.g50!=null).map(r=>r.g50))})):null;
+  return {latest,g50,g70,cr,mo,trend,lvl};
 }
 
-// ---------- gap → 합격확률 ----------
-function pCurve(catName,gap){
-  const c=P.gapCurve[catName]; if(!c)return null;
-  if(gap<=c[0][0])return c[0][1];
-  if(gap>=c[c.length-1][0])return c[c.length-1][1];
-  for(let i=0;i<c.length-1;i++){
-    if(gap>=c[i][0]&&gap<=c[i+1][0]){
-      const t=(gap-c[i][0])/(c[i+1][0]-c[i][0]);
-      return c[i][1]+t*(c[i+1][1]-c[i][1]);
-    }
-  }
-  return null;
+// ---------- 확률 모델: 힌지 로지스틱 σ(w0+w1·gap⁻+w2·gap⁺+w3·logCR) ----------
+// 전남 2025 학생단위 홀드아웃 AUC 교과 .746 / 종합 .750 (버킷보간 .674/.687 대비 채택)
+function pModel(catName,gap,cr){
+  const m=MODEL[catName]; if(!m)return null;
+  const g=Math.max(-2.5,Math.min(2.5,gap));
+  const lcr=Math.log(Math.max(0.1,(cr&&cr>0)?cr:m.crmed));
+  const w=m.w;
+  return sig(w[0]+w[1]*Math.min(g,0)+w[2]*Math.max(g,0)+w[3]*lcr);
 }
 
 // ---------- 상태 ----------
 const st={g:3.5, gcombo:'auto', track:1, cats:new Set(), regions:new Set(), uq:'', mq:'',
           sat:{}, tab:'rec', win:0.25};
 
-// 학생별 대표등급 (조합 선택 반영)
-function studentGrade(section, si){
-  // 컴팩트 데이터는 sg만 저장(전과목??국수영사과). 조합 선택은 sg로 근사.
-  return section.sg[si];
+// 조합 선택 반영 대표등급: auto → sg(전과목??국수영사과), 그 외 → 해당 조합 배열
+function gradeArr(sec){
+  if(st.gcombo==='auto')return sec.sg;
+  return sec.g7[+st.gcombo];
 }
-function peerWindow(){ // 또래 학생 인덱스(전남) + 실제 창
+function peerWindow(){
   let w=0.25;
-  const sg=JN.sg;
+  const sg=gradeArr(JN);
   const inWin=ww=>{const arr=[];for(let i=0;i<sg.length;i++){if(sg[i]!=null&&Math.abs(sg[i]-st.g)<=ww)arr.push(i);}return arr;};
   let peers=inWin(w);
   while(peers.length<150 && w<0.75){w=Math.round((w+0.05)*100)/100; peers=inWin(w);}
   st.win=w;
   return new Set(peers);
+}
+
+// ---------- 수능최저 판정 ----------
+function satGrades(){
+  const g=[st.sat.s_kor,st.sat.s_math,st.sat.s_eng,st.sat.s_tam].filter(v=>v!=null&&v>=1);
+  return g;
+}
+// 후보 (대학,카테고리[,학과군])의 나주고 최저 원문: 최신 연도 우선
+function findMinreq(u,catIdx,mg){
+  if(!NJ.mr)return null;
+  let best=null;
+  for(let i=0;i<NJ.s.length;i++){
+    if(NJ.u[i]!==u||NJ.c[i]!==catIdx||NJ.mr[i]<0)continue;
+    const y=NJ.sy[NJ.s[i]];
+    const sameMj=majorGroup(Mj[NJ.m[i]])===mg;
+    if(!best||(sameMj&&!best.sameMj)||(sameMj===best.sameMj&&y>best.y))
+      best={y,txt:MR[NJ.mr[i]],sameMj};
+  }
+  return best;
+}
+// 원문에서 규칙 추출: {k,sum} 또는 {k,each}; 실패 시 null
+function parseMinreq(txt,mg){
+  let seg=txt;
+  if(txt.includes('[')){ // [간호학과]…[물리치료학과]… 형태면 해당 학과 구간 선택
+    const parts=txt.split(/(?=\[)/).filter(p=>p.includes(']'));
+    const hit=parts.find(p=>{const m=p.match(/\[([^\]]+)\]/);return m&&mg&&majorGroup(m[1]).includes(mg.slice(0,4));});
+    if(hit)seg=hit; else if(parts.length>1)return null; // 어느 학과 것인지 모호
+  }
+  let m=seg.match(/(\d)\s*개\s*영역[^0-9]{0,25}?합[^0-9]{0,15}?(\d{1,2})/);
+  if(m)return {k:+m[1],sum:+m[2]};
+  m=seg.match(/(\d)\s*개\s*영역\s*(?:의\s*)?등급(?:이|을)?\s*(\d)\s*(?:등급)?\s*이내/);
+  if(m)return {k:+m[1],each:+m[2]};
+  m=seg.match(/합(?:이)?\s*(\d{1,2})\s*(?:등급)?\s*이내/);
+  if(m){const k=seg.match(/(\d)\s*개/);return {k:k?+k[1]:2,sum:+m[1]};}
+  return null;
+}
+function evalMinreq(rule){
+  const g=satGrades();
+  if(!g.length)return null;
+  if(g.length<rule.k)return {st:'chk',msg:'수능 입력 부족'};
+  const best=[...g].sort((a,b)=>a-b).slice(0,rule.k);
+  if(rule.sum!=null){
+    const s=best.reduce((a,b)=>a+b,0);
+    return s<=rule.sum?{st:'ok',msg:`충족 예상 (상위${rule.k}합 ${s} ≤ ${rule.sum})`}
+                      :{st:'no',msg:`미충족 가능 (상위${rule.k}합 ${s} > ${rule.sum})`};
+  }
+  const kth=best[best.length-1];
+  return kth<=rule.each?{st:'ok',msg:`충족 예상 (${rule.k}개 영역 ${rule.each}이내)`}
+                       :{st:'no',msg:`미충족 가능 (${rule.k}번째 영역 ${kth} > ${rule.each})`};
 }
 
 // ---------- 추천 엔진 ----------
@@ -303,7 +374,7 @@ function passFilters(u,c,rgn,mIdx){
 }
 function recommend(){
   const peers=peerWindow();
-  const cand=new Map(); // key u|c|group -> {u,c,group,repMajor:{}, n, k, chungwon}
+  const cand=new Map();
   const n=JN.s.length;
   for(let i=0;i<n;i++){
     if(!peers.has(JN.s[i])) continue;
@@ -326,16 +397,15 @@ function recommend(){
     const repMajor=[...o.rawMajors.entries()].sort((a,b)=>b[1]-a[1])[0][0];
     const nm=normMajor(repMajor);
     const catName=CAT[o.c];
-    const card=ipCard(o.u,o.c,nm) || ipCard(o.u,o.c,'') ||
-               (function(){const yc=ipYC.get(P.meta.latest_ip_year+'|'+o.u+'|'+o.c);return null;})();
-    const g50=card?card.g50:joinG50(P.meta.latest_ip_year,o.u,o.c,nm);
+    const card=ipCard(o.u,o.c,nm);
+    const g50=card?card.g50:null;
     let prob=null, gap=null;
     if(g50!=null){
       gap=st.g-g50;
-      const pc=pCurve(catName,gap);
-      if(pc!=null){const m=10; prob=(o.k+m*pc)/(o.n+m);}
+      const pc=pModel(catName,gap,card.cr);
+      if(pc!=null){prob=(o.k+SHRINK_M*pc)/(o.n+SHRINK_M);}
     }
-    out.push({...o,repMajor,nm,catName,card,g50,gap,prob});
+    out.push({...o,repMajor,nm,catName,card,g50,gap,prob,coarse:card?card.lvl===2:false});
   }
   return out;
 }
@@ -354,11 +424,11 @@ function classify(list){
 
 // ---------- 나주고 선배 조회 ----------
 function najuFor(u,nm,win=0.5){
-  const out=[]; const n=NJ.s.length;
+  const out=[]; const n=NJ.s.length; const ng=gradeArr(NJ);
   for(let i=0;i<n;i++){
     if(NJ.u[i]!==u) continue;
     if(nm && normMajor(Mj[NJ.m[i]])!==nm) continue;
-    const g=NJ.sg[NJ.s[i]];
+    const g=ng[NJ.s[i]];
     if(g==null||Math.abs(g-st.g)>win) continue;
     out.push({y:NJ.sy[NJ.s[i]],g,c:CAT[NJ.c[i]],res:NJ.res[i],cw:NJ.chungwon[i],reg:NJ.reg[i]});
   }
@@ -371,7 +441,7 @@ function sparkSVG(trend){
   const pts=trend.filter(t=>t.g50!=null); if(pts.length<2)return '';
   const w=120,h=30,pad=4; const xs=pts.map((_,i)=>pad+i*(w-2*pad)/(pts.length-1));
   const vals=pts.map(t=>t.g50); const mn=Math.min(...vals)-.2,mx=Math.max(...vals)+.2;
-  const ys=vals.map(v=>pad+(v-mn)/(mx-mn)*(h-2*pad)); // 등급 낮을수록 위
+  const ys=vals.map(v=>pad+(v-mn)/(mx-mn)*(h-2*pad));
   const d=xs.map((x,i)=>(i?'L':'M')+x.toFixed(1)+','+ys[i].toFixed(1)).join(' ');
   let dots=pts.map((t,i)=>`<circle cx="${xs[i].toFixed(1)}" cy="${ys[i].toFixed(1)}" r="2.2" fill="var(--pri)"/>
      <text x="${xs[i].toFixed(1)}" y="${h-0.5}" font-size="7" fill="var(--muted)" text-anchor="middle">${String(t.y).slice(2)}</text>`).join('');
@@ -384,12 +454,28 @@ function cardHTML(r){
   const seniors=najuFor(r.u,r.nm).slice(0,5);
   const probPct=r.prob!=null?Math.round(r.prob*100):null;
   const m=r.card||{};
+  const ci=wilson(r.k,r.n);
+  const ciTxt=(r.n>=3&&ci)?` <span class="muted">(CI ${Math.round(ci[0]*100)}–${Math.round(ci[1]*100)}%)</span>`:'';
+  // 수능최저
+  let mrHTML='';
+  const mrRec=findMinreq(r.u,r.c,r.grp);
+  if(mrRec){
+    const rule=parseMinreq(mrRec.txt,r.grp);
+    const ev=rule?evalMinreq(rule):null;
+    const badge=ev?(ev.st==='ok'?`<span class="badge mr-ok">최저 ${ev.msg}</span>`
+                  :ev.st==='no'?`<span class="badge mr-no">최저 ${ev.msg}</span>`
+                  :`<span class="badge mr-chk">최저 ${ev.msg}</span>`)
+                 :(satGrades().length?`<span class="badge mr-chk">최저 원문 확인 필요</span>`:'');
+    const short=mrRec.txt.length>85?mrRec.txt.slice(0,85)+'…':mrRec.txt;
+    mrHTML=`<div class="mrline" title="${mrRec.txt.replace(/"/g,'&quot;')}">${badge?badge+' ':''}📋 ${mrRec.y} 최저: ${short}</div>`;
+  }
   return `<div class="card">
     <div class="u">${U[r.u]}</div>
     <div class="mj">${r.repMajor}</div>
     <div class="badges">
       <span class="badge cat${r.catName}">${r.catName}</span>
       ${probPct!=null?`<span class="badge prob">합격 가능성 ${probPct}%</span>`:`<span class="badge">입결 정보 없음</span>`}
+      ${r.coarse?`<span class="badge coarse">대학 평균 기준</span>`:''}
       ${r.catName==='종합'?`<span class="badge jong">서류·면접 영향 큼</span>`:''}
     </div>
     ${probPct!=null?`<div class="prob-bar"><i style="width:${probPct}%;background:${probColor(r.prob)}"></i></div>`:''}
@@ -399,8 +485,9 @@ function cardHTML(r){
       <div class="m"><span>경쟁률</span><b>${m.cr!=null?fmt(m.cr,1):'–'}</b></div>
       <div class="m"><span>모집</span><b>${m.mo||'–'}</b></div>
     </div>
-    ${r.gap!=null?`<div class="peerline">내 등급 <b>${fmt(st.g)}</b> − 입결50 <b>${fmt(m.g50||r.g50)}</b> = 격차 <b>${(r.gap>0?'+':'')+fmt(r.gap)}</b></div>`:''}
-    <div class="peerline">👥 또래(±${st.win}) 지원 <b>${r.n}건</b> → 합격 <b>${r.k}건</b> (${Math.round(r.k/r.n*100)}%)${r.cw?` · 충원 ${r.cw}`:''}</div>
+    ${r.gap!=null?`<div class="peerline">내 등급 <b>${fmt(st.g)}</b> − 입결50 <b>${fmt(r.g50)}</b> = 격차 <b>${(r.gap>0?'+':'')+fmt(r.gap)}</b></div>`:''}
+    <div class="peerline">👥 또래(±${st.win}) 지원 <b>${r.n}건</b> → 합격 <b>${r.k}건</b> (${Math.round(r.k/r.n*100)}%)${ciTxt}${r.cw?` · 충원 ${r.cw}`:''}</div>
+    ${mrHTML}
     ${m.trend?sparkSVG(m.trend):''}
     ${seniors.length?`<div class="senior-mini"><div class="muted" style="margin-bottom:3px">🏫 나주고 선배 사례</div>
        ${seniors.map(s=>`<div class="sr"><span>${s.y} · ${s.c} · 내신 ${fmt(s.g)}</span>
@@ -411,9 +498,10 @@ function cardHTML(r){
 function renderRec(){
   const list=recommend();
   const g=classify(list);
-  const cols=[['stable','✅ 안정','stable'],['fit','🎯 적정','fit'],['reach','🔥 소신','reach']];
-  const box=id=>document.getElementById(id);
-  let html='<div class="reccols">';
+  const cols=[['stable','✅ 안정 (65%↑)','stable'],['fit','🎯 적정 (40–65%)','fit'],['reach','🔥 소신 (15–40%)','reach']];
+  let html='';
+  if(st.track===2)html+=`<div class="note">🎨 예체능은 실기 비중이 커서 확률 추천 대상이 아닙니다(교과·종합 지원만 집계). <b>또래 분포·나주고 선배 탭</b>의 실제 사례를 참고하세요.</div>`;
+  html+='<div class="reccols">';
   const show={stable:6,fit:8,reach:6};
   for(const [key,label,cls] of cols){
     const arr=g[key];
@@ -424,16 +512,23 @@ function renderRec(){
     html+='</div>';
   }
   html+='</div>';
-  if(g.other.length){
-    html+=`<div class="panel" style="margin-top:14px"><h3>📌 입결 정보 없는 후보 (또래 지원 많은 순)</h3>`+
-      g.other.slice(0,8).map(r=>`<div class="rank"><span class="lab">${U[r.u]} · ${r.repMajor} <span class="chip-mini">${r.catName}</span></span>
-        <span class="cnt">${r.n}건</span></div>`).join('')+'</div>';
+  const upward=g.other.filter(r=>r.prob!=null);
+  const noip=g.other.filter(r=>r.prob==null);
+  if(upward.length){
+    html+=`<div class="panel" style="margin-top:14px"><h3>🚀 상향 (15% 미만 · 또래 지원 많은 순)</h3>`+
+      upward.slice(0,8).map(r=>`<div class="rank"><span class="lab">${U[r.u]} · ${r.repMajor} <span class="chip-mini">${r.catName}</span>
+        <span class="chip-mini">${Math.round(r.prob*100)}%</span></span><span class="cnt">${r.n}건</span></div>`).join('')+'</div>';
   }
-  box('view').innerHTML=html;
+  if(noip.length){
+    html+=`<div class="panel" style="margin-top:14px"><h3>📌 입결 정보 없는 후보 (또래 지원 많은 순)</h3>`+
+      noip.slice(0,8).map(r=>`<div class="rank"><span class="lab">${U[r.u]} · ${r.repMajor} <span class="chip-mini">${r.catName}</span>
+        <span class="chip-mini">또래합격 ${r.k}/${r.n}</span></span><span class="cnt">${r.n}건</span></div>`).join('')+'</div>';
+  }
+  document.getElementById('view').innerHTML=html;
 }
 
 function aggPeers(){
-  const peers=peerWindow(); const n=JN.s.length;
+  const peers=peerWindow(); const n=JN.s.length; const sg=gradeArr(JN);
   const uCnt=new Map(), mCnt=new Map(), scatter=[]; let apps=0,pass=0;
   for(let i=0;i<n;i++){
     if(!peers.has(JN.s[i]))continue;
@@ -445,8 +540,8 @@ function aggPeers(){
     const grp=majorGroup(Mj[JN.m[i]])||'(기타)';
     mCnt.set(grp,(mCnt.get(grp)||0)+1);
     if(c===0||c===1){
-      const g50=joinG50(P.meta.jeonnam_year,u,c,normMajor(Mj[JN.m[i]]));
-      if(g50!=null && JN.res[i]!=null)scatter.push({x:g50,y:JN.sg[JN.s[i]],r:JN.res[i]});
+      const jr=joinG50(P.meta.jeonnam_year,u,c,normMajor(Mj[JN.m[i]]));
+      if(jr&&JN.res[i]!=null)scatter.push({x:jr.g50,y:sg[JN.s[i]],r:JN.res[i]});
     }
   }
   return {uCnt,mCnt,scatter,apps,pass};
@@ -493,16 +588,14 @@ function drawScatter(pts){
 function getCss(v){return getComputedStyle(document.documentElement).getPropertyValue(v)||'#888';}
 
 function renderSenior(){
-  const win=0.5; const n=NJ.s.length; const rows=[];
-  const cntByYear={}, cwByYear={};
+  const win=0.5; const n=NJ.s.length; const rows=[]; const ng=gradeArr(NJ);
   for(let i=0;i<n;i++){
-    const g=NJ.sg[NJ.s[i]]; if(g==null||Math.abs(g-st.g)>win)continue;
+    const g=ng[NJ.s[i]]; if(g==null||Math.abs(g-st.g)>win)continue;
     const u=NJ.u[i]; if(u<0)continue;
     if(st.track>=0 && NJ.t[i]!==st.track)continue;
     if(!passFilters(u,NJ.c[i],NJ.rgn[i],NJ.m[i]))continue;
     const y=NJ.sy[NJ.s[i]];
     rows.push({y,g,u:U[u],mj:Mj[NJ.m[i]],c:CAT[NJ.c[i]],res:NJ.res[i],cw:NJ.chungwon[i],reg:NJ.reg[i]});
-    if(NJ.res[i]!=null){cntByYear[y]=(cntByYear[y]||0)+1; if(NJ.res[i]===1&&NJ.chungwon[i])cwByYear[y]=(cwByYear[y]||0)+1;}
   }
   rows.sort((a,b)=>b.y-a.y||a.u.localeCompare(b.u));
   const totPass=rows.filter(r=>r.res===1).length, totCw=rows.filter(r=>r.res===1&&r.cw).length;
@@ -518,24 +611,32 @@ function renderSenior(){
 
 function renderAbout(){
   document.getElementById('view').innerHTML=`<div class="panel"><h3>이 도구는 무엇을 근거로 추천하나요?</h3>
-  <p style="margin:8px 0;line-height:1.7">핵심은 <b>절대 등급이 아니라 '입결과의 격차(gap)'</b>입니다. 전남 2025 지원 약 5.7만 건을 분석하면,
+  <p style="margin:8px 0;line-height:1.7">핵심은 <b>절대 등급이 아니라 '입결과의 격차(gap)와 경쟁률'</b>입니다. 전남 2025 지원 약 5.7만 건을 분석하면,
   등급대별 합격률은 어느 등급이든 교과 약 45%·종합 약 25%로 거의 일정합니다(학생들이 이미 자기 수준에 맞춰 지원하기 때문).
-  반면 <b>내 등급 − 그 학과 입결 등급50</b>으로 보면 합격률이 뚜렷하게 갈립니다.</p>
+  반면 <b>내 등급 − 그 학과 입결 등급50</b>과 <b>경쟁률</b>로 보면 합격률이 뚜렷하게 갈립니다.</p>
   <div class="tablewrap"><table><tr><th>격차(내등급−입결50)</th><th>교과 합격률</th><th>종합 합격률</th></tr>
    ${[[-1,88,43],[-0.5,79,49],[0,53,34],[0.5,34,19],[1,34,15],[1.5,33,10]].map(r=>
      `<tr><td>${r[0]>0?'+':''}${r[0]}</td><td>${r[1]}%</td><td>${r[2]}%</td></tr>`).join('')}</table></div>
-  <p style="margin:10px 0;line-height:1.7">추천 카드의 합격 가능성은 이 곡선에 <b>또래의 실제 합불(베이지안 보정)</b>을 섞어 계산합니다.
-  <b>안정 65%↑ / 적정 40–65% / 소신 15–40%</b>로 분류하고, 후보는 비슷한 등급대 또래가 실제로 많이 지원한 대학·학과에서 뽑습니다.</p>
-  <p style="margin:10px 0;line-height:1.7;color:var(--muted);font-size:12.5px">⚠️ 종합전형은 서류·면접 비중이 커서 등급만으로는 절반도 설명되지 않습니다.
-  논술·실기는 등급 예측이 불가능해 추천에서 제외했습니다(사례는 다른 탭에서 볼 수 있습니다).
-  전남 자료는 합/불 2단계라 충원 포함 합격률이며, 대학명·학과 매칭률은 약 98%입니다.</p>
+  <p style="margin:10px 0;line-height:1.7"><b>확률 계산(통계 모델)</b>: 격차(유리/불리 구간을 나눈 힌지)와 log경쟁률을 쓰는
+  로지스틱 회귀를 전남 2025 데이터로 학습했습니다. 학생 단위 8:2 검증에서 예측력(AUC)이 교과 0.75·종합 0.75로,
+  격차만 쓴 단순 곡선(0.67~0.69)보다 뚜렷이 높았습니다. 여기에 <b>또래의 실제 합불 관측을 경험적 베이즈로 혼합</b>
+  (혼합 강도도 검증 데이터로 튜닝)해 카드의 합격 가능성을 만듭니다.
+  <b>안정 65%↑ / 적정 40–65% / 소신 15–40% / 상향 15%↓</b>로 분류합니다.</p>
+  <p style="margin:10px 0;line-height:1.7"><b>외부 검증</b>: 전남에서 학습한 모델을 나주고 5년(2022~2026) 자료에 적용하면
+  AUC 0.83(교과)·0.75(종합)로 순위 예측이 잘 맞았습니다. 다만 나주고 선배들의 실제 합격률은 모델 예측보다
+  평균 <b>+13%p 높았습니다</b>(과거 연도의 충원 확대 등) — 즉 이 도구의 확률은 <b>다소 보수적</b>이라고 보면 됩니다.</p>
+  <p style="margin:10px 0;line-height:1.7;color:var(--muted);font-size:12.5px">⚠️ 종합전형은 서류·면접 비중이 커서 등급·경쟁률만으로는 절반도 설명되지 않습니다.
+  논술·실기는 등급 예측이 불가능해 추천에서 제외했습니다. 또래 합격률 옆 CI는 95% 신뢰구간(Wilson)입니다.
+  "대학 평균 기준" 표시는 그 학과의 입결이 없어 대학 전체 중앙값으로 추정했다는 뜻입니다.
+  수능최저 충족 판정은 나주고 자료의 원문을 자동 해석한 <b>참고용</b>이므로 반드시 모집요강 원문을 확인하세요.</p>
   <p style="margin:10px 0;color:var(--muted);font-size:12px">데이터: 전남 91개교 2025 수시지원 · 나주고 2022~2026 수시지원 · 대학 공개 입결 2022~2026. 모두 브라우저 안에서만 처리됩니다.</p>
   </div>`;
 }
 
 function renderStats(){
-  const peers=[...JN.sg].filter(v=>v!=null&&Math.abs(v-st.g)<=st.win).length;
-  const naju=[...Array(NJ.sg.length).keys()].filter(i=>NJ.sg[i]!=null&&Math.abs(NJ.sg[i]-st.g)<=0.5).length;
+  const sg=gradeArr(JN), ng=gradeArr(NJ);
+  const peers=[...sg].filter(v=>v!=null&&Math.abs(v-st.g)<=st.win).length;
+  const naju=[...ng].filter(v=>v!=null&&Math.abs(v-st.g)<=0.5).length;
   document.getElementById('stats').innerHTML=`
     <div class="stat"><div class="k">내 등급 기준</div><div class="v">${fmt(st.g)} <small>${TRK[st.track]||'전체'}</small></div></div>
     <div class="stat"><div class="k">전남 또래 (±${st.win})</div><div class="v">${peers.toLocaleString()}<small> 명</small></div></div>
@@ -564,7 +665,7 @@ function buildChips(){
     c.onclick=()=>{c.classList.toggle('active');if(st.cats.has(v))st.cats.delete(v);else st.cats.add(v);render();};
     co.appendChild(c);});
   const ro=document.getElementById('regOpts');
-  Rg.filter(r=>r).forEach((r,i)=>{const idx=Rg.indexOf(r);
+  Rg.filter(r=>r).forEach(r=>{const idx=Rg.indexOf(r);
     const c=document.createElement('div');c.className='chip';c.textContent=r;
     c.onclick=()=>{c.classList.toggle('active');if(st.regions.has(idx))st.regions.delete(idx);else st.regions.add(idx);
       document.getElementById('regClear').classList.toggle('show',st.regions.size>0);render();};
@@ -581,7 +682,9 @@ function bind(){
   document.getElementById('uq').oninput=deb(function(){st.uq=document.getElementById('uq').value.trim();render();},250);
   document.getElementById('mq').oninput=deb(function(){st.mq=document.getElementById('mq').value.trim();render();},250);
   ['s_kor','s_math','s_eng','s_tam'].forEach(id=>document.getElementById(id).oninput=deb(function(){
-    st.sat[id]=+document.getElementById(id).value||null;},200));
+    const v=+document.getElementById(id).value;
+    st.sat[id]=(v>=1&&v<=9)?v:null;
+    if(st.tab==='rec')render();},300));
   document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');
     st.tab=t.dataset.tab;render();});

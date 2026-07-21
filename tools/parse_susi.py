@@ -348,6 +348,7 @@ def parse_naju(path):
                 "final": final,
                 "reg": clean(col(r, "등록여부")) == "Y",
                 "conv_grade": num(col(r, "내등급(환산)", alt="내등급")),  # 대학별 환산 내신
+                "minreq": clean(col(r, "최저학력기준", shifted=False)),  # 수능최저 원문(2023~)
             }
             students[key]["apps"].append(len(apps))
             apps.append(app)
