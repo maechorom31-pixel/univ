@@ -65,19 +65,22 @@ def build_ipgyeol_index(ip):
     return C, by_ycm, by_ym, by_yc
 
 
-def join_g50(idx, year, univ, cat, major, latest=None):
-    """3단계 폴백으로 등급50 중앙값을 찾는다. latest 주면 그 연도 우선 후 근접연도."""
+def join_cut(idx, year, univ, cat, major):
+    """3단계 폴백으로 입결 컷(등급70 우선, 없으면 등급50) 중앙값을 찾는다.
+
+    등급70이 합격선에 가까워 예측력이 더 높음(홀드아웃 AUC 교과 .753→.758, 종합 .735→.741).
+    index.html 추이 그래프의 '등급70 ?? 등급50' 관행과도 일치.
+    """
     _, by_ycm, by_ym, by_yc = idx
-    years = [year] if latest is None else [year]
-    for y in years:
-        for tbl, key in ((by_ycm, (y, univ, cat, major)),
-                         (by_ym, (y, univ, major)),
-                         (by_yc, (y, univ, cat))):
-            rows = tbl.get(key)
-            if rows:
-                vals = [r["g50"] for r in rows if r["g50"] is not None]
-                if vals:
-                    return statistics.median(vals)
+    for tbl, key in ((by_ycm, (year, univ, cat, major)),
+                     (by_ym, (year, univ, major)),
+                     (by_yc, (year, univ, cat))):
+        rows = tbl.get(key)
+        if rows:
+            vals = [r["g70"] for r in rows if r["g70"] is not None] or \
+                   [r["g50"] for r in rows if r["g50"] is not None]
+            if vals:
+                return statistics.median(vals)
     return None
 
 
@@ -85,15 +88,16 @@ def major_group(m):
     return re.sub(r"(학부|학과|학전공|전공|과)$", "", norm_major(m))
 
 
-def join_g50_cr(idx, year, univ, cat, major):
-    """등급50과 경쟁률을 함께 조인(3단계 폴백)."""
+def join_cut_cr(idx, year, univ, cat, major):
+    """입결 컷(등급70 우선)과 경쟁률을 함께 조인(3단계 폴백)."""
     _, by_ycm, by_ym, by_yc = idx
     for tbl, key in ((by_ycm, (year, univ, cat, major)),
                      (by_ym, (year, univ, major)),
                      (by_yc, (year, univ, cat))):
         rows = tbl.get(key)
         if rows:
-            g = [r["g50"] for r in rows if r["g50"] is not None]
+            g = [r["g70"] for r in rows if r["g70"] is not None] or \
+                [r["g50"] for r in rows if r["g50"] is not None]
             cr = [r["cr"] for r in rows if r["cr"] is not None]
             if g:
                 return statistics.median(g), (statistics.median(cr) if cr else None)
@@ -153,7 +157,7 @@ def fit_prob_model(d, idx):
             a = j["apps"][i]
             if a["final"] not in ("합격", "충원합격", "불합격") or a["cat"] not in ("교과", "종합"):
                 continue
-            g50, cr = join_g50_cr(idx, s["year"], a["univ"], a["cat"], norm_major(a["major"]))
+            g50, cr = join_cut_cr(idx, s["year"], a["univ"], a["cat"], norm_major(a["major"]))
             if g50 is None:
                 continue
             samples.append(dict(gap=g - g50, cat=a["cat"], cr=cr,
@@ -224,7 +228,7 @@ def compute_gap_curve(d, idx):
             a = j["apps"][i]
             if a["final"] not in ("합격", "충원합격", "불합격"):
                 continue
-            g50 = join_g50(idx, s["year"], a["univ"], a["cat"], norm_major(a["major"]))
+            g50 = join_cut(idx, s["year"], a["univ"], a["cat"], norm_major(a["major"]))
             if g50 is None:
                 continue
             b = round((g - g50) * 4) / 4  # 0.25 단위

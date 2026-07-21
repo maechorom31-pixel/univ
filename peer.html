@@ -255,12 +255,20 @@ const ipYCM=new Map(), ipYM=new Map(), ipYC=new Map(), ipUCM=new Map();
   }
 })();
 // 조인 (연도 고정): level 0=카테고리+학과 1=학과 2=대학+카테고리(폴백)
-function joinG50(y,u,c,nm){
+// 컷 = 등급70 우선(합격선에 가까워 예측력 우위: AUC .753→.758/.735→.741), 없으면 등급50
+// — index.html 추이 그래프의 '등급70 ?? 등급50' 관행과 동일
+function cutOf(a){
+  const v70=a.filter(r=>r.g70!=null).map(r=>r.g70);
+  if(v70.length)return median(v70);
+  const v50=a.filter(r=>r.g50!=null).map(r=>r.g50);
+  return v50.length?median(v50):null;
+}
+function joinCut(y,u,c,nm){
   const tries=[[ipYCM,y+'|'+u+'|'+c+'|'+nm,0],[ipYM,y+'|'+u+'|'+nm,1],[ipYC,y+'|'+u+'|'+c,2]];
   for(const [map,k,lvl] of tries){
     const a=map.get(k);
-    if(a){const v=a.filter(r=>r.g50!=null).map(r=>r.g50);
-      if(v.length)return {g50:median(v), cr:median(a.filter(r=>r.cr!=null).map(r=>r.cr)), lvl};}
+    if(a){const cut=cutOf(a);
+      if(cut!=null)return {cut, cr:median(a.filter(r=>r.cr!=null).map(r=>r.cr)), lvl};}
   }
   return null;
 }
@@ -280,10 +288,12 @@ function ipCard(u,c,nm){
   const rep=at(latest);
   const g50=median(rep.filter(r=>r.g50!=null).map(r=>r.g50));
   const g70=median(rep.filter(r=>r.g70!=null).map(r=>r.g70));
+  const cut=g70!=null?g70:g50;  // gap·확률 계산 기준
   const cr=median(rep.filter(r=>r.cr!=null).map(r=>r.cr));
   const mo=lvl===0?rep.reduce((s,r)=>s+(r.mo||0),0):null;
-  const trend=lvl===0?years.slice(0,4).reverse().map(y=>({y,g50:median(at(y).filter(r=>r.g50!=null).map(r=>r.g50))})):null;
-  return {latest,g50,g70,cr,mo,trend,lvl};
+  // 추이도 index.html처럼 등급70 기준(없는 연도만 등급50)
+  const trend=lvl===0?years.slice(0,4).reverse().map(y=>({y,cut:cutOf(at(y))})):null;
+  return {latest,g50,g70,cut,cr,mo,trend,lvl};
 }
 
 // ---------- 확률 모델: 힌지 로지스틱 σ(w0+w1·gap⁻+w2·gap⁺+w3·logCR) ----------
@@ -398,14 +408,14 @@ function recommend(){
     const nm=normMajor(repMajor);
     const catName=CAT[o.c];
     const card=ipCard(o.u,o.c,nm);
-    const g50=card?card.g50:null;
+    const cut=card?card.cut:null;
     let prob=null, gap=null;
-    if(g50!=null){
-      gap=st.g-g50;
+    if(cut!=null){
+      gap=st.g-cut;
       const pc=pModel(catName,gap,card.cr);
       if(pc!=null){prob=(o.k+SHRINK_M*pc)/(o.n+SHRINK_M);}
     }
-    out.push({...o,repMajor,nm,catName,card,g50,gap,prob,coarse:card?card.lvl===2:false});
+    out.push({...o,repMajor,nm,catName,card,cut,gap,prob,coarse:card?card.lvl===2:false});
   }
   return out;
 }
@@ -438,16 +448,16 @@ function resLabel(res,cw){return res==null?'–':(res===0?'불합격':(cw?'충�
 
 // ---------- 렌더 ----------
 function sparkSVG(trend){
-  const pts=trend.filter(t=>t.g50!=null); if(pts.length<2)return '';
+  const pts=trend.filter(t=>t.cut!=null); if(pts.length<2)return '';
   const w=120,h=30,pad=4; const xs=pts.map((_,i)=>pad+i*(w-2*pad)/(pts.length-1));
-  const vals=pts.map(t=>t.g50); const mn=Math.min(...vals)-.2,mx=Math.max(...vals)+.2;
+  const vals=pts.map(t=>t.cut); const mn=Math.min(...vals)-.2,mx=Math.max(...vals)+.2;
   const ys=vals.map(v=>pad+(v-mn)/(mx-mn)*(h-2*pad));
   const d=xs.map((x,i)=>(i?'L':'M')+x.toFixed(1)+','+ys[i].toFixed(1)).join(' ');
   let dots=pts.map((t,i)=>`<circle cx="${xs[i].toFixed(1)}" cy="${ys[i].toFixed(1)}" r="2.2" fill="var(--pri)"/>
      <text x="${xs[i].toFixed(1)}" y="${h-0.5}" font-size="7" fill="var(--muted)" text-anchor="middle">${String(t.y).slice(2)}</text>`).join('');
   return `<div class="spark"><svg width="${w}" height="${h+8}" viewBox="0 0 ${w} ${h+8}">
     <path d="${d}" fill="none" stroke="var(--pri)" stroke-width="1.6"/>${dots}</svg>
-    <span class="chip-mini">입결 등급50 최근추이</span></div>`;
+    <span class="chip-mini">입결 등급70 최근추이</span></div>`;
 }
 function probColor(p){return p>=.65?'var(--ok)':p>=.4?'var(--warn)':p>=.15?'var(--soso)':'var(--up)';}
 function cardHTML(r){
@@ -485,7 +495,7 @@ function cardHTML(r){
       <div class="m"><span>경쟁률</span><b>${m.cr!=null?fmt(m.cr,1):'–'}</b></div>
       <div class="m"><span>모집</span><b>${m.mo||'–'}</b></div>
     </div>
-    ${r.gap!=null?`<div class="peerline">내 등급 <b>${fmt(st.g)}</b> − 입결50 <b>${fmt(r.g50)}</b> = 격차 <b>${(r.gap>0?'+':'')+fmt(r.gap)}</b></div>`:''}
+    ${r.gap!=null?`<div class="peerline">내 등급 <b>${fmt(st.g)}</b> − 입결70 <b>${fmt(r.cut)}</b> = 격차 <b>${(r.gap>0?'+':'')+fmt(r.gap)}</b></div>`:''}
     <div class="peerline">👥 또래(±${st.win}) 지원 <b>${r.n}건</b> → 합격 <b>${r.k}건</b> (${Math.round(r.k/r.n*100)}%)${ciTxt}${r.cw?` · 충원 ${r.cw}`:''}</div>
     ${mrHTML}
     ${m.trend?sparkSVG(m.trend):''}
@@ -540,8 +550,8 @@ function aggPeers(){
     const grp=majorGroup(Mj[JN.m[i]])||'(기타)';
     mCnt.set(grp,(mCnt.get(grp)||0)+1);
     if(c===0||c===1){
-      const jr=joinG50(P.meta.jeonnam_year,u,c,normMajor(Mj[JN.m[i]]));
-      if(jr&&JN.res[i]!=null)scatter.push({x:jr.g50,y:sg[JN.s[i]],r:JN.res[i]});
+      const jr=joinCut(P.meta.jeonnam_year,u,c,normMajor(Mj[JN.m[i]]));
+      if(jr&&JN.res[i]!=null)scatter.push({x:jr.cut,y:sg[JN.s[i]],r:JN.res[i]});
     }
   }
   return {uCnt,mCnt,scatter,apps,pass};
@@ -561,7 +571,7 @@ function renderPeer(){
     ${rankPanel('👥 또래 선호 대학 TOP',a.uCnt,12)}
     ${rankPanel('📚 또래 인기 학과 TOP',a.mCnt,12)}
   </div>
-  <div class="panel" style="margin-top:14px"><h3>합불 산점도 <span class="muted" style="font-size:11px">(x=대학 입결 등급50, y=내 등급 · 초록=합격 빨강=불합격)</span></h3>
+  <div class="panel" style="margin-top:14px"><h3>합불 산점도 <span class="muted" style="font-size:11px">(x=대학 입결 등급70, y=내 등급 · 초록=합격 빨강=불합격)</span></h3>
     <canvas id="sc" height="120"></canvas>
     <div id="scFallback"></div></div>`;
   document.getElementById('view').innerHTML=html;
@@ -572,7 +582,7 @@ function drawScatter(pts){
   if(typeof Chart==='undefined'||!el){
     document.getElementById('scFallback').innerHTML=
       '<div class="note">차트 라이브러리를 불러오지 못해 표로 대체합니다.</div>'+
-      '<div class="tablewrap"><table><tr><th>입결 등급50</th><th>내 등급</th><th>결과</th></tr>'+
+      '<div class="tablewrap"><table><tr><th>입결 등급70</th><th>내 등급</th><th>결과</th></tr>'+
       pts.slice(0,80).map(p=>`<tr><td>${fmt(p.x)}</td><td>${fmt(p.y)}</td><td class="${p.r?'r-합격':'r-불합격'}">${p.r?'합격':'불합격'}</td></tr>`).join('')+'</table></div>';
     if(el)el.style.display='none'; return;
   }
@@ -582,7 +592,7 @@ function drawScatter(pts){
     {label:'합격',data:mk(1),backgroundColor:'rgba(22,163,74,.5)',pointRadius:3},
     {label:'불합격',data:mk(0),backgroundColor:'rgba(220,38,38,.45)',pointRadius:3}]},
     options:{plugins:{legend:{labels:{color:getCss('--text')}}},
-      scales:{x:{title:{display:true,text:'대학 입결 등급50',color:getCss('--muted')},ticks:{color:getCss('--muted')},grid:{color:getCss('--line')}},
+      scales:{x:{title:{display:true,text:'대학 입결 등급70',color:getCss('--muted')},ticks:{color:getCss('--muted')},grid:{color:getCss('--line')}},
         y:{reverse:true,title:{display:true,text:'내 등급',color:getCss('--muted')},ticks:{color:getCss('--muted')},grid:{color:getCss('--line')}}}}});
 }
 function getCss(v){return getComputedStyle(document.documentElement).getPropertyValue(v)||'#888';}
@@ -613,9 +623,12 @@ function renderAbout(){
   document.getElementById('view').innerHTML=`<div class="panel"><h3>이 도구는 무엇을 근거로 추천하나요?</h3>
   <p style="margin:8px 0;line-height:1.7">핵심은 <b>절대 등급이 아니라 '입결과의 격차(gap)와 경쟁률'</b>입니다. 전남 2025 지원 약 5.7만 건을 분석하면,
   등급대별 합격률은 어느 등급이든 교과 약 45%·종합 약 25%로 거의 일정합니다(학생들이 이미 자기 수준에 맞춰 지원하기 때문).
-  반면 <b>내 등급 − 그 학과 입결 등급50</b>과 <b>경쟁률</b>로 보면 합격률이 뚜렷하게 갈립니다.</p>
-  <div class="tablewrap"><table><tr><th>격차(내등급−입결50)</th><th>교과 합격률</th><th>종합 합격률</th></tr>
-   ${[[-1,88,43],[-0.5,79,49],[0,53,34],[0.5,34,19],[1,34,15],[1.5,33,10]].map(r=>
+  반면 <b>내 등급 − 그 학과 입결 등급70</b>과 <b>경쟁률</b>로 보면 합격률이 뚜렷하게 갈립니다.
+  기준을 <b>등급70</b>으로 쓰는 이유: 등급70은 합격자 하위 70% 지점이라 '합격선'에 가깝고,
+  실제로 등급50보다 합격을 더 잘 예측했습니다(검증 AUC 교과 .753→.758, 종합 .735→.741).
+  입결검색기(index.html) 추이 그래프의 등급70 기준과도 같습니다.</p>
+  <div class="tablewrap"><table><tr><th>격차(내등급−입결70)</th><th>교과 합격률</th><th>종합 합격률</th></tr>
+   ${[[-1,84,47],[-0.5,72,45],[0,44,27],[0.5,30,16],[1,34,9],[1.5,28,8]].map(r=>
      `<tr><td>${r[0]>0?'+':''}${r[0]}</td><td>${r[1]}%</td><td>${r[2]}%</td></tr>`).join('')}</table></div>
   <p style="margin:10px 0;line-height:1.7"><b>확률 계산(통계 모델)</b>: 격차(유리/불리 구간을 나눈 힌지)와 log경쟁률을 쓰는
   로지스틱 회귀를 전남 2025 데이터로 학습했습니다. 학생 단위 8:2 검증에서 예측력(AUC)이 교과 0.75·종합 0.75로,
