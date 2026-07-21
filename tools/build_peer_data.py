@@ -28,6 +28,17 @@ TRK = ["인문", "자연", "예체능", "공학", "공통", "의학"]
 CAT_I = {c: i for i, c in enumerate(CAT)}
 TRK_I = {t: i for i, t in enumerate(TRK)}
 
+# 전남 파일의 '학년도' 열은 접수 연도(2025) 표기지만 실제로는 2026학년도 자료다.
+# 근거: 나주고 2026 시트 학생 124명 전원의 성적 프로필이 전남 파일에 존재하고
+# 123명은 지원 대학 목록까지 일치(동일인). 입결 조인을 2026으로 맞추면
+# 홀드아웃 AUC가 교과 .755→.807, 종합 .756→.782로 상승(같은 입시 사이클이므로).
+JEONNAM_ADMISSION_YEAR = 2026
+
+# 또래 확률의 로컬 관측: 삼각커널 가중(대역폭 h). 나주고 2025(인접 코호트, 누수 없음)
+# 백테스트에서 h=0.3·m=2가 최적(Brier .1645, AUC .838; 고정창 ±0.25보다 우수).
+# 나주고 2026은 전남 파일에 포함된 동일인이라 백테스트에서 제외했다.
+KERNEL_H = 0.3
+
 
 def norm_major(m):
     if not m:
@@ -157,7 +168,8 @@ def fit_prob_model(d, idx):
             a = j["apps"][i]
             if a["final"] not in ("합격", "충원합격", "불합격") or a["cat"] not in ("교과", "종합"):
                 continue
-            g50, cr = join_cut_cr(idx, s["year"], a["univ"], a["cat"], norm_major(a["major"]))
+            g50, cr = join_cut_cr(idx, JEONNAM_ADMISSION_YEAR, a["univ"], a["cat"],
+                                  norm_major(a["major"]))
             if g50 is None:
                 continue
             samples.append(dict(gap=g - g50, cat=a["cat"], cr=cr,
@@ -188,21 +200,30 @@ def fit_prob_model(d, idx):
         w = model[s["cat"]]["w"]
         return sig(sum(a * b for a, b in zip(w, feats(s))))
 
-    # m 튜닝: 로컬 관측(대학·카테고리·학과군·등급밴드±0.25)과의 혼합
-    loc = defaultdict(lambda: [0, 0])
+    # m 튜닝: 로컬 관측(대학·카테고리·학과군, 삼각커널 h=KERNEL_H)과의 혼합.
+    # 그리드 하한은 2 — 전남 내부 분할은 같은 사이클이라 로컬이 과대평가되기 쉬운데,
+    # 인접 코호트(나주고 2025) 백테스트에서도 m=2가 최적이었다.
+    loc = defaultdict(list)
     for s in train:
-        band = round(s["g"] * 4) / 4
-        for db in (-0.25, 0, 0.25):
-            key = (s["u"], s["cat"], s["mg"], band + db)
-            loc[key][0] += s["y"]
-            loc[key][1] += 1
+        loc[(s["u"], s["cat"], s["mg"])].append((s["g"], s["y"]))
+
+    def kernel_stats(key, g):
+        kw = nw = 0.0
+        for g2, y2 in loc.get(key, ()):
+            d2 = abs(g2 - g)
+            if d2 < KERNEL_H:
+                wgt = 1 - d2 / KERNEL_H
+                nw += wgt
+                kw += wgt * y2
+        return kw, nw
+
     best_m, best_b = None, 1e9
     for m in (2, 4, 8, 12, 20, 40):
         pairs = []
         for s in test:
             pc = p_curve(s)
-            k, n = loc.get((s["u"], s["cat"], s["mg"], round(s["g"] * 4) / 4), (0, 0))
-            pairs.append(((k + m * pc) / (n + m), s["y"]))
+            kw, nw = kernel_stats((s["u"], s["cat"], s["mg"]), s["g"])
+            pairs.append(((kw + m * pc) / (nw + m), s["y"]))
         b = brier(pairs)
         if b < best_b:
             best_m, best_b = m, b
@@ -228,7 +249,8 @@ def compute_gap_curve(d, idx):
             a = j["apps"][i]
             if a["final"] not in ("합격", "충원합격", "불합격"):
                 continue
-            g50 = join_cut(idx, s["year"], a["univ"], a["cat"], norm_major(a["major"]))
+            g50 = join_cut(idx, JEONNAM_ADMISSION_YEAR, a["univ"], a["cat"],
+                           norm_major(a["major"]))
             if g50 is None:
                 continue
             b = round((g - g50) * 4) / 4  # 0.25 단위
@@ -410,7 +432,7 @@ def main():
 
     peer = {
         "meta": {
-            "jeonnam_year": 2025,
+            "jeonnam_year": JEONNAM_ADMISSION_YEAR,
             "naju_years": sorted(set(nj["sy"])),
             "n_jeonnam_students": len(d["jeonnam"]["students"]),
             "n_naju_students": len(d["naju"]["students"]),
@@ -420,7 +442,7 @@ def main():
         "CAT": CAT, "TRK": TRK, "COMBOS": COMBOS,
         "jn": jn, "nj": nj, "ip": ipc,
         "gapCurve": gap_curve, "bands": bands_out,
-        "probModel": prob_model, "shrinkM": shrink_m,
+        "probModel": prob_model, "shrinkM": shrink_m, "kernelH": KERNEL_H,
     }
 
     payload = json.dumps(peer, ensure_ascii=False, separators=(",", ":"))
