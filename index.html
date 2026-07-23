@@ -389,7 +389,10 @@ DATA.columns.forEach((c, i) => COL[c] = i);
 
 function baseClassify(cat, t) {
   const s = String(t || '').toLowerCase();
-  if (s.includes('지역인재') || s.includes('지역균형') || s.includes('지역')) return cat + '-지역인재';
+  // 지역균형 = 지균(약칭). '지균'은 '지역'을 포함하지 않아 지역인재로 안 잡히므로 명시 처리.
+  // 지역균형(수도권 균형선발)과 지역인재(지방대 지역인재)는 별도 전형이라 분리.
+  if (s.includes('지역균형') || s.includes('지균')) return cat + '-지역균형';
+  if (s.includes('지역인재') || s.includes('지역')) return cat + '-지역인재';
   if (s.includes('서류형') || (s.includes('서류') && !s.includes('면접'))) return cat + '-서류형';
   if (s.includes('면접형') || s.includes('면접')) return cat + '-면접형';
   if (s.includes('학교추천') || s.includes('추천')) return cat + '-추천형';
@@ -415,12 +418,12 @@ function classifyType(cat, typeName, univ, dept) {
 }
 
 const SUB_COLOR = {
-  '교과-일반':'#0d8a4f','교과-지역인재':'#16a34a','교과-면접형':'#65a30d','교과-추천형':'#84cc16',
+  '교과-일반':'#0d8a4f','교과-지역인재':'#16a34a','교과-지역균형':'#059669','교과-면접형':'#65a30d','교과-추천형':'#84cc16',
   '교과-농어촌':'#a3e635','교과-기회균형':'#bef264','교과-사회배려':'#d9f99d','교과-특성화/특기':'#84cc16','교과-기초/차상위':'#a3e635',
-  '종합-일반':'#ca8a04','종합-지역인재':'#eab308','종합-서류형':'#facc15','종합-면접형':'#fde047',
+  '종합-일반':'#ca8a04','종합-지역인재':'#eab308','종합-지역균형':'#d97706','종합-서류형':'#facc15','종합-면접형':'#fde047',
   '종합-추천형':'#fef08a','종합-농어촌':'#fef9c3','종합-기회균형':'#a16207','종합-사회배려':'#854d0e','종합-특성화/특기':'#713f12',
-  '논술-일반':'#dc2626','논술-지역인재':'#ef4444',
-  '실기-일반':'#7c3aed','실기-지역인재':'#a855f7','실기-특성화/특기':'#c084fc'};
+  '논술-일반':'#dc2626','논술-지역인재':'#ef4444','논술-지역균형':'#f87171',
+  '실기-일반':'#7c3aed','실기-지역인재':'#a855f7','실기-지역균형':'#9333ea','실기-특성화/특기':'#c084fc'};
 function subColor(s) {
   return SUB_COLOR[s] || (s.startsWith('교과')?'#16a34a':s.startsWith('종합')?'#eab308':s.startsWith('논술')?'#dc2626':'#7c3aed');
 }

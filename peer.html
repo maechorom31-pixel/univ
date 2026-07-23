@@ -240,31 +240,35 @@ function wilson(k,n){
   return [Math.max(0,(mid-half)/den), Math.min(1,(mid+half)/den)];
 }
 
-// ---------- 입결 인덱스 ----------
-const ipYCM=new Map(), ipYM=new Map(), ipYC=new Map(), ipUCM=new Map();
+// ---------- 입결 인덱스 (subtype 인식) ----------
+const SUBS=P.SUBS||['일반'];
+// 컷이 갈리는 특별전형만 분리(지역인재/지역균형/농어촌/기회균형/사회배려/기초), 나머지는 일반.
+const ipYCSM=new Map(), ipYCS=new Map(), ipYCM=new Map(), ipYC=new Map(), ipUCSM=new Map();
 (function(){
   const n=IP.u.length;
   for(let i=0;i<n;i++){
-    const u=IP.u[i], y=IP.y[i], c=IP.c[i], nm=normMajor(P.ipMj[IP.m[i]]);
-    const rec={g50:IP.g50[i],g70:IP.g70[i],cr:IP.cr[i],mo:IP.mo[i],y};
+    const u=IP.u[i], y=IP.y[i], c=IP.c[i], nm=normMajor(P.ipMj[IP.m[i]]), sub=IP.sub?IP.sub[i]:0;
+    const rec={g50:IP.g50[i],g70:IP.g70[i],cr:IP.cr[i],mo:IP.mo[i],y,sub};
     const push=(map,k)=>{let a=map.get(k);if(!a){a=[];map.set(k,a);}a.push(rec);};
+    push(ipYCSM,y+'|'+u+'|'+c+'|'+sub+'|'+nm);
+    push(ipYCS,y+'|'+u+'|'+c+'|'+sub);
     push(ipYCM,y+'|'+u+'|'+c+'|'+nm);
-    push(ipYM,y+'|'+u+'|'+nm);
     push(ipYC,y+'|'+u+'|'+c);
-    push(ipUCM,u+'|'+c+'|'+nm);
+    push(ipUCSM,u+'|'+c+'|'+sub+'|'+nm);
+    push(ipUCSM,u+'|'+c+'|*|'+nm);  // subtype 무시 폴백
   }
 })();
-// 조인 (연도 고정): level 0=카테고리+학과 1=학과 2=대학+카테고리(폴백)
-// 컷 = 등급70 우선(합격선에 가까워 예측력 우위: AUC .753→.758/.735→.741), 없으면 등급50
-// — index.html 추이 그래프의 '등급70 ?? 등급50' 관행과 동일
+// 컷 = 등급70 우선(합격선에 가까워 예측력 우위), 없으면 등급50
 function cutOf(a){
   const v70=a.filter(r=>r.g70!=null).map(r=>r.g70);
   if(v70.length)return median(v70);
   const v50=a.filter(r=>r.g50!=null).map(r=>r.g50);
   return v50.length?median(v50):null;
 }
-function joinCut(y,u,c,nm){
-  const tries=[[ipYCM,y+'|'+u+'|'+c+'|'+nm,0],[ipYM,y+'|'+u+'|'+nm,1],[ipYC,y+'|'+u+'|'+c,2]];
+// subtype 우선 4단계 폴백 (build_peer_data.join_cut_cr와 동일 순서)
+function joinCut(y,u,c,nm,sub){
+  const tries=[[ipYCSM,y+'|'+u+'|'+c+'|'+sub+'|'+nm,0],[ipYCS,y+'|'+u+'|'+c+'|'+sub,1],
+               [ipYCM,y+'|'+u+'|'+c+'|'+nm,2],[ipYC,y+'|'+u+'|'+c,3]];
   for(const [map,k,lvl] of tries){
     const a=map.get(k);
     if(a){const cut=cutOf(a);
@@ -272,13 +276,14 @@ function joinCut(y,u,c,nm){
   }
   return null;
 }
-// 추천 표시용: 최신연도 우선 + 최근 등급50 추이
-function ipCard(u,c,nm){
-  let a=ipUCM.get(u+'|'+c+'|'+nm), lvl=0;
-  if(!a){ // 학과 폴백 없이 대학+카테고리 평균으로
+// 추천 표시용: 해당 subtype 최신연도 우선 + 등급70 추이 + 다른전형 컷 대비
+function ipCard(u,c,nm,sub){
+  let a=ipUCSM.get(u+'|'+c+'|'+sub+'|'+nm), lvl=0;
+  if(!a){a=ipUCSM.get(u+'|'+c+'|*|'+nm); lvl=1;} // subtype 매칭 실패 → 학과 전체
+  if(!a){ // 학과도 없음 → 대학+카테고리 평균
     for(let y=P.meta.latest_ip_year;y>=P.meta.latest_ip_year-4;y--){
       const b=ipYC.get(y+'|'+u+'|'+c);
-      if(b){a=b.map(r=>({...r,y})); lvl=2; break;}
+      if(b){a=b.map(r=>({...r,y})); lvl=3; break;}
     }
     if(!a)return null;
   }
@@ -290,10 +295,23 @@ function ipCard(u,c,nm){
   const g70=median(rep.filter(r=>r.g70!=null).map(r=>r.g70));
   const cut=g70!=null?g70:g50;  // gap·확률 계산 기준
   const cr=median(rep.filter(r=>r.cr!=null).map(r=>r.cr));
-  const mo=lvl===0?rep.reduce((s,r)=>s+(r.mo||0),0):null;
-  // 추이도 index.html처럼 등급70 기준(없는 연도만 등급50)
-  const trend=lvl===0?years.slice(0,4).reverse().map(y=>({y,cut:cutOf(at(y))})):null;
-  return {latest,g50,g70,cut,cr,mo,trend,lvl};
+  const mo=lvl<=1?rep.reduce((s,r)=>s+(r.mo||0),0):null;
+  const trend=lvl<=1?years.slice(0,4).reverse().map(y=>({y,cut:cutOf(at(y))})):null;
+  // 같은 학과 다른 전형(subtype)의 컷 — "전형별 입결" 표시용
+  let others=null;
+  if(sub!=null && lvl===0){
+    const allMj=ipUCSM.get(u+'|'+c+'|*|'+nm);
+    if(allMj){
+      const ly=Math.max(...allMj.map(r=>r.y));
+      const bySub=new Map();
+      allMj.filter(r=>r.y===ly).forEach(r=>{const v=r.g70!=null?r.g70:r.g50;
+        if(v!=null){let l=bySub.get(r.sub)||[];l.push(v);bySub.set(r.sub,l);}});
+      others=[...bySub.entries()].map(([s,vs])=>({sub:s,cut:median(vs)}))
+        .filter(o=>o.sub!==sub).sort((a,b)=>a.cut-b.cut);
+      if(!others.length)others=null;
+    }
+  }
+  return {latest,g50,g70,cut,cr,mo,trend,lvl,sub,others};
 }
 
 // ---------- 확률 모델: 힌지 로지스틱 σ(w0+w1·gap⁻+w2·gap⁺+w3·logCR) ----------
@@ -386,16 +404,16 @@ function recommend(){
   peerWindow(); // st.win 갱신 (후보 창)
   const H=P.kernelH||0.3;
   const cand=new Map(), kern=new Map();
-  const n=JN.s.length, sgArr=gradeArr(JN);
+  const n=JN.s.length, sgArr=gradeArr(JN), SUBc=JN.sub;
   for(let i=0;i<n;i++){
     const gi=sgArr[JN.s[i]]; if(gi==null) continue;
     const c=JN.c[i]; if(c===2||c===3||c===4) continue; // 논술·실기·수능 제외
     const u=JN.u[i]; if(u<0) continue;
     const dg=Math.abs(gi-st.g);
     const grp=majorGroup(Mj[JN.m[i]]);
-    const key=u+'|'+c+'|'+grp;
-    // 확률용 로컬 관측: 삼각커널 가중 (필터와 무관 — 그 학과의 실제 합불 기록)
-    // 백테스트(나주고 인접 코호트) 근거: h=0.3 커널이 고정 창보다 Brier·AUC 우수
+    const sub=SUBc?SUBc[i]:0;
+    const key=u+'|'+c+'|'+sub+'|'+grp;  // 전형(subtype)까지 분리 — 지역인재·일반 별도 카드
+    // 확률용 로컬 관측: 삼각커널 가중 (그 대학·전형·학과의 실제 합불 기록, 필터 무관)
     if((c===0||c===1) && dg<H && JN.res[i]!=null){
       let kv=kern.get(key); if(!kv){kv=[0,0];kern.set(key,kv);}
       const wgt=1-dg/H;
@@ -406,7 +424,7 @@ function recommend(){
     if(st.track>=0 && JN.t[i]!==st.track) continue;
     if(!passFilters(u,c,JN.rgn[i],JN.m[i])) continue;
     let o=cand.get(key);
-    if(!o){o={u,c,grp,n:0,nr:0,k:0,cw:0,rawMajors:new Map()};cand.set(key,o);}
+    if(!o){o={u,c,sub,grp,n:0,nr:0,k:0,cw:0,rawMajors:new Map()};cand.set(key,o);}
     o.n++;
     if(JN.res[i]!=null){o.nr++; if(JN.res[i]===1)o.k++;}
     if(JN.chungwon[i])o.cw++;
@@ -418,18 +436,18 @@ function recommend(){
     const repMajor=[...o.rawMajors.entries()].sort((a,b)=>b[1]-a[1])[0][0];
     const nm=normMajor(repMajor);
     const catName=CAT[o.c];
-    const card=ipCard(o.u,o.c,nm);
+    const card=ipCard(o.u,o.c,nm,o.sub);
     const cut=card?card.cut:null;
     let prob=null, gap=null;
     if(cut!=null){
       gap=st.g-cut;
       const pc=pModel(catName,gap,card.cr);
       if(pc!=null){
-        const kv=kern.get(o.u+'|'+o.c+'|'+o.grp)||[0,0];
+        const kv=kern.get(o.u+'|'+o.c+'|'+o.sub+'|'+o.grp)||[0,0];
         prob=(kv[0]+SHRINK_M*pc)/(kv[1]+SHRINK_M);
       }
     }
-    out.push({...o,repMajor,nm,catName,card,cut,gap,prob,coarse:card?card.lvl===2:false});
+    out.push({...o,repMajor,nm,subName:SUBS[o.sub],catName,card,cut,gap,prob,coarse:card?card.lvl>=3:false});
   }
   return out;
 }
@@ -446,12 +464,13 @@ function classify(list){
   return g;
 }
 
-// ---------- 나주고 선배 조회 ----------
-function najuFor(u,nm,win=0.5){
+// ---------- 나주고 선배 조회 (같은 전형 우선) ----------
+function najuFor(u,nm,sub,win=0.5){
   const out=[]; const n=NJ.s.length; const ng=gradeArr(NJ);
   for(let i=0;i<n;i++){
     if(NJ.u[i]!==u) continue;
     if(nm && normMajor(Mj[NJ.m[i]])!==nm) continue;
+    if(sub!=null && NJ.sub && NJ.sub[i]!==sub) continue;
     const g=ng[NJ.s[i]];
     if(g==null||Math.abs(g-st.g)>win) continue;
     out.push({y:NJ.sy[NJ.s[i]],g,c:CAT[NJ.c[i]],res:NJ.res[i],cw:NJ.chungwon[i],reg:NJ.reg[i]});
@@ -474,10 +493,20 @@ function sparkSVG(trend){
     <span class="chip-mini">입결 등급70 최근추이</span></div>`;
 }
 function probColor(p){return p>=.65?'var(--ok)':p>=.4?'var(--warn)':p>=.15?'var(--soso)':'var(--up)';}
+const SUB_BADGE={지역인재:'#0369a1',지역균형:'#7c3aed',농어촌:'#15803d',기회균형:'#b45309',사회배려:'#9d174d',기초:'#4338ca'};
 function cardHTML(r){
-  const seniors=najuFor(r.u,r.nm).slice(0,5);
+  let seniors=najuFor(r.u,r.nm,r.sub).slice(0,5);
+  if(!seniors.length)seniors=najuFor(r.u,r.nm,null).slice(0,5); // 같은 전형 없으면 학과 전체
   const probPct=r.prob!=null?Math.round(r.prob*100):null;
   const m=r.card||{};
+  // 전형(subtype) 배지 + 같은 학과 다른 전형 입결 대비
+  const subBadge=(r.subName&&r.subName!=='일반')
+    ?`<span class="badge" style="background:${SUB_BADGE[r.subName]||'#555'};color:#fff;border-color:transparent">${r.subName}</span>`:'';
+  let othersHTML='';
+  if(m.others&&m.others.length){
+    othersHTML=`<div class="peerline" style="border-top:none;padding-top:2px">↔ 같은 학과 다른 전형 입결70: `+
+      m.others.map(o=>`${SUBS[o.sub]} <b>${fmt(o.cut)}</b>`).join(' · ')+`</div>`;
+  }
   const ci=wilson(r.k,r.nr);
   const ciTxt=(r.nr>=3&&ci)?` <span class="muted">(CI ${Math.round(ci[0]*100)}–${Math.round(ci[1]*100)}%)</span>`:'';
   // 수능최저
@@ -498,6 +527,7 @@ function cardHTML(r){
     <div class="mj">${r.repMajor}</div>
     <div class="badges">
       <span class="badge cat${r.catName}">${r.catName}</span>
+      ${subBadge}
       ${probPct!=null?`<span class="badge prob">합격 가능성 ${probPct}%</span>`:`<span class="badge">입결 정보 없음</span>`}
       ${r.coarse?`<span class="badge coarse">대학 평균 기준</span>`:''}
       ${r.catName==='종합'?`<span class="badge jong">서류·면접 영향 큼</span>`:''}
@@ -510,7 +540,8 @@ function cardHTML(r){
       <div class="m"><span>모집</span><b>${m.mo||'–'}</b></div>
     </div>
     ${r.gap!=null?`<div class="peerline">내 등급 <b>${fmt(st.g)}</b> − 입결70 <b>${fmt(r.cut)}</b> = 격차 <b>${(r.gap>0?'+':'')+fmt(r.gap)}</b></div>`:''}
-    <div class="peerline">👥 또래(±${st.win}) 지원 <b>${r.n}건</b> → 합격 <b>${r.k}건</b>${r.nr?` (${Math.round(r.k/r.nr*100)}%)`:''}${ciTxt}${r.cw?` · 충원 ${r.cw}`:''}</div>
+    ${othersHTML}
+    <div class="peerline">👥 ${r.subName&&r.subName!=='일반'?r.subName+' ':''}또래(±${st.win}) 지원 <b>${r.n}건</b> → 합격 <b>${r.k}건</b>${r.nr?` (${Math.round(r.k/r.nr*100)}%)`:''}${ciTxt}${r.cw?` · 충원 ${r.cw}`:''}</div>
     ${mrHTML}
     ${m.trend?sparkSVG(m.trend):''}
     ${seniors.length?`<div class="senior-mini"><div class="muted" style="margin-bottom:3px">🏫 나주고 선배 사례</div>
@@ -564,7 +595,7 @@ function aggPeers(){
     const grp=majorGroup(Mj[JN.m[i]])||'(기타)';
     mCnt.set(grp,(mCnt.get(grp)||0)+1);
     if(c===0||c===1){
-      const jr=joinCut(P.meta.jeonnam_year,u,c,normMajor(Mj[JN.m[i]]));
+      const jr=joinCut(P.meta.jeonnam_year,u,c,normMajor(Mj[JN.m[i]]),JN.sub?JN.sub[i]:0);
       if(jr&&JN.res[i]!=null)scatter.push({x:jr.cut,y:sg[JN.s[i]],r:JN.res[i]});
     }
   }

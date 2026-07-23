@@ -48,6 +48,31 @@ def norm_major(m):
     return m
 
 
+# 전형 세부구분(subtype): 컷이 크게 갈리는 특별전형만 분리, 나머지는 일반.
+# 입결 전형명(예: '교과(지역인재)')과 지원 전형명(예: '지역인재 특별전형') 양쪽에서
+# 같은 키워드 로직으로 뽑아 조인 키로 맞춘다. index.html baseClassify와 동일 규칙.
+# '지균'은 '지역'을 포함하지 않으므로 명시 처리(= 지역균형).
+SUBS = ["일반", "지역인재", "지역균형", "농어촌", "기회균형", "사회배려", "기초"]
+SUBS_I = {s: i for i, s in enumerate(SUBS)}
+
+
+def subtype(name):
+    s = str(name or "")
+    if "지역균형" in s or "지균" in s:
+        return "지역균형"
+    if "지역인재" in s or "지역" in s:
+        return "지역인재"
+    if "농어촌" in s:
+        return "농어촌"
+    if "기회균형" in s or "기회" in s:
+        return "기회균형"
+    if "사회배려" in s or "사회기여" in s or "사회통합" in s or "고른기회" in s:
+        return "사회배려"
+    if "기초" in s or "차상위" in s or "수급" in s:
+        return "기초"
+    return "일반"
+
+
 def rep_grade(s):
     return s["grades"].get("전과목") or s["grades"].get("국수영사과")
 
@@ -61,58 +86,58 @@ def load(parsed_path, index_html):
 
 
 def build_ipgyeol_index(ip):
-    """(연도,대학,카테고리,정규화학과)·(연도,대학,정규화학과)·(연도,대학,카테고리) → 행 목록."""
+    """subtype 포함 4개 조인 테이블 반환(세밀→성긴 폴백용)."""
     C = {c: i for i, c in enumerate(ip["columns"])}
-    by_ycm = defaultdict(list)
-    by_ym = defaultdict(list)
-    by_yc = defaultdict(list)
+    by_ycsm = defaultdict(list)  # 연도·대학·카테고리·subtype·학과 (최정밀)
+    by_ycs = defaultdict(list)   # 연도·대학·카테고리·subtype
+    by_ycm = defaultdict(list)   # 연도·대학·카테고리·학과 (subtype 무시)
+    by_yc = defaultdict(list)    # 연도·대학·카테고리
     for r in ip["rows"]:
         y, u, cat, maj = r[C["연도"]], r[C["대학"]], r[C["카테고리"]], norm_major(r[C["학과"]])
+        sub = subtype(r[C["전형"]])
         rec = {"g50": r[C["등급50"]], "g70": r[C["등급70"]], "cr": r[C["경쟁률"]],
-               "mo": r[C["모집"]], "reg": r[C["지역"]]}
+               "mo": r[C["모집"]], "sub": sub}
+        by_ycsm[(y, u, cat, sub, maj)].append(rec)
+        by_ycs[(y, u, cat, sub)].append(rec)
         by_ycm[(y, u, cat, maj)].append(rec)
-        by_ym[(y, u, maj)].append(rec)
         by_yc[(y, u, cat)].append(rec)
-    return C, by_ycm, by_ym, by_yc
-
-
-def join_cut(idx, year, univ, cat, major):
-    """3단계 폴백으로 입결 컷(등급70 우선, 없으면 등급50) 중앙값을 찾는다.
-
-    등급70이 합격선에 가까워 예측력이 더 높음(홀드아웃 AUC 교과 .753→.758, 종합 .735→.741).
-    index.html 추이 그래프의 '등급70 ?? 등급50' 관행과도 일치.
-    """
-    _, by_ycm, by_ym, by_yc = idx
-    for tbl, key in ((by_ycm, (year, univ, cat, major)),
-                     (by_ym, (year, univ, major)),
-                     (by_yc, (year, univ, cat))):
-        rows = tbl.get(key)
-        if rows:
-            vals = [r["g70"] for r in rows if r["g70"] is not None] or \
-                   [r["g50"] for r in rows if r["g50"] is not None]
-            if vals:
-                return statistics.median(vals)
-    return None
+    return C, by_ycsm, by_ycs, by_ycm, by_yc
 
 
 def major_group(m):
     return re.sub(r"(학부|학과|학전공|전공|과)$", "", norm_major(m))
 
 
-def join_cut_cr(idx, year, univ, cat, major):
-    """입결 컷(등급70 우선)과 경쟁률을 함께 조인(3단계 폴백)."""
-    _, by_ycm, by_ym, by_yc = idx
-    for tbl, key in ((by_ycm, (year, univ, cat, major)),
-                     (by_ym, (year, univ, major)),
+def _cut(rows):
+    return ([r["g70"] for r in rows if r["g70"] is not None] or
+            [r["g50"] for r in rows if r["g50"] is not None])
+
+
+def join_cut_cr(idx, year, univ, cat, major, sub="일반"):
+    """subtype 우선 4단계 폴백으로 입결 컷(등급70 우선)과 경쟁률을 조인.
+
+    (연도·대학·카테고리·subtype·학과) → (·subtype) → (·학과, subtype무시) → (·카테고리).
+    subtype을 학과보다 먼저 맞추는 이유: 지역인재/일반은 같은 학과라도 컷이 1등급 이상
+    갈리므로(입결 2026 기준 다전형 학과의 30%가 편차 0.5↑), 학과 blur보다 전형 blur가 위험.
+    등급70이 합격선에 가까워 예측력 우위(홀드아웃 AUC 교과 .753→.758, 종합 .735→.741).
+    """
+    _, by_ycsm, by_ycs, by_ycm, by_yc = idx
+    for tbl, key in ((by_ycsm, (year, univ, cat, sub, major)),
+                     (by_ycs, (year, univ, cat, sub)),
+                     (by_ycm, (year, univ, cat, major)),
                      (by_yc, (year, univ, cat))):
         rows = tbl.get(key)
         if rows:
-            g = [r["g70"] for r in rows if r["g70"] is not None] or \
-                [r["g50"] for r in rows if r["g50"] is not None]
+            g = _cut(rows)
             cr = [r["cr"] for r in rows if r["cr"] is not None]
             if g:
                 return statistics.median(g), (statistics.median(cr) if cr else None)
     return None, None
+
+
+def join_cut(idx, year, univ, cat, major, sub="일반"):
+    g, _ = join_cut_cr(idx, year, univ, cat, major, sub)
+    return g
 
 
 def sig(z):
@@ -168,8 +193,9 @@ def fit_prob_model(d, idx):
             a = j["apps"][i]
             if a["final"] not in ("합격", "충원합격", "불합격") or a["cat"] not in ("교과", "종합"):
                 continue
+            sub = subtype(a["adm"])
             g50, cr = join_cut_cr(idx, JEONNAM_ADMISSION_YEAR, a["univ"], a["cat"],
-                                  norm_major(a["major"]))
+                                  norm_major(a["major"]), sub)
             if g50 is None:
                 continue
             samples.append(dict(gap=g - g50, cat=a["cat"], cr=cr,
@@ -250,7 +276,7 @@ def compute_gap_curve(d, idx):
             if a["final"] not in ("합격", "충원합격", "불합격"):
                 continue
             g50 = join_cut(idx, JEONNAM_ADMISSION_YEAR, a["univ"], a["cat"],
-                           norm_major(a["major"]))
+                           norm_major(a["major"]), subtype(a["adm"]))
             if g50 is None:
                 continue
             b = round((g - g50) * 4) / 4  # 0.25 단위
@@ -358,7 +384,7 @@ def main():
     def pack(section, with_year):
         # 학생 단위 배열(sg=대표등급, g7=조합별 등급, sy=학년도)과 앱 단위 병렬 배열(s=학생인덱스)
         cols = {"s": [], "u": [], "m": [], "c": [], "t": [], "res": [],
-                "reg": [], "rgn": [], "ad": [], "chungwon": []}
+                "reg": [], "rgn": [], "ad": [], "chungwon": [], "sub": []}
         sg, sy = [], []
         g7 = [[] for _ in COMBOS]
         for si, s in enumerate(section["students"]):
@@ -380,6 +406,7 @@ def main():
                 cols["rgn"].append(rid(a["region"]))
                 cols["ad"].append(aid(a["adm"]))
                 cols["chungwon"].append(1 if a["final"] == "충원합격" else 0)
+                cols["sub"].append(SUBS_I[subtype(a["adm"])])
                 if with_year:
                     cols.setdefault("mr", []).append(mrid(a.get("minreq")))
         cols["sg"] = sg
@@ -402,7 +429,7 @@ def main():
             ipMj.append(m)
         return ipMi[m]
 
-    ipc = {"u": [], "y": [], "c": [], "m": [], "g50": [], "g70": [], "cr": [], "mo": []}
+    ipc = {"u": [], "y": [], "c": [], "m": [], "g50": [], "g70": [], "cr": [], "mo": [], "sub": []}
     for r in ip["rows"]:
         u = r[C["대학"]]
         if u not in Ui:  # 입결 대학은 U에 모두 포함되어 있음
@@ -415,6 +442,7 @@ def main():
         ipc["g70"].append(r[C["등급70"]])
         ipc["cr"].append(r[C["경쟁률"]])
         ipc["mo"].append(r[C["모집"]])
+        ipc["sub"].append(SUBS_I[subtype(r[C["전형"]])])
 
     gap_curve = compute_gap_curve(d, idx)
     prob_model, shrink_m, diag = fit_prob_model(d, idx)
@@ -439,7 +467,7 @@ def main():
             "latest_ip_year": max(ipc["y"]),
         },
         "U": U, "U_inip": U_inip, "Mj": Mj, "Rg": Rg, "Ad": Ad, "ipMj": ipMj, "MR": MR,
-        "CAT": CAT, "TRK": TRK, "COMBOS": COMBOS,
+        "CAT": CAT, "TRK": TRK, "COMBOS": COMBOS, "SUBS": SUBS,
         "jn": jn, "nj": nj, "ip": ipc,
         "gapCurve": gap_curve, "bands": bands_out,
         "probModel": prob_model, "shrinkM": shrink_m, "kernelH": KERNEL_H,
