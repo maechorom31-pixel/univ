@@ -4,7 +4,26 @@
 <meta charset="UTF-8">
 <title>2027 수시 전형설계 검색기 · 만든이 나주고 3학년실</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* 차트 라이브러리는 페이지를 다 그린 뒤에 따로 받아온다.
+   <script src>로 걸어 두면 CDN이 막힌 망(학교 방화벽 등)에서 응답을 기다리느라
+   화면 전체가 십수 초 멈춘다. 산점도만 늦게 붙고 나머지는 즉시 쓸 수 있게 한다. */
+window.__chartState = 'pending';
+window.addEventListener('DOMContentLoaded', function(){
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+  s.async = true;
+  s.onload = function(){
+    window.__chartState = 'ready';
+    if (typeof renderActive === 'function') renderActive();
+  };
+  s.onerror = function(){
+    window.__chartState = 'failed';
+    if (typeof renderActive === 'function') renderActive();
+  };
+  document.head.appendChild(s);
+});
+</script>
 <style>
 :root{
   --bg:#f7f7fb;--card:#fff;--line:#e6e5f0;--line-soft:#f0eff7;
@@ -348,6 +367,7 @@ footer.foot-note{margin-top:20px;padding:16px 4px;font-size:11.5px;color:var(--m
 </div>
 
 <script type="application/json" id="raw-data">__DATA__</script>
+<script type="application/json" id="xref-data">__XREF__</script>
 <script>
 /* ===================== 데이터 적재 ===================== */
 const RAW = JSON.parse(document.getElementById('raw-data').textContent);
@@ -398,6 +418,40 @@ function parseDates(str){
   return [...new Set(ms)];
 }
 const fmtDate = md => `${Math.floor(md/100)}.${String(md%100).padStart(2,'0')}`;
+
+/* ===== 과거 입결(index.html, 2022~2026) 연결표 =====
+   scripts/build_xref.py 의 정규화 규칙을 그대로 옮긴 것. 한쪽만 고치면 연결이 끊기므로
+   규칙을 바꿀 때는 반드시 양쪽을 함께 고쳐야 한다. */
+const XREF = JSON.parse(document.getElementById('xref-data').textContent);
+const UNIV_ALIAS = {
+  '한국공대':'한국공학대', '서울과학기술대':'서울과기대', '추계예술대':'추계예대',
+  '한국체육대':'한국체대', '가톨릭꽃동네대':'꽃동네대', '감리교신학대':'감신대',
+  '한국침례신학대':'침신대',
+};
+const DISCRIMINATORS = {
+  '인문':'인문','인문계열':'인문','인문사회':'인문','인문·예능':'인문',
+  '자연':'자연','자연계열':'자연','자연·예능':'자연',
+  '예체능':'예체능','예능':'예체능',
+  '야':'야','야간':'야','남':'남','여':'여',
+  '5년제':'5년','4년제':'4년','2년제':'2년','6년제':'6년',
+};
+function normUniv(name){
+  let n = name.trim().replace(/^국립/, '').replace(/\(.*$/, '').replace(/대학교$/, '대').replace(/ /g, '');
+  return UNIV_ALIAS[n] || n;
+}
+function normDept(name){
+  let d = name.trim().replace(/^\[[^\]]*\]/, '');
+  const discs = [...new Set([...d.matchAll(/\(([^)]*)\)/g)]
+    .map(m => DISCRIMINATORS[m[1].trim()]).filter(Boolean))].sort();
+  d = d.replace(/\([^)]*\)/g, '').replace(/[\s·，,／/‧・]/g, '')
+       .replace(/(전공|학과|학부|과|계열|학|부)$/, '');
+  return d + (discs.length ? '~' + discs.join('') : '');
+}
+function xrefLookup(univ, dept){
+  const e = XREF.map[normUniv(univ) + '|' + normDept(dept)];
+  if (!e) return null;
+  return { univ: XREF.univs[e[0]], dept: e[1], grades: e[2], years: XREF.years };
+}
 
 /* 행 → 앱 객체 */
 const ROWS = RAW.rows.map((r, i) => {
@@ -456,6 +510,7 @@ const ROWS = RAW.rows.map((r, i) => {
   o.hasNon = o.고사 === '논술';
   o.openGrad = o.자격연도 === '제한없음';
   o.days = { int: parseDates(o.면접일정), non: parseDates(o.논술일정) };
+  o.past = xrefLookup(o.대학, o.모집단위);   // 2022~2026 입결 연결 (없으면 null)
   o.hay = (o.대학 + ' ' + o.모집단위 + ' ' + (o.세부 || '')).toLowerCase();
   return o;
 });
@@ -662,12 +717,21 @@ const AXES = [
 ];
 let scatterChart = null;
 function renderScatter(rows){
+  const wrap = document.querySelector('#view-scatter .chart-wrap');
   if (typeof Chart === 'undefined'){
-    document.querySelector('#view-scatter .chart-wrap').innerHTML =
-      '<div class="empty"><div class="icon">📡</div><h3>산점도를 그릴 수 없습니다</h3>' +
-      '<p>차트 라이브러리(Chart.js)를 불러오지 못했습니다.<br>인터넷 연결을 확인한 뒤 새로고침해 주세요.<br>' +
-      '카드·표·플래너는 인터넷 없이도 정상 동작합니다.</p></div>';
+    // 차트 라이브러리를 아직 못 받았거나 못 받은 상태. 캔버스를 지우고 사정을 알린다.
+    scatterChart = null;
+    wrap.innerHTML = window.__chartState === 'pending'
+      ? '<div class="empty"><div class="icon">⏳</div><h3>산점도를 준비하는 중입니다</h3>' +
+        '<p>차트 라이브러리를 받아오고 있습니다. 잠시만 기다려 주세요.</p></div>'
+      : '<div class="empty"><div class="icon">📡</div><h3>산점도를 그릴 수 없습니다</h3>' +
+        '<p>차트 라이브러리(Chart.js)를 불러오지 못했습니다.<br>인터넷 연결을 확인한 뒤 새로고침해 주세요.<br>' +
+        '카드·표·플래너는 인터넷 없이도 정상 동작합니다.</p></div>';
     return;
+  }
+  if (!document.getElementById('chart-scatter')){   // 안내 문구가 차지하고 있던 자리를 되돌린다
+    wrap.innerHTML = '<canvas id="chart-scatter"></canvas>';
+    scatterChart = null;
   }
   const xk = document.getElementById('scatter-x').value, yk = document.getElementById('scatter-y').value;
   const ax = AXES.find(a => a[0] === xk), ay = AXES.find(a => a[0] === yk);
@@ -700,6 +764,39 @@ function renderScatter(rows){
       onClick: (e, els) => { if (els.length) openModal(scatterChart.data.datasets[els[0].datasetIndex].data[els[0].index].i); },
     },
   });
+}
+
+/* 과거 입결(2022~2026) 섹션 — 연결된 학과가 있을 때만 표시 */
+function pastHTML(o){
+  const q = encodeURIComponent(o.past ? `${o.past.univ} ${o.past.dept}` : `${o.대학} ${o.모집단위}`);
+  if (!o.past){
+    return `<div class="modal-section"><h3>📉 과거 입결 (2022~2026)</h3>
+      <div style="font-size:12.5px;color:var(--muted);line-height:1.7">
+        수시입결검색기에서 이 모집단위와 이름이 맞는 학과를 찾지 못했습니다.
+        학과가 신설·통합되었거나 표기가 달라진 경우입니다.
+        <a href="index.html#q=${q}" style="color:var(--pri);font-weight:700">입결검색기에서 직접 찾아보기 →</a>
+      </div></div>`;
+  }
+  const gs = o.past.grades, yrs = o.past.years;
+  const shown = gs.filter(v => v !== null);
+  const head = yrs.map(y => `<th class="num">${String(y).slice(2)}</th>`).join('');
+  const body = gs.map(v => `<td class="num ${gcls(v)}"><b>${v === null ? '–' : f1(v)}</b></td>`).join('');
+  const first = shown[0], last = shown[shown.length - 1];
+  const move = shown.length >= 2
+    ? (Math.abs(last - first) < 0.05 ? '거의 변화 없음'
+       : last < first ? `${f1(first)} → ${f1(last)} 로 <b style="color:#dc2626">합격선 강화</b>`
+                      : `${f1(first)} → ${f1(last)} 로 <b style="color:#16a34a">합격선 완화</b>`)
+    : '연도가 1개뿐이라 흐름을 보기 어렵습니다';
+  return `<div class="modal-section">
+    <h3>📉 과거 입결 (2022~2026) · 등급 70%컷</h3>
+    <table class="modal-table"><thead><tr><th>연도</th>${head}</tr></thead>
+      <tbody><tr><td>등급 70%컷</td>${body}</tr></tbody></table>
+    <div style="font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:7px">
+      수시입결검색기의 <b>${esc(o.past.univ)} ${esc(o.past.dept)}</b> 자료를 이름으로 이어 붙인 것입니다.
+      <b>전형을 구분하지 않고 합친 연도별 중앙값</b>이라, 위 3개년 표의 전형별 70%컷과 바로 비교할 수는 없습니다.
+      ${shown.length ? `공개된 ${shown.length}개년 흐름은 ${move}.` : ''}
+      <br><a href="index.html#q=${q}" style="color:var(--pri);font-weight:700">전형별 5년 추이 자세히 보기 →</a>
+    </div></div>`;
 }
 
 /* ===================== 상세 모달 ===================== */
@@ -761,6 +858,7 @@ function openModal(i){
         ${o.특이표기 ? `<br><b style="color:var(--pri-dark)">원본 표기: ${esc(o.특이표기)}</b> — 이 때문에 이전 연도 입시결과가 비어 있습니다.` : ''}
       </div>
     </div>
+    ${pastHTML(o)}
     <div class="modal-section">
       <h3>👥 모집인원 4개년</h3>
       <table class="modal-table"><thead><tr><th>구분</th><th class="num">2027</th><th class="num">2026</th><th class="num">2025</th><th class="num">2024</th></tr></thead>

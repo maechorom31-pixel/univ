@@ -15,26 +15,34 @@ import pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TPL = ROOT / "src" / "planner.tpl.html"
 DATA = ROOT / "data" / "mojip2027.json"
+XREF = ROOT / "data" / "xref.json"
 OUT = ROOT / "planner.html"
 
-PLACEHOLDER = "__DATA__"
+
+def embed(path):
+    """JSON 파일을 읽어 <script> 블록에 넣을 수 있게 만든다."""
+    raw = path.read_text(encoding="utf-8")
+    payload = json.loads(raw)                 # 유효성 확인
+    # </script> 로 조기 종료되지 않도록 </ 시퀀스만 이스케이프 (JSON 문자열에서 \/ 는 /)
+    return raw.replace("</", "<\\/"), payload
 
 
 def main():
     tpl = TPL.read_text(encoding="utf-8")
-    if PLACEHOLDER not in tpl:
-        raise SystemExit(f"템플릿에 {PLACEHOLDER} 자리표시자가 없습니다: {TPL}")
+    for ph in ("__DATA__", "__XREF__"):
+        if ph not in tpl:
+            raise SystemExit(f"템플릿에 {ph} 자리표시자가 없습니다: {TPL}")
 
-    raw = DATA.read_text(encoding="utf-8")
-    payload = json.loads(raw)  # 유효성 확인
+    data_safe, data = embed(DATA)
+    xref_safe, xref = embed(XREF)
 
-    # <script> 블록 안에 안전하게 넣기 위해 </script> 시퀀스만 이스케이프
-    safe = raw.replace("</", "<\\/")
-
-    html = tpl.replace(PLACEHOLDER, safe)
+    html = tpl.replace("__DATA__", data_safe).replace("__XREF__", xref_safe)
     OUT.write_text(html, encoding="utf-8")
+    s = xref["stats"]
     print(f"built {OUT.name}: {len(html)/1024/1024:.2f}MB "
-          f"({payload['meta']['rows_clean']:,} rows, {len(payload['strings']):,} strings)")
+          f"({data['meta']['rows_clean']:,} rows, {len(data['strings']):,} strings)")
+    print(f"  과거 입결 연결: {s['mojip_rows_linked']:,}/{s['mojip_rows_total']:,}행 "
+          f"({s['mojip_rows_linked']/s['mojip_rows_total']*100:.1f}%)")
 
 
 if __name__ == "__main__":
