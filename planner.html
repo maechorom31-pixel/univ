@@ -135,8 +135,11 @@ body{font-family:'Pretendard','-apple-system','Noto Sans KR','맑은 고딕',san
 .g-1{color:#0d8a4f}.g-2{color:#16a34a}.g-3{color:#65a30d}.g-4{color:#eab308}
 .g-5{color:#f97316}.g-6{color:#ea580c}.g-7{color:#dc2626}.g-8{color:#991b1b}.g-9{color:#7c0a0a}
 table{width:100%;border-collapse:collapse;font-size:12px}
-th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line)}
-th{background:var(--bg);font-weight:700;color:var(--muted);text-transform:uppercase;font-size:10px;position:sticky;top:0;z-index:1;user-select:none;white-space:nowrap}
+/* 좁은 열에서 한글이 한 글자씩 세로로 쪼개지지 않도록 기본은 줄바꿈 금지.
+   길어도 되는 열(모집단위·전형)에만 .wrap 을 준다. */
+th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th.wrap,td.wrap{white-space:normal;word-break:keep-all}
+th{background:var(--bg);font-weight:700;color:var(--muted);text-transform:uppercase;font-size:10px;position:sticky;top:0;z-index:1;user-select:none}
 th.sortable{cursor:pointer}
 th.sortable:hover{background:var(--pri-light)}
 th.sorted::after{content:"▼";margin-left:4px;font-size:9px}
@@ -144,7 +147,20 @@ th.sorted-asc::after{content:"▲";margin-left:4px;font-size:9px}
 tbody tr{cursor:pointer}
 tbody tr:hover{background:var(--hover)}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
+.rg-dim{color:var(--muted-soft);font-size:11px}
+.track-dim{color:var(--muted)}
+.main-tbl{min-width:960px}
+.main-tbl td.wrap{min-width:150px}
 .table-wrap{max-height:640px;overflow:auto}
+/* 가로로 더 볼 내용이 남았을 때만 가장자리에 그림자를 띄워 스크롤 가능함을 알린다.
+   (local 배경은 함께 스크롤되고 scroll 배경은 고정돼, 끝까지 밀면 그림자가 사라진다) */
+.table-wrap,.modal-scroll{
+  background:
+    linear-gradient(to right,#fff 40%,rgba(255,255,255,0)) left center/24px 100% no-repeat local,
+    linear-gradient(to left,#fff 40%,rgba(255,255,255,0)) right center/24px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%,rgba(30,27,46,.16),rgba(30,27,46,0)) left center/11px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%,rgba(30,27,46,.16),rgba(30,27,46,0)) right center/11px 100% no-repeat scroll;
+}
 .chart-wrap{position:relative;height:520px}
 .empty{text-align:center;padding:70px 20px;color:var(--muted)}
 .empty .icon{font-size:42px;margin-bottom:14px}
@@ -169,7 +185,12 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .modal-section{margin-bottom:22px}
 .modal-section h3{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;font-weight:700}
 .modal-table{font-size:12px;width:100%}
-.modal-table th,.modal-table td{padding:8px 10px;border-bottom:1px solid var(--line-soft)}
+.modal-table th,.modal-table td{padding:8px 10px;border-bottom:1px solid var(--line-soft);white-space:nowrap}
+.modal-table th{background:var(--bg);position:static}
+/* 열이 서너 개뿐인 표는 폭을 꽉 채우면 숫자 사이가 너무 벌어진다 */
+.tbl-compact{width:auto;min-width:min(100%,460px)}
+.tbl-compact th,.tbl-compact td{padding:8px 20px 8px 0}
+.modal-scroll{overflow-x:auto}
 .kv{display:grid;grid-template-columns:110px 1fr;gap:6px 12px;font-size:13px;line-height:1.6}
 .kv dt{color:var(--muted);font-weight:700;font-size:12px}
 .kv dd{color:var(--text);word-break:keep-all}
@@ -190,12 +211,22 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .conflict-box ul{margin:6px 0 0 18px}
 .conflict-box li{margin-bottom:4px}
 .timeline{display:grid;gap:10px;margin-bottom:18px}
-.tl-group{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
-.tl-group h4{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
-.tl-item{display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px dashed var(--line-soft);font-size:13px}
+.tl-group{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff}
+.tl-group h4{font-size:11.5px;color:var(--muted);font-weight:800;letter-spacing:.4px;margin-bottom:6px;
+  display:flex;align-items:center;gap:6px}
+.tl-n{display:inline-block;min-width:18px;padding:0 6px;background:var(--bg);color:var(--muted);
+  border-radius:9px;font-size:10.5px;line-height:17px;text-align:center;font-weight:800}
+.tl-none{background:#fbfbfd}
+.tl-item{display:flex;gap:12px;align-items:baseline;padding:7px 0;border-top:1px dashed var(--line-soft);font-size:13px}
 .tl-item:first-of-type{border-top:0}
-.tl-date{flex:0 0 130px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--pri-dark)}
+.tl-date{flex:0 0 116px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--pri-dark);white-space:nowrap}
 .tl-date.clash{color:var(--red)}
+.tl-date.warn{color:#b45309}
+.tl-kind{display:inline-block;font-size:10px;font-weight:800;padding:1px 6px;border-radius:4px;margin-right:5px;
+  vertical-align:1px}
+.tl-면접{background:#ffedd5;color:#9a3412}
+.tl-논술{background:#fce7f3;color:#9d174d}
+.tl-track{color:var(--muted);font-size:12px}
 .tl-what{flex:1;min-width:0}
 .plan-empty{text-align:center;padding:60px 20px;color:var(--muted)}
 .del-btn{border:none;background:transparent;color:var(--muted-soft);cursor:pointer;font-size:15px;padding:2px 6px}
@@ -211,6 +242,23 @@ footer.foot-note{margin-top:20px;padding:16px 4px;font-size:11.5px;color:var(--m
   .card{break-inside:avoid;box-shadow:none;border:1px solid #ccc}
   .header-bar,.results{box-shadow:none;border:1px solid #ccc}
 }
+/* 좁은 화면에서 담은 전형 요약은 표 대신 카드로 — 가로 스크롤로는 읽기 어렵다 */
+@media(max-width:760px){
+  .plan-tbl{min-width:0}
+  .plan-tbl thead{display:none}
+  .plan-tbl,.plan-tbl tbody,.plan-tbl tr,.plan-tbl td{display:block;width:auto}
+  .plan-tbl tr{position:relative;border:1px solid var(--line);border-radius:11px;
+    padding:11px 40px 11px 13px;margin-bottom:9px;background:#fff}
+  .plan-tbl td{border:0;padding:3px 0;white-space:normal;text-align:left;font-size:13px}
+  .plan-tbl td[data-l]::before{content:attr(data-l);display:inline-block;min-width:66px;
+    color:var(--muted);font-size:11px;font-weight:700;margin-right:6px}
+  .plan-tbl td[data-l="대학"]{font-size:15px;padding-bottom:1px}
+  .plan-tbl td[data-l="대학"]::before,.plan-tbl td[data-l="모집단위"]::before,
+  .plan-tbl td[data-l="전형"]::before{display:none}
+  .plan-tbl td[data-l="모집단위"]{font-weight:700;padding-bottom:6px}
+  .plan-tbl .del-cell{position:absolute;top:8px;right:8px;padding:0}
+  .plan-tbl .del-btn{font-size:17px}
+}
 @media(max-width:900px){
   .app{grid-template-columns:1fr}
   .sidebar{position:fixed;top:0;left:0;height:100vh;width:84%;max-width:320px;z-index:900;
@@ -218,7 +266,8 @@ footer.foot-note{margin-top:20px;padding:16px 4px;font-size:11.5px;color:var(--m
   .app.nav-open .sidebar{transform:none}
   .app.nav-open .nav-backdrop{display:block}
   .nav-toggle{display:block}
-  .main{padding:16px 14px}
+  /* 떠 있는 ☰ 필터 버튼이 마지막 내용을 가리지 않도록 아래를 비워 둔다 */
+  .main{padding:16px 14px 84px}
   .header-bar{padding:16px}
   .title{font-size:18px}
   .stats{grid-template-columns:repeat(2,1fr)}
@@ -242,7 +291,8 @@ footer.foot-note{margin-top:20px;padding:16px 4px;font-size:11.5px;color:var(--m
   .modal-header .dept-name{font-size:18px}
   .modal-body{padding:14px 16px 24px}
   .kv{grid-template-columns:88px 1fr}
-  .tl-date{flex:0 0 96px}
+  .tl-item{gap:9px;font-size:12.5px}
+  .tl-date{flex:0 0 104px}
   .tab-long{display:none}
   .plan-head{gap:8px}
 }
@@ -325,8 +375,8 @@ footer.foot-note{margin-top:20px;padding:16px 4px;font-size:11.5px;color:var(--m
         <button class="more-btn" id="more-btn" style="display:none">더 보기</button>
       </div>
       <div class="view" id="view-table">
-        <div class="table-wrap"><table><thead><tr>
-          <th>지역</th><th>대학</th><th>모집단위</th><th>전형</th>
+        <div class="table-wrap"><table class="main-tbl"><thead><tr>
+          <th>대학</th><th class="wrap">모집단위</th><th class="wrap">전형</th>
           <th class="sortable num" data-sort="rec">2027모집</th>
           <th class="sortable num" data-sort="delta">전년比</th>
           <th class="sortable num" data-sort="comp">명목</th>
@@ -425,6 +475,19 @@ function parseDates(str){
   return [...new Set(ms)];
 }
 const fmtDate = md => `${Math.floor(md/100)}.${String(md%100).padStart(2,'0')}`;
+/* 기간 공지(11.25~11.27)는 낱개 날짜로 풀지 않고 기간 그대로 짧게 적는다.
+   타임라인과 요약표가 같은 표기를 쓰도록 한 곳에서 만든다. */
+function compactDays(days, raw){
+  if (!days.length) return null;
+  const u = [...new Set(days)].sort((a,b) => a-b);
+  return (raw && raw.indexOf('~') >= 0 && u.length > 1)
+    ? `${fmtDate(u[0])}~${fmtDate(u[u.length-1])}`
+    : u.map(fmtDate).join(', ');
+}
+function examWhen(o){
+  const parts = [compactDays(o.days.non, o.논술일정), compactDays(o.days.int, o.면접일정)].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+}
 
 /* ===== 과거 입결(index.html, 2022~2026) 연결표 =====
    scripts/build_xref.py 의 정규화 규칙을 그대로 옮긴 것. 한쪽만 고치면 연결이 끊기므로
@@ -627,7 +690,7 @@ function deltaHTML(d){
   if (d === null) return '<span style="color:var(--muted-soft)">–</span>';
   if (d > 0) return `<span class="delta-up">▲${d}</span>`;
   if (d < 0) return `<span class="delta-dn">▼${-d}</span>`;
-  return '<span style="color:var(--muted-soft)">0</span>';
+  return '<span style="color:var(--muted-soft)">±0</span>';   // 전년과 같음 (자료 없음 '–' 과 구분)
 }
 /* 70%컷 3개년 인라인 스파크라인 (등급: 위쪽이 좋은 등급) */
 function spark(o){
@@ -705,9 +768,9 @@ function renderCards(rows){
 function renderTable(rows){
   const body = document.getElementById('table-body');
   body.innerHTML = rows.slice(0, 500).map(o => `<tr data-i="${o.i}">
-    <td>${esc(o.지역)}</td><td>${esc(o.대학)}</td>
-    <td>${esc(o.모집단위)}</td>
-    <td><span class="tag tag-${o.cat}">${o.cat}</span> ${esc(o.전형)}</td>
+    <td><b>${esc(o.대학)}</b> <span class="rg-dim">${esc(o.지역)}</span></td>
+    <td class="wrap">${esc(o.모집단위)}</td>
+    <td class="wrap"><span class="tag tag-${o.cat}">${o.cat}</span> <span class="track-dim">${esc(o.전형)}</span></td>
     <td class="num">${o.rec27 === null ? '–' : o.rec27}</td>
     <td class="num">${deltaHTML(o.delta)}</td>
     <td class="num">${f1(o.comp)}</td>
@@ -719,7 +782,7 @@ function renderTable(rows){
   </tr>`).join('');
   if (rows.length > 500){
     body.insertAdjacentHTML('beforeend',
-      `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:14px">상위 500건만 표시됩니다 (전체 ${rows.length.toLocaleString()}건) · 필터를 좁혀 주세요</td></tr>`);
+      `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:14px;white-space:normal">상위 500건만 표시됩니다 (전체 ${rows.length.toLocaleString()}건) · 필터를 좁혀 주세요</td></tr>`);
   }
 }
 
@@ -806,7 +869,7 @@ function pastHTML(o){
     : '연도가 1개뿐이라 흐름을 보기 어렵습니다';
   return `<div class="modal-section">
     <h3>📉 과거 입결 (2022~2026) · 등급 70%컷</h3>
-    <table class="modal-table"><thead><tr><th>연도</th>${head}</tr></thead>
+    <table class="modal-table tbl-compact"><thead><tr><th>연도</th>${head}</tr></thead>
       <tbody><tr><td>등급 70%컷</td>${body}</tr></tbody></table>
     <div style="font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:7px">
       수시입결검색기의 <b>${esc(o.past.univ)} ${esc(o.past.dept)}</b> 자료를 이름으로 이어 붙인 것입니다.
@@ -863,10 +926,10 @@ function openModal(i){
     <div class="modal-section"><div class="meta-row">${badges(o)}</div></div>
     <div class="modal-section">
       <h3>📊 3개년 경쟁률 · 입시결과</h3>
-      <table class="modal-table"><thead><tr>
+      <div class="modal-scroll"><table class="modal-table"><thead><tr>
         <th>연도</th><th class="num">모집</th><th class="num">명목경쟁</th><th class="num">실질경쟁</th>
         <th class="num">충원율</th><th class="num">추합</th><th class="num">입결1</th><th>기준</th><th class="num">50%컷</th>
-      </tr></thead><tbody>${rowsY}</tbody></table>
+      </tr></thead><tbody>${rowsY}</tbody></table></div>
       <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:7px">
         실질경쟁률 = 명목경쟁률 × 모집인원 ÷ (모집인원 + 추가합격인원) ·
         충원율 = 추가합격 ÷ 모집인원 · <sup>*</sup>는 등급이 아닌 환산점수 기준값
@@ -878,7 +941,7 @@ function openModal(i){
     ${pastHTML(o)}
     <div class="modal-section">
       <h3>👥 모집인원 4개년</h3>
-      <table class="modal-table"><thead><tr><th>구분</th><th class="num">2027</th><th class="num">2026</th><th class="num">2025</th><th class="num">2024</th></tr></thead>
+      <table class="modal-table tbl-compact"><thead><tr><th>구분</th><th class="num">2027</th><th class="num">2026</th><th class="num">2025</th><th class="num">2024</th></tr></thead>
       <tbody><tr><td>모집인원</td>${recRow}</tr></tbody></table>
     </div>
     <div class="modal-section"><h3>🧩 전형방법</h3>
@@ -996,39 +1059,53 @@ function renderPlan(){
   }
   const clashDays = new Set(sure.map(c => c.day));
   const warnDays = new Set(maybe.map(c => c.day));
-  const groups = [['수능전 실시', o => o.고사시기 === '수능전'],
-                  ['수능후 실시', o => o.고사시기 === '수능후'],
-                  ['시기 미정 · 고사 없음', o => o.고사시기 !== '수능전' && o.고사시기 !== '수능후']];
+  /* 타임라인은 '전형' 이 아니라 '고사' 하나하나를 한 줄로 놓고 날짜순으로 세운다.
+     한 전형이 논술과 면접을 모두 치면 두 줄이 된다. */
+  const events = [];
+  list.forEach(o => {
+    [['논술', o.days.non, o.논술일정], ['면접', o.days.int, o.면접일정]].forEach(([kind, days, raw]) => {
+      if (!days.length) return;
+      const uniq = [...new Set(days)].sort((a, b) => a - b);
+      events.push({
+        o, kind, days: uniq, first: uniq[0],
+        when: compactDays(uniq, raw),
+        clash: uniq.some(d => clashDays.has(d)),
+        warn:  uniq.some(d => warnDays.has(d)),
+      });
+    });
+  });
+  const noExam = list.filter(o => !o.days.int.length && !o.days.non.length);
+  const groups = [
+    ['수능 전 실시', e => e.o.고사시기 === '수능전'],
+    ['수능 후 실시', e => e.o.고사시기 === '수능후'],
+    ['시기 미정',    e => e.o.고사시기 !== '수능전' && e.o.고사시기 !== '수능후'],
+  ];
+  const evRow = e => `<div class="tl-item">
+      <div class="tl-date${e.clash ? ' clash' : e.warn ? ' warn' : ''}">${e.clash ? '⚠ ' : e.warn ? '△ ' : ''}${e.when}</div>
+      <div class="tl-what"><span class="tl-kind tl-${e.kind}">${e.kind}</span>
+        <b>${esc(e.o.대학)}</b> ${esc(e.o.모집단위)}
+        <span class="tl-track">${esc(e.o.전형)}</span></div></div>`;
   const tlHTML = groups.map(([title, fn]) => {
-    const items = list.filter(fn);
-    if (!items.length) return '';
-    const rows = items.map(o => {
-      const ds = [...o.days.non.map(d => ['논술', d]), ...o.days.int.map(d => ['면접', d])];
-      const label = ds.length
-        ? [...new Set(ds.map(([k,d]) => `${fmtDate(d)} ${k}`))].join(', ')
-        : '고사 없음';
-      const clash = ds.some(([,d]) => clashDays.has(d));
-      const warn = !clash && ds.some(([,d]) => warnDays.has(d));
-      return `<div class="tl-item"><div class="tl-date${clash ? ' clash' : ''}"${warn ? ' style="color:#b45309"' : ''}>${clash ? '⚠ ' : warn ? '△ ' : ''}${label}</div>
-        <div class="tl-what"><b>${esc(o.대학)}</b> ${esc(o.모집단위)} <span style="color:var(--muted);font-size:12px">${esc(o.전형)}</span></div></div>`;
-    }).join('');
-    return `<div class="tl-group"><h4>${title} (${items.length})</h4>${rows}</div>`;
-  }).join('');
-  const tbl = `<table><thead><tr>
-      <th>대학</th><th>모집단위</th><th>전형</th><th class="num">2027모집</th>
+    const evs = events.filter(fn).sort((a, b) => a.first - b.first || a.o.대학.localeCompare(b.o.대학, 'ko'));
+    if (!evs.length) return '';
+    return `<div class="tl-group"><h4>${title} <span class="tl-n">${evs.length}</span></h4>${evs.map(evRow).join('')}</div>`;
+  }).join('') + (noExam.length ? `<div class="tl-group tl-none"><h4>대학별고사 없음 <span class="tl-n">${noExam.length}</span></h4>${
+    noExam.map(o => `<div class="tl-item"><div class="tl-date">–</div>
+      <div class="tl-what"><b>${esc(o.대학)}</b> ${esc(o.모집단위)}
+        <span class="tl-track">${esc(o.전형)}</span></div></div>`).join('')}</div>` : '');
+  const tbl = `<table class="plan-tbl"><thead><tr>
+      <th>대학</th><th class="wrap">모집단위</th><th class="wrap">전형</th><th class="num">2027모집</th>
       <th class="num">실질경쟁</th><th class="num">70%컷</th><th>최저</th><th>고사일</th><th></th>
-    </tr></thead><tbody>${list.map(o => {
-      const ds = [...o.days.non, ...o.days.int];
-      return `<tr data-i="${o.i}">
-        <td><b>${esc(o.대학)}</b></td><td>${esc(o.모집단위)}</td>
-        <td><span class="tag tag-${o.cat}">${o.cat}</span> ${esc(o.전형)}</td>
-        <td class="num">${o.rec27 === null ? '–' : o.rec27}</td>
-        <td class="num"><b class="${realCls(o.real)}">${f2(o.real)}</b></td>
-        <td class="num ${gcls(o.g70)}"><b>${o.g70 === null ? '–' : f1(o.g70)}</b></td>
-        <td>${o.noMin ? '<span style="color:var(--muted-soft)">없음</span>' : '있음'}</td>
-        <td style="white-space:nowrap">${ds.length ? [...new Set(ds)].sort((a,b)=>a-b).map(fmtDate).join(', ') : '–'}</td>
-        <td><button class="del-btn" data-del="${o.i}" title="빼기">✕</button></td></tr>`;
-    }).join('')}</tbody></table>`;
+    </tr></thead><tbody>${list.map(o => `<tr data-i="${o.i}">
+        <td data-l="대학"><b>${esc(o.대학)}</b> <span class="rg-dim">${esc(o.지역)}</span></td>
+        <td class="wrap" data-l="모집단위">${esc(o.모집단위)}</td>
+        <td class="wrap" data-l="전형"><span class="tag tag-${o.cat}">${o.cat}</span> <span class="track-dim">${esc(o.전형)}</span></td>
+        <td class="num" data-l="2027 모집">${o.rec27 === null ? '–' : o.rec27 + '명'}</td>
+        <td class="num" data-l="실질경쟁"><b class="${realCls(o.real)}">${f2(o.real)}</b></td>
+        <td class="num" data-l="70%컷"><b class="${gcls(o.g70)}">${o.g70 === null ? '–' : f1(o.g70)}</b></td>
+        <td data-l="수능최저">${o.noMin ? '<span style="color:var(--muted-soft)">없음</span>' : '있음'}</td>
+        <td data-l="고사일">${examWhen(o) || '–'}</td>
+        <td class="del-cell"><button class="del-btn" data-del="${o.i}" title="빼기">✕</button></td></tr>`).join('')}</tbody></table>`;
   const over = list.length > 6
     ? `<div class="conflict-box conflict-bad" style="margin-top:14px"><h4>⚠ 수시 지원 횟수 초과</h4>
         수시는 최대 6회까지 지원할 수 있습니다. 현재 <b>${list.length}개</b>를 담았으니 ${list.length - 6}개를 줄여야 합니다.
@@ -1053,7 +1130,9 @@ function update(){
     : '–';
   const nomComp = rows.map(o => o.comp).filter(v => v !== null).sort((a,b) => a-b);
   const nomMed = nomComp.length ? (nomComp.length % 2 ? nomComp[(nomComp.length-1)/2] : (nomComp[nomComp.length/2-1] + nomComp[nomComp.length/2]) / 2) : null;
-  document.getElementById('real-notice').innerHTML = reals.length
+  const notice = document.getElementById('real-notice');
+  notice.style.display = rows.length ? '' : 'none';   // 결과가 없을 땐 안내도 함께 감춘다
+  notice.innerHTML = reals.length
     ? `💡 현재 조건의 <b>명목경쟁률 중앙값 ${nomMed === null ? '–' : nomMed.toFixed(2)}:1</b> → 추가합격을 반영한
        <b>실질경쟁률 중앙값 ${document.getElementById('stat-real').textContent}:1</b>.
        추합 자료가 있는 ${reals.length.toLocaleString()}개 전형으로 계산했습니다.`
