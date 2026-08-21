@@ -10,3 +10,7 @@ peer_data*.js
 # 파이썬 캐시
 __pycache__/
 *.pyc
+
+# 상담 보드 — 시트 픽스처(학생 실명 포함)는 절대 커밋 금지
+board/fixture*.json
+board/*-local.*
