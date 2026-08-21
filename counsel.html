@@ -399,8 +399,8 @@ function checkOneSeg(seg,sc){
 function setConn(ok,msg){const c=document.getElementById('connChip');c.textContent=msg;c.className='chip '+(ok?'ok':'bad');}
 /* 입결 JSON은 같은 저장소의 ipgyeol.json. 상대경로를 먼저 쓰고(Pages·로컬 서버),
    file:// 로 열어 상대 fetch가 막히는 경우에만 raw 주소로 넘어간다. */
-const IP_URLS=['./ipgyeol.json',
-  'https://raw.githubusercontent.com/maechorom31-pixel/univ/claude/university-counseling-program-hkf8qg/ipgyeol.json'];
+const IP_URLS=['./data/ipgyeol.json',
+  'https://raw.githubusercontent.com/maechorom31-pixel/univ/claude/university-counseling-program-hkf8qg/data/ipgyeol.json'];
 async function fetchCsv(url){
   const res=await fetch(url+(url.includes('?')?'&':'?')+'_t='+Date.now(),{cache:'no-store'});
   if(!res.ok)throw new Error('CSV HTTP '+res.status);
