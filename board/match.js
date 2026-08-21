@@ -480,6 +480,101 @@ export function unlinked(apps, src) {
     .filter((x) => x.link.confidence === 'none');
 }
 
+/* ── 전형일정 (PDF 에서 뽑은 것) ─────────────────────────────────── */
+
+/**
+ * 전형일정표가 무엇을 채우는가.
+ *
+ * 모집요강의 면접일정은 확정이 13.3%뿐이고 9.6%는 기간으로만 적혀 있다.
+ * 기간만으로는 학생 둘의 면접이 겹치는지 알 수 없다. 전형일정표(수박먹고 대학간다)는
+ * **날짜별 고사표**를 따로 주는데, 거기서는 어느 대학이 며칠에 보는지가 한 줄로 나온다.
+ *
+ * 그래서 순서는 이렇다 — 날짜별 고사표 → 대학별 표의 자기 칸 → 모집요강.
+ * 앞엣것이 있으면 뒤엣것을 보지 않는다.
+ */
+export function indexSchedule(doc) {
+  const rows = new Map();        // univStem → [전형 행]
+  const exams = new Map();       // univStem → [{date, type, kind}]
+  const put = (map, name, value) => {
+    const k = univStem(String(name || '') + (String(name || '').endsWith('대') ? '' : '대'));
+    if (!k) return;
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(value);
+  };
+  for (const r of (doc && doc.rows) || []) put(rows, r.univ, r);
+  for (const e of (doc && doc.exams) || []) put(exams, e.univ, e);
+  return { rows, exams, year: (doc && doc.year) || null };
+}
+
+/** 두 전형 이름이 같은 것을 가리키는가. 표기가 제각각이라 느슨하게 본다. */
+function sameType(a, b) {
+  const x = String(a || '').replace(/[\s()·\-전형]/g, '');
+  const y = String(b || '').replace(/[\s()·\-전형]/g, '');
+  if (!x || !y) return false;
+  return x === y || x.includes(y) || y.includes(x);
+}
+
+/**
+ * 이 지원의 고사일을 일정표에서 찾는다.
+ *
+ * **전형 이름이 맞을 때만** 이 지원의 날짜로 친다(`loose: false`).
+ * 이름을 못 맞추면 같은 유형의 고사일을 `loose: true` 로 함께 돌려주되, 그건
+ * 「이 대학 종합전형은 이때 본다」는 참고일 뿐 이 전형의 날짜가 아니다.
+ *
+ * 느슨한 값을 이 지원의 날짜로 쓰면, 면접이 아예 없는 서류형 전형에 면접일이 생기고
+ * 그것 때문에 있지도 않은 겹침 경고가 뜬다. 이 도구에서 가장 나쁜 실패다.
+ *
+ * @return {?{from, to, fixed, type, kind, loose}}
+ */
+export function examDate(app, sched) {
+  if (!sched) return null;
+  const list = sched.exams.get(univStem(app.univ));
+  if (!list || !list.length) return null;
+
+  const cat = catOf(app.typeCat);
+  const want = app.typeSub || app.typeName || '';
+
+  const exact = list.filter((e) => sameType(e.type, want));
+  const pool = exact.length ? exact : (cat ? list.filter((e) => e.kind === cat) : []);
+  if (!pool.length) return null;
+
+  const days = [...new Set(pool.map((e) => e.date))].sort();
+  return {
+    from: days[0], to: days[days.length - 1],
+    fixed: days.length === 1,
+    type: pool[0].type || '', kind: pool[0].kind || '',
+    loose: !exact.length,
+  };
+}
+
+/** 일정표의 고사 종류(면접·논술)가 이 지원의 전형 유형과 맞는가. */
+export function examKindFits(app, kind) {
+  const cat = catOf(app.typeCat);
+  if (kind === '논술') return cat === '논술';
+  if (kind === '실기') return cat === '실기';
+  if (kind === '면접') return cat === '교과' || cat === '종합';
+  return false;
+}
+
+/** 원서 마감 · 1단계 발표 · 최종 발표. 없으면 null. */
+export function paperDates(app, sched) {
+  if (!sched) return null;
+  const list = sched.rows.get(univStem(app.univ));
+  if (!list || !list.length) return null;
+
+  const want = app.typeSub || app.typeName || '';
+  const cat = catOf(app.typeCat);
+  const hit = list.find((r) => sameType(r.type, want))
+    || (cat ? list.find((r) => r.kind === cat) : null);
+  if (!hit) return null;
+  return {
+    apply: hit.apply || null, applyClock: hit.applyClock || null,
+    stage1: hit.stage1 || null, final: hit.final || null,
+    notes: hit.notes || [], type: hit.type || '',
+    loose: !sameType(hit.type, want),
+  };
+}
+
 /* ── 색인 만들기 ──────────────────────────────────────────────────── */
 
 /**

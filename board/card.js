@@ -137,15 +137,46 @@ export function detailPanel(app, student, onClose) {
     if (!d) continue;
     const from = d.status === 'pending' ? '학생 입력 · 확인 대기'
       : d.status === 'confirmed' ? '선생님 확정'
-        : d.fixed ? '즐겨찾기' : '즐겨찾기 · 기간';
+        : d.status === 'sched' || d.status === 'sched-loose' ? (d.why || '전형일정표')
+          : d.fixed ? '즐겨찾기' : '즐겨찾기 · 기간';
     sched.push([kind, span(d), from]);
   }
   if (mo && mo.exam) {
     sched.push(['대학별 고사', mo.exam + (mo.examWhen ? ` ${MID} ${mo.examWhen}` : ''), '모집요강']);
   }
+
+  // 전형일정표가 원서 마감·발표일까지 준다. 모집요강에 없던 칸이 여기서 채워진다.
+  const paper = store.paperOf(app);
+  const when = (x) => (x ? span(x) : null);
+  if (paper) {
+    const tag = paper.loose ? `전형일정표 · ${paper.type} (전형 추정)` : '전형일정표';
+    sched.push(['원서 접수 마감',
+      paper.apply ? when(paper.apply) + (paper.applyClock ? ` ${paper.applyClock}` : '') : null, tag]);
+    if (paper.stage1) sched.push(['1단계 발표', when(paper.stage1), tag]);
+    if (paper.final) sched.push(['최종 발표', when(paper.final), tag]);
+  }
   sched.push(['등록 마감', null, '모집요강 확인']);
   sched.push(['미등록 충원 발표', null, '모집요강 확인']);
+
+  // 전형 이름을 못 맞춘 고사일은 **이 전형의 날짜가 아니다.** 참고로만 적는다.
+  // 여기 적힌 값은 겹침 검사에도 쓰이지 않는다.
+  const hint = store.examHint(app);
+  if (hint) {
+    sched.push([`(참고) ${hint.kind} 고사일`, span(hint),
+      '전형일정표 · 이 대학 같은 유형. 이 전형의 날짜가 아닙니다']);
+  }
   body.appendChild(rows('일정', sched));
+
+  // 일정표가 학과별로 나눠 적은 것은 원문 그대로 보여 준다. 어느 행에 속하는지
+  // 기계가 못 가리는 자리라, 사람이 읽고 판단하는 편이 낫다.
+  if (paper && paper.notes.length) {
+    const nb = el('div', 'detail-block');
+    nb.appendChild(el('h3', '', '전형일정표 원문'));
+    nb.appendChild(el('p', 'longtext', paper.notes.join('\n')));
+    nb.appendChild(el('p', 'hint',
+      '학과별로 날짜가 갈리는 경우가 있어 원문 그대로 둡니다. 모집요강과 함께 확인해 주세요.'));
+    body.appendChild(nb);
+  }
 
   /* 5. 수능최저 — 원문 그대로 둔다. 요약하면 조건이 하나씩 빠진다. */
   const minText = app.minReqText || (mo && mo.minReq) || '';

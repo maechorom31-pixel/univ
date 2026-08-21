@@ -12,7 +12,10 @@
  * 학생 목록을 받는 즉시 화면을 그리고 공개 자료는 뒤에서 받는다.
  */
 import * as api from './api.js';
-import { link as makeLink, summarize, indexIpgyeol, indexMojip, indexCollege } from './match.js';
+import {
+  link as makeLink, summarize, examDate, examKindFits, paperDates,
+  indexIpgyeol, indexMojip, indexCollege, indexSchedule,
+} from './match.js';
 
 const listeners = new Map();
 
@@ -32,6 +35,7 @@ export const state = {
 let ipgyeol = null;
 let mojip = null;
 let college = null;
+let sched = null;         // 전형일정표(PDF에서 뽑은 것)
 let offline = false;      // 보기용 자료로 열었는가. 그때는 서버를 부르지 않는다
 const linkCache = new Map();
 
@@ -103,6 +107,7 @@ const SOURCES = [
   ['ipgyeol', 'data/ipgyeol.json', indexIpgyeol, '입결'],
   ['mojip', 'data/mojip2027.json', indexMojip, '모집요강'],
   ['college', '../College/data/departments.json', indexCollege, '전문대 자료'],
+  ['sched', 'data/schedule2027.json', indexSchedule, '전형일정표'],
 ];
 
 export async function enrich() {
@@ -118,7 +123,7 @@ export async function enrich() {
       return null;
     }
   }));
-  [ipgyeol, mojip, college] = got;
+  [ipgyeol, mojip, college, sched] = got;
 
   state.enriched = true;
   linkCache.clear();
@@ -207,6 +212,18 @@ export async function place(id, slot, rank) {
  * 시트에 들어온 값(학생이 넣었거나 선생님이 확정한 것)이 즐겨찾기 원본보다 우선한다.
  * @return {?{from,to,fixed,status}} status: source | pending | confirmed
  */
+/**
+ * 이 지원의 그 날짜. 여러 자료가 같은 날을 두고 다른 말을 해서 순서를 정해 둔다.
+ *
+ *   1. 선생님이 확정한 것          시트
+ *   2. 학생이 넣고 확인 기다리는 것   시트
+ *   3. 즐겨찾기가 준 확정일         export
+ *   4. 전형일정표의 날짜별 고사표     schedule2027.json  ← 기간만 있던 자리를 메운다
+ *   5. 즐겨찾기가 준 기간           export
+ *
+ * 사람이 넣은 것이 언제나 먼저다. 3이 4보다 앞인 이유 — 즐겨찾기가 확정일을 주었다면
+ * 그건 그 학생의 지원에 붙은 값이고, 일정표는 대학 전체를 두고 한 말이라서다.
+ */
 export function dateOf(app, kind) {
   const saved = state.dates.get(`${app.id}|${kind}`);
   if (saved && saved.from) {
@@ -216,8 +233,36 @@ export function dateOf(app, kind) {
       status: saved.status,
     };
   }
-  const d = app.dates && app.dates[kind];
+  const d = (app.dates && app.dates[kind]) || null;
+  if (d && d.fixed) return { from: d.from, to: d.to, fixed: true, status: 'source' };
+
+  // 즐겨찾기가 기간만 주었거나 아예 없을 때 일정표를 본다.
+  // 고사 종류가 이 전형의 유형과 맞고, **전형 이름까지 맞을 때만** 쓴다.
+  // 느슨한 값은 이 지원의 날짜가 아니다 — 상세에서 참고로만 보여 준다.
+  if (examKindFits(app, kind)) {
+    const found = examDate(app, sched);
+    if (found && !found.loose) {
+      return {
+        from: found.from, to: found.to, fixed: found.fixed, status: 'sched',
+        why: `전형일정표 · ${found.type || found.kind}`,
+      };
+    }
+  }
   return d ? { from: d.from, to: d.to, fixed: d.fixed, status: 'source' } : null;
+}
+
+/** 원서 마감 · 1단계 발표 · 최종 발표. 전형일정표에서 온다. */
+export function paperOf(app) {
+  return paperDates(app, sched);
+}
+
+/**
+ * 전형 이름을 못 맞춰 이 지원의 날짜로는 쓰지 않은 고사일.
+ * 「이 대학 종합전형은 이때 본다」는 참고다. 상세에서만 보여 준다.
+ */
+export function examHint(app) {
+  const found = examDate(app, sched);
+  return found && found.loose ? found : null;
 }
 
 /** 일정 한 종목을 넣는다(선생님). 화면을 먼저 바꾸고 서버에 보낸다. */
