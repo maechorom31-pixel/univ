@@ -466,6 +466,56 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
   .overlay { padding: var(--s6) var(--s4); }
 }
 
+/* ── 내보내기 (진학 대장 · 보고서) ────────────────────────────── */
+
+/* 한 장(sheet)은 화면에서는 그냥 패널이고, 인쇄에서는 한 쪽이 된다. */
+/* 격자 칸은 기본이 min-width:auto 라, 안의 넓은 표가 칸을 밀어 화면 밖으로 나간다.
+   표는 제 안에서(.tw) 옆으로 넘겨야지 본문을 밀면 안 된다. */
+.sheets { display: grid; gap: var(--s4); }
+.sheets > * { min-width: 0; }
+.sheet {
+  min-width: 0;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: var(--s4);
+}
+.sheet > * { min-width: 0; }
+.sheet-head { margin-bottom: var(--s3); }
+.sheet-head .name { font-size: var(--t-md); font-weight: 700; }
+.sheet-head .meta { font-size: var(--t-xs); color: var(--muted); margin-top: 2px; }
+.sheet-sub {
+  font-size: var(--t-xs); font-weight: 600; color: var(--muted);
+  margin: var(--s4) 0 var(--s2);
+}
+.sheet-notes { list-style: none; margin: 0; padding: 0; font-size: var(--t-xs); }
+.sheet-notes li {
+  display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: var(--s2);
+  padding: var(--s1) 0; line-height: 1.6; word-break: keep-all;
+}
+.sheet-notes .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* 보고서의 대학 한 덩이 */
+.uni-block { margin-top: var(--s4); }
+.uni-block:first-of-type { margin-top: var(--s2); }
+.uni-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s2); align-items: baseline;
+  padding-bottom: var(--s1); border-bottom: 1px solid var(--line-strong);
+  margin-bottom: var(--s2);
+}
+.uni-head .nm { font-weight: 600; }
+.uni-head .fig { font-size: var(--t-xs); color: var(--muted); }
+.uni-block .hint { margin-top: var(--s2); }
+
+/* 대장 표 — 열 너비를 colgroup 이 정하므로 fixed 로 둔다.
+   한글은 어절 단위로 접어야 이름이 가운데서 끊기지 않는다. */
+table.ledger { table-layout: fixed; }
+table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-word; }
+@media (max-width: 720px) {
+  /* 좁은 화면에서는 너비를 강제하지 않는다. 표가 제 안에서 옆으로 넘어간다. */
+  table.ledger { table-layout: auto; min-width: 44rem; }
+  table.ledger col { width: auto !important; }
+}
+
 /* ── 설정 ─────────────────────────────────────────────────────── */
 
 .setup { display: grid; gap: var(--s3); max-width: 640px; }
@@ -495,6 +545,27 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
   .card { border: 1px solid #999; break-inside: avoid; page-break-inside: avoid; }
   .card .dept, .roster .hak, .pill, .who .meta { color: #000; }
   .roster { max-height: none; overflow: visible; }
+
+  /* 내보내기 — 한 장이 한 쪽. 화면의 껍데기는 빼고 표만 남긴다. */
+  .sheets { display: block; }
+  .sheet {
+    border: 0; padding: 0; margin: 0;
+    break-after: page; page-break-after: always;
+    break-inside: auto; page-break-inside: auto;
+  }
+  .sheet:last-child { break-after: auto; page-break-after: auto; }
+  .sheet-head { border-bottom: 1px solid #333; padding-bottom: 6pt; }
+  .sheet-head .meta, .sheet-notes .when, .uni-head .fig { color: #000; }
+  .sheet .tw { overflow: visible; }
+  .sheet table { font-size: 8.5pt; }
+  .sheet th, .sheet td { padding: 3pt 4pt; line-height: 1.4; }
+  table.ledger { table-layout: fixed; width: 100%; min-width: 0; }
+  /* 왼쪽 명단은 화면을 옮겨 다니는 도구지 종이에 실을 것이 아니다 */
+  .layout > aside { display: none !important; }
+  .sheet thead { display: table-header-group; }   /* 쪽이 넘어가도 머리가 따라간다 */
+  .sheet tr { break-inside: avoid; page-break-inside: avoid; }
+  .uni-block { break-inside: avoid; page-break-inside: avoid; }
+  .views, .panel-head .count, .section-label { display: none !important; }
 
   /* 상세를 열어 둔 채 인쇄하면 그 전형 한 장만 나온다 — 상담 기록으로 그대로 쓴다 */
   body[data-detail] .wrap { display: none; }

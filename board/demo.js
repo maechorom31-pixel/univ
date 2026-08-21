@@ -34,13 +34,24 @@ const mk = (hak, univ, dept, typeSub, opts = {}) => ({
   dates: opts.date
     ? { [opts.dateKind || '면접']: { from: opts.date, to: opts.dateTo || opts.date, fixed: !opts.dateTo } }
     : {},
-  result: { stage1: null, final: null, reason: null, waitNo: null, enrolled: null },
+  result: opts.result || { stage1: null, final: null, reason: null, waitNo: null, enrolled: null },
   unknown: {},
 });
 
+/** 결과 칸을 짧게 적기 위한 도우미 — 즐겨찾기가 주는 표기를 그대로 쓴다. */
+const won = (extra) => ({
+  stage1: '합격', final: extra ? '충원합격' : '최초합격',
+  reason: null, waitNo: extra ? String(extra) : null, enrolled: null,
+});
+const lost = (why) => ({
+  stage1: why === '1단계' ? '불합격' : '합격', final: '불합격',
+  reason: why === '최저' ? '수능최저 미충족' : null,
+  waitNo: null, enrolled: null,
+});
+
 const A = [
-  mk('3201', '전남대학교(광주)', '영어영문학과', '교과(일반)', { quota: 12, grade: 3.2, conv: 2.94, min: true }),
-  mk('3201', '한국외국어대학교(서울)', '자유전공학부', '종합(서류형)', { quota: 21, conv: 3.31, cat: '학생부위주(종합)' }),
+  mk('3201', '전남대학교(광주)', '영어영문학과', '교과(일반)', { quota: 12, grade: 3.2, conv: 2.94, min: true, result: won() }),
+  mk('3201', '한국외국어대학교(서울)', '자유전공학부', '종합(서류형)', { quota: 21, conv: 3.31, cat: '학생부위주(종합)', result: lost('1단계') }),
   mk('3201', '숭실대학교', '영어영문학과', '종합(SSU미래인재)', { quota: 21, conv: 3.08, cat: '학생부위주(종합)', stage: '단계별전형', date: inDays(12) }),
   mk('3201', '건국대학교(서울)', '영어영문학과', '종합(KU자기추천)', { quota: 30, conv: 3.17, cat: '학생부위주(종합)', stage: '단계별전형', date: inDays(14) }),
   mk('3201', '가톨릭대학교(성심)', '영어영문학과', '종합(잠재능력)', { quota: 10, conv: 3.24, cat: '학생부위주(종합)', date: inDays(13) }),
@@ -51,9 +62,9 @@ const A = [
   mk('3201', '조선대학교', '영어교육과', '교과(일반)',
     { quota: 14, conv: 3.02, date: inDays(13) }),
 
-  mk('3204', '동신대학교', '간호학과', '교과(일반)', { quota: 122, grade: 5.6, track: '자연' }),
-  mk('3204', '원광대학교', '치위생학과', '교과(지역인재)', { quota: 40, grade: 5.6, track: '자연' }),
-  mk('3204', '조선대학교', '경영학부', '종합(서류)', { quota: 50, grade: 5.6, cat: '학생부위주(종합)', date: inDays(6) }),
+  mk('3204', '동신대학교', '간호학과', '교과(일반)', { quota: 122, grade: 5.6, track: '자연', result: won(7) }),
+  mk('3204', '원광대학교', '치위생학과', '교과(지역인재)', { quota: 40, grade: 5.6, track: '자연', result: lost('최저') }),
+  mk('3204', '조선대학교', '경영학부', '종합(서류)', { quota: 50, grade: 5.6, cat: '학생부위주(종합)', date: inDays(6), result: won() }),
   mk('3204', '국립목포대학교(목포)', '자율전공학부', '교과(일반)', { quota: 39, grade: 5.6 }),
   mk('3204', '경상국립대학교(진주)', '원예과학부', '교과(일반)', { quota: 40, grade: 5.6, track: '자연' }),
   // 올해 새로 묶인 자유전공 — 제 입결이 없어 「묶이기 전 학과」 선이 뜨는 자리
@@ -65,10 +76,10 @@ const A = [
   mk('3204', '육군사관학교', '문과', '일반전형', { quota: 30, univType: '특수대' }),
 
   mk('3212', '서울대학교', '경제학부', '종합(지역균형)', { quota: 6, grade: 1.4, cat: '학생부위주(종합)', min: true }),
-  mk('3212', '고려대학교(서울)', '경제학과', '교과(학교추천)', { quota: 21, grade: 1.4, min: true }),
-  mk('3212', '연세대학교(서울)', '경제학부', '교과(추천형)', { quota: 24, grade: 1.4, min: true }),
+  mk('3212', '고려대학교(서울)', '경제학과', '교과(학교추천)', { quota: 21, grade: 1.4, min: true, result: lost('최저') }),
+  mk('3212', '연세대학교(서울)', '경제학부', '교과(추천형)', { quota: 24, grade: 1.4, min: true, result: won(3) }),
   mk('3212', '성균관대학교', '글로벌경영학과', '교과(학교장추천)', { quota: 10, grade: 1.4, min: true }),
-  mk('3212', '한양대학교(ERICA)', '경제학부', '교과(지역균형)', { quota: 12, grade: 1.4 }),
+  mk('3212', '한양대학교(ERICA)', '경제학부', '교과(지역균형)', { quota: 12, grade: 1.4, result: won() }),
 ];
 
 const students = [
