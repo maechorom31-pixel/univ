@@ -397,7 +397,10 @@ function checkOneSeg(seg,sc){
    데이터 로드
 ================================================================ */
 function setConn(ok,msg){const c=document.getElementById('connChip');c.textContent=msg;c.className='chip '+(ok?'ok':'bad');}
-const DEFAULT_IP_URL='https://raw.githubusercontent.com/maechorom31-pixel/univ/claude/practical-galileo-GA5dQ/ipgyeol.json';
+/* 입결 JSON은 같은 저장소의 ipgyeol.json. 상대경로를 먼저 쓰고(Pages·로컬 서버),
+   file:// 로 열어 상대 fetch가 막히는 경우에만 raw 주소로 넘어간다. */
+const IP_URLS=['./ipgyeol.json',
+  'https://raw.githubusercontent.com/maechorom31-pixel/univ/claude/university-counseling-program-hkf8qg/ipgyeol.json'];
 async function fetchCsv(url){
   const res=await fetch(url+(url.includes('?')?'&':'?')+'_t='+Date.now(),{cache:'no-store'});
   if(!res.ok)throw new Error('CSV HTTP '+res.status);
@@ -405,11 +408,17 @@ async function fetchCsv(url){
 }
 async function loadIpFromWeb(){ // 공개자료 입결을 웹에서 직접 로드 (CFG.ipCsv > 기본 JSON URL)
   if(CFG.ipCsv){ applyIp(await fetchCsv(CFG.ipCsv)); return '게시-CSV'; }
-  const res=await fetch(DEFAULT_IP_URL,{cache:'force-cache'});
-  if(!res.ok)throw new Error('입결 HTTP '+res.status);
-  const j=await res.json();
-  applyIp([j.columns,...j.rows]);
-  return '웹';
+  let last;
+  for(const url of IP_URLS){
+    try{
+      const res=await fetch(url,{cache:'force-cache'});
+      if(!res.ok){ last=new Error('입결 HTTP '+res.status); continue; }
+      const j=await res.json();
+      applyIp([j.columns,...j.rows]);
+      return '웹';
+    }catch(e){ last=e; }
+  }
+  throw last||new Error('입결을 불러오지 못했습니다');
 }
 async function initLoad(){
   setConn(false,'연결 중…');
