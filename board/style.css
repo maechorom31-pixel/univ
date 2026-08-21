@@ -241,6 +241,23 @@ button { font: inherit; color: inherit; }
 .row .univ { font-weight: 600; }
 .row .dept { font-size: var(--t-xs); color: var(--muted); }
 
+/* ── 학생 화면 ─────────────────────────────────────────────────
+   폰으로 보는 화면이라 글자를 키우고 누를 것을 넉넉히 잡는다. */
+
+body.student { --t-sm: 17px; --t-xs: 14px; --t-md: 21px; }
+body.student .wrap { max-width: 640px; }
+body.student .btn { font-size: var(--t-xs); min-height: 44px; padding: 0 var(--s4); }
+body.student .pill { font-size: 13px; padding: 3px 8px; }
+
+.mycard { border-top: 1px solid var(--line); padding: var(--s4) 0; }
+.mycard:first-of-type { border-top: 0; padding-top: var(--s2); }
+.mycard .rank {
+  font-size: var(--t-xs); font-weight: 600; color: var(--amber-ink);
+  font-variant-numeric: tabular-nums;
+}
+.mycard .univ { font-weight: 700; font-size: var(--t-md); line-height: 1.35; }
+.mycard .dept { color: var(--muted); font-size: var(--t-xs); margin-bottom: var(--s3); }
+
 /* ── 일정판 ───────────────────────────────────────────────────── */
 
 .views { margin-bottom: var(--s4); }
@@ -272,6 +289,7 @@ button { font: inherit; color: inherit; }
 }
 .cal .ev.soft { background: transparent; border: 1px dashed var(--amber); }
 .cal .ev.note { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.cal .ev.mock { background: transparent; border: 1px solid var(--amber); }
 
 .legend {
   display: grid; grid-auto-flow: column; justify-content: start;
@@ -281,6 +299,20 @@ button { font: inherit; color: inherit; }
 .sw { width: 12px; height: 12px; border-radius: 3px; background: var(--amber-face); display: block; }
 .sw.soft { background: transparent; border: 1px dashed var(--amber); }
 .sw.note { background: transparent; border: 1px solid var(--line); }
+.sw.mock { background: transparent; border: 1px solid var(--amber); }
+
+/* 입력 한 줄 — 날짜·번호를 넣고 저장하는 자리 */
+.field { display: grid; gap: var(--s1); margin-top: var(--s3); }
+.field label { font-size: var(--t-xs); font-weight: 600; }
+.field .hint { font-size: var(--t-xs); color: var(--muted); }
+.field-in { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); align-items: center; }
+.field-in input {
+  font: inherit; font-size: 16px;      /* 16px 미만이면 iOS가 포커스 시 화면을 확대한다 */
+  padding: var(--s2) var(--s3); min-height: 44px;
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
+  width: 100%;
+}
+.field-in .btn { min-height: 44px; }
 
 /* ── 알림 ─────────────────────────────────────────────────────── */
 

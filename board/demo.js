@@ -7,6 +7,13 @@
  * board.html?demo=1 로 연다.
  */
 
+/** 오늘로부터 며칠 뒤. 데모가 언제 열려도 「다가오는 일정」이 보이게 한다. */
+const inDays = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
 const mk = (hak, univ, dept, typeSub, opts = {}) => ({
   id: `${hak}-${univ}-${dept}-${typeSub}`.replace(/\s/g, ''),
   hak,
@@ -34,19 +41,19 @@ const mk = (hak, univ, dept, typeSub, opts = {}) => ({
 const A = [
   mk('3201', '전남대학교(광주)', '영어영문학과', '교과(일반)', { quota: 12, grade: 3.2, conv: 2.94, min: true }),
   mk('3201', '한국외국어대학교(서울)', '자유전공학부', '종합(서류형)', { quota: 21, conv: 3.31, cat: '학생부위주(종합)' }),
-  mk('3201', '숭실대학교', '영어영문학과', '종합(SSU미래인재)', { quota: 21, conv: 3.08, cat: '학생부위주(종합)', stage: '단계별전형', date: '2025-11-28' }),
-  mk('3201', '건국대학교(서울)', '영어영문학과', '종합(KU자기추천)', { quota: 30, conv: 3.17, cat: '학생부위주(종합)', stage: '단계별전형', date: '2025-11-30' }),
-  mk('3201', '가톨릭대학교(성심)', '영어영문학과', '종합(잠재능력)', { quota: 10, conv: 3.24, cat: '학생부위주(종합)', date: '2025-11-29' }),
+  mk('3201', '숭실대학교', '영어영문학과', '종합(SSU미래인재)', { quota: 21, conv: 3.08, cat: '학생부위주(종합)', stage: '단계별전형', date: inDays(12) }),
+  mk('3201', '건국대학교(서울)', '영어영문학과', '종합(KU자기추천)', { quota: 30, conv: 3.17, cat: '학생부위주(종합)', stage: '단계별전형', date: inDays(14) }),
+  mk('3201', '가톨릭대학교(성심)', '영어영문학과', '종합(잠재능력)', { quota: 10, conv: 3.24, cat: '학생부위주(종합)', date: inDays(13) }),
   // 기간 공지 — 「겹칠 수 있음」이 뜨는 자리
   mk('3201', '동국대학교(WISE)', '영어영문학과', '교과(교과전형)',
-    { quota: 8, conv: 2.88, date: '2025-11-28', dateTo: '2025-11-30' }),
+    { quota: 8, conv: 2.88, date: inDays(12), dateTo: inDays(14) }),
   // 가톨릭대와 같은 날 — 확정 「겹침」이 뜨는 자리
   mk('3201', '조선대학교', '영어교육과', '교과(일반)',
-    { quota: 14, conv: 3.02, date: '2025-11-29' }),
+    { quota: 14, conv: 3.02, date: inDays(13) }),
 
   mk('3204', '동신대학교', '간호학과', '교과(일반)', { quota: 122, grade: 5.6, track: '자연' }),
   mk('3204', '원광대학교', '치위생학과', '교과(지역인재)', { quota: 40, grade: 5.6, track: '자연' }),
-  mk('3204', '조선대학교', '경영학부', '종합(서류)', { quota: 50, grade: 5.6, cat: '학생부위주(종합)', date: '2025-11-22' }),
+  mk('3204', '조선대학교', '경영학부', '종합(서류)', { quota: 50, grade: 5.6, cat: '학생부위주(종합)', date: inDays(6) }),
   mk('3204', '국립목포대학교(목포)', '자율전공학부', '교과(일반)', { quota: 39, grade: 5.6 }),
   mk('3204', '경상국립대학교(진주)', '원예과학부', '교과(일반)', { quota: 40, grade: 5.6, track: '자연' }),
   mk('3204', '광주보건대학교', '치위생과', '일반전형', { quota: 60, univType: '전문대' }),
@@ -112,4 +119,18 @@ export const demo = {
   dates: [],
   unknownCols: [],
   skipped: 0,
+};
+
+/** 학생 화면 확인용 — 3201 가나다가 자기 링크로 열었을 때 */
+export const studentDemo = {
+  ok: true,
+  hak: '3201',
+  student: students[0],
+  apps: A.filter((a) => a.hak === '3201'),
+  state: placed.filter((r) => r.hak === '3201'),
+  dates: [
+    { id: A[4].id, hak: '3201', kind: '모의면접', from: inDays(10), to: inDays(10), status: 'confirmed' },
+    { id: A[3].id, hak: '3201', kind: '면접', from: inDays(14), to: inDays(14), status: 'pending' },
+  ],
+  notes: [{ noteId: 'n1', hak: '3201', id: A[3].id, text: '접수번호 0021170267', visible: 'Y' }],
 };

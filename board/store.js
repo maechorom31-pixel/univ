@@ -24,6 +24,7 @@ export const state = {
   apps: new Map(),       // id → Application
   placement: new Map(),  // id → { slot, rank }
   notes: [],
+  dates: new Map(),      // `${id}|${kind}` → { from, to, status }
   unknownCols: [],
   error: '',
 };
@@ -78,6 +79,10 @@ function apply(data) {
   state.students = new Map((data.students || []).map((s) => [s.hak, s]));
   state.apps = new Map((data.apps || []).map((a) => [a.id, a]));
   state.notes = data.notes || [];
+  state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
+    from: String(r.from || ''), to: String(r.to || r.from || ''),
+    status: r.status || 'pending',
+  }]));
   state.placement = new Map();
   for (const row of data.state || []) {
     state.placement.set(String(row.id), {
@@ -229,6 +234,40 @@ export async function place(id, slot, rank) {
     await api.setState({ id, hak: app.hak, slot, rank: slot === 'rank' ? rank : '' });
   } catch (err) {
     state.placement.set(String(id), before);
+    emit('change', 'state');
+    throw err;
+  }
+}
+
+/**
+ * 이 지원의 일정 한 종목.
+ * 시트에 들어온 값(학생이 넣었거나 선생님이 확정한 것)이 즐겨찾기 원본보다 우선한다.
+ * @return {?{from,to,fixed,status}} status: source | pending | confirmed
+ */
+export function dateOf(app, kind) {
+  const saved = state.dates.get(`${app.id}|${kind}`);
+  if (saved && saved.from) {
+    return {
+      from: saved.from, to: saved.to || saved.from,
+      fixed: saved.from === (saved.to || saved.from),
+      status: saved.status,
+    };
+  }
+  const d = app.dates && app.dates[kind];
+  return d ? { from: d.from, to: d.to, fixed: d.fixed, status: 'source' } : null;
+}
+
+/** 일정 한 종목을 넣는다(선생님). 화면을 먼저 바꾸고 서버에 보낸다. */
+export async function setDate(app, kind, from, to) {
+  const key = `${app.id}|${kind}`;
+  const before = state.dates.get(key);
+  state.dates.set(key, { from, to: to || from, status: 'confirmed' });
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.setDate({ id: app.id, hak: app.hak, kind, from, to: to || from });
+  } catch (err) {
+    if (before) state.dates.set(key, before); else state.dates.delete(key);
     emit('change', 'state');
     throw err;
   }

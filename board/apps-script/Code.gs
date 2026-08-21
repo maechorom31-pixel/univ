@@ -109,8 +109,8 @@ function doPost(e) { return doGet(e); }
 function handle_(p) {
   var action = p.action || 'ping';
 
-  // 학생용 경로는 토큰으로만 연다 — 자기 것만 보인다
-  if (action === 'student') return studentView_(p.token);
+  // 학생용 경로는 토큰으로만 연다 — 자기 것만 보이고, 자기 것만 고칠 수 있다
+  if (action.indexOf('student') === 0) return studentAction_(action, p);
 
   var me = access_();
   if (!me) {
@@ -126,7 +126,9 @@ function handle_(p) {
     case 'removeNote': return removeNote_(p, who);
     case 'setResult':  return setResult_(p, who);
     case 'setDate':    return setDate_(p, who, 'confirmed');
+    case 'approveDate': return approveDate_(p, who);
     case 'issueToken': return issueToken_(p, who);
+    case 'issueAll':   return issueAll_(p, who);
     default:           return { ok: false, error: '알 수 없는 요청입니다: ' + action };
   }
 }
@@ -547,7 +549,102 @@ function setDate_(p, who, status) {
   return { ok: true };
 }
 
-/* ===== 학생 공유 ==================================================== */
+/* ===== 학생 공유 ====================================================
+ * 학생은 토큰으로만 들어오고, 토큰이 가리키는 학번의 것만 읽고 쓴다.
+ * 학생이 넣은 값은 곧바로 확정되지 않는다 — `확인 대기`로 들어가고
+ * 담임이 눌러야 확정된다. 잘못 적은 날짜로 겹침 판정이 틀어지면 안 되기 때문이다.
+ * ==================================================================== */
+
+/** 토큰을 학번으로 바꾼다. 없거나 기한이 지났으면 null. */
+function hakOfToken_(token) {
+  token = String(token || '').trim();
+  if (!token) return null;
+  var share = rows_(SHEET.share);
+  for (var i = 0; i < share.length; i++) {
+    if (String(share[i].token) !== token) continue;
+    if (share[i].expiresAt && now_() > String(share[i].expiresAt)) return null;
+    return String(share[i].hak);
+  }
+  return null;
+}
+
+/** 그 지원이 정말 이 학생 것인지 확인한다. 남의 것을 고치지 못하게. */
+function ownsApp_(hak, id) {
+  var parsed = parseFavorites_(sourceSheet_().getDataRange().getValues());
+  for (var i = 0; i < parsed.apps.length; i++) {
+    if (parsed.apps[i].id === String(id)) return parsed.apps[i].hak === hak;
+  }
+  return false;
+}
+
+function studentAction_(action, p) {
+  if (action === 'student') return studentView_(p.token);
+
+  var hak = hakOfToken_(p.token);
+  if (!hak) {
+    return { ok: false, error: '만료되었거나 잘못된 주소입니다. 담임 선생님께 문의하세요.' };
+  }
+  if (!p.id || !ownsApp_(hak, p.id)) {
+    return { ok: false, error: '본인 지원 내역이 아닙니다.' };
+  }
+  var who = hak + ' 학생';
+
+  if (action === 'studentDate') return setDate_(p, who, 'pending');
+  if (action === 'studentApplyNo') {
+    upsert_(SHEET.note, ['noteId'], {
+      noteId: 'applyno-' + p.id, hak: hak, id: p.id,
+      text: '접수번호 ' + String(p.applyNo || '').trim(),
+      visible: 'Y', by: who, at: now_()
+    });
+    return { ok: true };
+  }
+  if (action === 'studentAsk') {
+    if (!String(p.text || '').trim()) return { ok: false, error: '내용을 적어 주세요.' };
+    return addNote_({ hak: hak, id: p.id, text: p.text, visible: 'true' }, who);
+  }
+  return { ok: false, error: '알 수 없는 요청입니다: ' + action };
+}
+
+/** 담임이 학생이 넣은 날짜를 확인해 확정으로 올린다. */
+function approveDate_(p, who) {
+  if (!p.id || !p.kind) return { ok: false, error: 'id 와 종목이 필요합니다.' };
+  var all = rows_(SHEET.date), hit = null;
+  for (var i = 0; i < all.length; i++) {
+    if (String(all[i].id) === String(p.id) && String(all[i].kind) === String(p.kind)) hit = all[i];
+  }
+  if (!hit) return { ok: false, error: '확인할 일정이 없습니다.' };
+  upsert_(SHEET.date, ['id', 'kind'], {
+    id: hit.id, hak: hit.hak, kind: hit.kind, from: hit.from, to: hit.to,
+    status: 'confirmed', by: who, at: now_()
+  });
+  log_(who, 'approveDate', hit.hak + ' ' + hit.kind + ' ' + hit.from);
+  return { ok: true };
+}
+
+/** 반 전체 토큰을 한 번에 발급한다. 이미 있으면 그대로 둔다. */
+function issueAll_(p, who) {
+  var parsed = parseFavorites_(sourceSheet_().getDataRange().getValues());
+  var only = String(p.cls || '').trim();
+  var have = {};
+  rows_(SHEET.share).forEach(function (r) { have[String(r.hak)] = String(r.token); });
+
+  var out = [];
+  for (var i = 0; i < parsed.students.length; i++) {
+    var s = parsed.students[i];
+    if (only && String(s.cls) !== only) continue;
+    if (!have[s.hak]) {
+      var token = Utilities.getUuid().replace(/-/g, '').slice(0, 24);
+      upsert_(SHEET.share, ['hak'], {
+        hak: s.hak, token: token, issuedAt: now_(), expiresAt: ''
+      });
+      have[s.hak] = token;
+    }
+    out.push({ hak: s.hak, name: s.name, token: have[s.hak] });
+  }
+  log_(who, 'issueAll', (only ? only + '반 ' : '전체 ') + out.length + '명');
+  return { ok: true, items: out };
+}
+
 
 function issueToken_(p, who) {
   if (!p.hak) return { ok: false, error: '학번이 필요합니다.' };
