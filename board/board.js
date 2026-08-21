@@ -18,9 +18,7 @@ const SLOT_LABEL = { rank: '순위', pool: '후보', archive: '보관', tray: '�
 
 const MY_CLASS_KEY = 'board.myClass';
 
-let cls = '';        // 지금 보고 있는 반. ''이면 학년 전체
-let myClass = '';    // 이 컴퓨터의 기본 반
-let hak = '';
+let myClass = '';    // 이 컴퓨터의 기본 반 (이 컴퓨터만의 취향이라 store에 두지 않는다)
 let notice = '';
 let busy = false;
 
@@ -52,7 +50,7 @@ export function start() {
   store.on('change', (what) => {
     if (what === 'data') {
       const list = store.classes();
-      if (!cls) cls = list.includes(myClass) ? myClass : (list[0] || '');
+      if (!store.selection.cls) store.select({ cls: list.includes(myClass) ? myClass : (list[0] || '') });
       renderRoster();
     }
     render();
@@ -65,17 +63,18 @@ export function start() {
 function renderRoster() {
   const tabs = $('#tabs');
   tabs.textContent = '';
+  const { cls } = store.selection;
   const list = store.classes();
   for (const c of list) {
     const b = el('button', 'btn', c === myClass ? `${c}반 · 기본` : `${c}반`);
     b.setAttribute('aria-pressed', String(c === cls));
-    b.onclick = () => { cls = c; hak = ''; notice = ''; renderRoster(); render(); };
+    b.onclick = () => { store.select({ cls: c, hak: '' }); notice = ''; renderRoster(); render(); };
     tabs.appendChild(b);
   }
   if (list.length > 1) {
     const all = el('button', 'btn', '학년 전체');
     all.setAttribute('aria-pressed', String(cls === ''));
-    all.onclick = () => { cls = ''; hak = ''; notice = ''; renderRoster(); render(); };
+    all.onclick = () => { store.select({ cls: '', hak: '' }); notice = ''; renderRoster(); render(); };
     tabs.appendChild(all);
   }
 
@@ -107,8 +106,8 @@ function renderRoster() {
     const ranked = apps.filter((a) => store.placementOf(a.id).slot === 'rank').length;
     const li = el('li');
     const b = el('button');
-    b.setAttribute('aria-current', String(s.hak === hak));
-    b.onclick = () => { hak = s.hak; notice = ''; renderRoster(); render(); };
+    b.setAttribute('aria-current', String(s.hak === store.selection.hak));
+    b.onclick = () => { store.select({ hak: s.hak }); notice = ''; renderRoster(); render(); };
     b.appendChild(el('span', 'hak num', s.hak));
     b.appendChild(el('span', 'nm', tidy(s.name)));
     const cnt = el('span', `cnt${ranked >= 6 ? ' full' : ''}`, `${ranked}/6`);
@@ -124,6 +123,7 @@ function renderRoster() {
 
 function render() {
   const main = $('#board');
+  if (main.hidden) return;         // 일정 화면을 보는 중이면 손대지 않는다
   main.textContent = '';
 
   if (!store.state.ready) {
@@ -139,7 +139,7 @@ function render() {
   }
   if (notice) main.appendChild(banner(notice));
 
-  const student = store.state.students.get(hak);
+  const student = store.state.students.get(store.selection.hak);
   if (!student) {
     main.appendChild(hint('왼쪽에서 학생을 고르면 지원 현황이 나옵니다.'));
     return;
@@ -147,7 +147,7 @@ function render() {
 
   main.appendChild(header(student));
 
-  const apps = store.appsOf(hak);
+  const apps = store.appsOf(student.hak);
   const general = apps.filter((a) => a.univType !== '전문대' && a.univType !== '특수대');
   const others = apps.filter((a) => a.univType === '전문대' || a.univType === '특수대');
   const at = (r) => general.find((a) => {

@@ -124,6 +124,19 @@ export async function enrich() {
   emit('change', 'enriched');
 }
 
+/* ── 선택 ───────────────────────────────────────────────────────── */
+
+/**
+ * 지금 보고 있는 반과 학생. 보드와 일정판이 같은 선택을 본다.
+ * 화면마다 따로 들고 있으면 탭을 옮길 때 선택이 풀린다.
+ */
+export const selection = { cls: '', hak: '' };
+
+export function select(next) {
+  Object.assign(selection, next);
+  emit('change', 'selection');
+}
+
 /* ── 조회 ───────────────────────────────────────────────────────── */
 
 export function classes() {

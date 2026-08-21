@@ -50,7 +50,14 @@
       <ul class="roster" id="roster"></ul>
     </aside>
 
-    <div id="board"></div>
+    <div>
+      <div class="tabs views">
+        <button class="btn" id="view-board" type="button" aria-pressed="true">보드</button>
+        <button class="btn" id="view-schedule" type="button" aria-pressed="false">일정</button>
+      </div>
+      <div id="board"></div>
+      <div id="schedule" hidden></div>
+    </div>
   </div>
 </main>
 
@@ -58,6 +65,7 @@
 import * as api from './board/api.js';
 import * as store from './board/store.js';
 import { start } from './board/board.js';
+import { start as startSchedule } from './board/schedule.js';
 
 // iOS 사파리는 터치 리스너가 없으면 :active 가 발화하지 않는다
 document.addEventListener('touchstart', () => {}, { passive: true });
@@ -113,7 +121,19 @@ async function connect() {
   }
 }
 
+// 보드와 일정은 같은 선택(반·학생)을 보고 서로 다른 칸에 그린다
+const panes = { board: document.getElementById('board'), schedule: document.getElementById('schedule') };
+function showView(name) {
+  for (const [key, node] of Object.entries(panes)) node.hidden = key !== name;
+  document.getElementById('view-board').setAttribute('aria-pressed', String(name === 'board'));
+  document.getElementById('view-schedule').setAttribute('aria-pressed', String(name === 'schedule'));
+  store.select({});           // 지금 화면을 다시 그리게 한다
+}
+document.getElementById('view-board').onclick = () => showView('board');
+document.getElementById('view-schedule').onclick = () => showView('schedule');
+
 start();
+startSchedule();
 input.value = api.url();
 if (new URLSearchParams(location.search).has('demo')) {
   document.getElementById('try-demo').click();
