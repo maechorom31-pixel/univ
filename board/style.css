@@ -199,15 +199,36 @@ button { font: inherit; color: inherit; }
 
 /* 견줘 볼 숫자를 나란히 — 라벨 위, 값 아래.
    자릿수가 세로로 맞아야 세 값을 한눈에 견줄 수 있다. */
+/* 대학 쪽 숫자와 학생 쪽 숫자를 가른다. 가운데 선 하나가 경계다.
+   한 줄에 늘어놓으면 70%컷·전교과·환산이 같은 종류의 값으로 읽힌다. */
 .figs {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
-  gap: var(--s1) var(--s3);
+  display: grid; gap: var(--s3);
   padding: var(--s2) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
 }
 .figs:empty { display: none; }
-.fig { display: grid; }
-.fig .k { font-size: var(--t-xs); color: var(--muted); line-height: 1.4; white-space: nowrap; }
-.fig .v { font-size: var(--t-sm); font-weight: 600; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.figs.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+/* 목록 줄은 카드보다 훨씬 넓다. 그대로 절반씩 나누면 이름과 값이 멀어져
+   위아래로 견줄 수가 없다. 숫자 무리는 카드와 같은 폭으로 묶어 둔다. */
+.row .figs.two { grid-template-columns: repeat(2, minmax(0, 11rem)); justify-content: start; }
+.figs.two > * + * { border-left: 1px solid var(--line); padding-left: var(--s3); }
+.fig-g { min-width: 0; }
+.fig-h {
+  font-size: 11px; color: var(--muted); line-height: 1.4;
+  margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 이름과 값을 한 줄에. 값이 오른쪽 끝에 모여야 위아래로 견줄 수 있다. */
+.fig {
+  display: grid; grid-template-columns: minmax(0, auto) 1fr;
+  align-items: baseline; line-height: 1.4;
+}
+.fig .k { font-size: var(--t-xs); color: var(--muted); white-space: nowrap; }
+.fig .v {
+  font-size: var(--t-sm); font-weight: 600; font-variant-numeric: tabular-nums;
+  text-align: right; white-space: nowrap;
+}
+/* 묶이기 전 학과들에서 빌려 온 선. 제 입결이 아니라는 걸 점선으로 남긴다. */
+.figs.two > .fig-g.approx + * { border-left-style: dashed; }
+.fig-g.approx .fig .v { font-weight: 500; color: var(--text-2); }
 /* 자리 옮기기 상자와 「자세히」. 카드 안에서도 목록 줄에서도 같은 모양이다. */
 .move { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); align-items: center; }
 .move .btn { white-space: nowrap; }

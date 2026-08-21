@@ -13,6 +13,9 @@
  * 계산하지 않고 「자료 불일치」로 둔다.
  */
 import * as store from './store.js';
+import { realRate } from './match.js';
+
+export { realRate };
 
 const el = (tag, cls, text) => {
   const node = document.createElement(tag);
@@ -39,20 +42,6 @@ const DATE_KINDS = ['면접', '실기', '논술', '적성', '1단계발표', '�
 
 /** 표에서 숫자로 오른쪽 정렬할 값인지. `3.42`, `12`, `4.1:1` 까지만 숫자로 본다. */
 const numeric = (v) => /^[\d.]+(:1)?$/.test(String(v == null ? '' : v));
-
-/**
- * 실질경쟁률 — 못 구하면 사유를 함께 돌려준다.
- * @return {{value: ?number, why: string}}
- */
-export function realRate(nominal, quota, filled) {
-  if (nominal == null || quota == null || filled == null) return { value: null, why: '' };
-  if (nominal < 1) return { value: nominal, why: '미달이라 명목값을 그대로 씁니다' };
-  const applicants = nominal * quota;
-  if (quota + filled > applicants) {
-    return { value: null, why: '추가합격이 누적 예비번호로 적힌 것으로 보여 계산하지 않았습니다' };
-  }
-  return { value: (nominal * quota) / (quota + filled), why: '' };
-}
 
 /**
  * 카드 하나의 상세.
@@ -88,7 +77,10 @@ export function detailPanel(app, student, onClose) {
   const body = el('div', 'detail-body');
   box.appendChild(body);
 
-  if (s && !s.linked) {
+  if (s && !s.linked && s.before) {
+    // 묶이기 전 선이라도 있으면 「없다」가 아니라 「이것으로 본다」고 적는다
+    body.appendChild(el('p', 'note', s.why));
+  } else if (s && !s.linked) {
     body.appendChild(el('p', 'note', `작년 자료가 붙지 않았습니다 — ${s.why}`));
   }
 
@@ -105,10 +97,10 @@ export function detailPanel(app, student, onClose) {
   ]));
 
   /* 2. 인원과 경쟁률 */
-  const quotaNow = app.quota;
-  const quotaPrev = mo ? mo.quotaPrev : null;
+  const quotaNow = s.quotaNow;
+  const quotaPrev = s.quotaPrev;
   const diff = quotaNow != null && quotaPrev != null ? quotaNow - quotaPrev : null;
-  const real = mo ? realRate(mo.rate26, mo.quotaPrev, mo.filled26) : { value: null, why: '' };
+  const real = s.real;
 
   body.appendChild(rows('인원과 경쟁률', [
     ['올해 모집 인원', quotaNow != null
@@ -185,10 +177,13 @@ export function detailPanel(app, student, onClose) {
     ]));
   }
 
-  /* 8. 연도별 추이 */
+  /* 8. 묶이기 전 학과들 */
+  body.appendChild(bundled(s));
+
+  /* 9. 연도별 추이 */
   body.appendChild(trend(s));
 
-  /* 9. 결과 — 발표가 나기 시작하면 채워진다 */
+  /* 10. 결과 — 발표가 나기 시작하면 채워진다 */
   const r = app.result || {};
   if (r.final || r.stage1 || r.waitNo || r.enrolled) {
     body.appendChild(rows('결과', [
@@ -200,10 +195,10 @@ export function detailPanel(app, student, onClose) {
     ]));
   }
 
-  /* 10. 상담 메모 */
+  /* 11. 상담 메모 */
   body.appendChild(memo(app, student));
 
-  /* 11. 즐겨찾기에서 못 알아본 칸 — 버리지 않고 보여 준다 */
+  /* 12. 즐겨찾기에서 못 알아본 칸 — 버리지 않고 보여 준다 */
   const unknown = Object.entries(app.unknown || {});
   if (unknown.length) {
     body.appendChild(rows('알아보지 못한 칸', unknown.map(([k, v]) => [k, v, '즐겨찾기 원문'])));
@@ -240,6 +235,92 @@ function rows(title, list) {
   tw.appendChild(table);
   wrap.appendChild(tw);
   return wrap;
+}
+
+/**
+ * 묶이기 전 학과들 (자유전공 · 학과통합).
+ *
+ * 모집요강이 `[유형2] 인문사회계열` 아래에 묶인 학과 이름을 그대로 갖고 있다.
+ * 그 학과들의 작년 선을 모아 대략의 자리를 잡는다. **참고값이다** — 묶고 나면
+ * 경쟁률도 컷도 달라진다. 그래서 평균 하나로 줄이지 않고 학과별 값을 다 보여 준다.
+ *
+ * 지원한 전형과 같은 카테고리(교과/종합/논술/실기)만 모은다. 교과로 넣는 학생에게
+ * 종합 컷을 보여 주면 없느니만 못하다.
+ */
+function bundled(s) {
+  const wrap = el('div', 'detail-block');
+  if (!s || !s.before) return wrap;
+  const { type, parts, line } = s.before;
+
+  wrap.appendChild(el('h3', '', `묶이기 전 학과 (${type || '통합'})`));
+
+  const lead = s.linked
+    ? `이 모집단위의 작년 입결이 따로 있습니다. 아래는 곁들여 보는 참고값입니다.`
+    : `올해 새로 묶여 이 모집단위의 작년 입결이 없습니다. 아래를 참고로 봅니다.`;
+  wrap.appendChild(el('p', 'hint', lead));
+
+  const g = line.g70;
+  const r = line.rate;
+  wrap.appendChild(rowsBare([
+    ['묶인 학과', `${parts.length}곳 · 값을 찾은 곳 ${line.found.length}곳`,
+      line.missing.length ? `못 찾음 ${line.missing.length}곳` : ''],
+    ['작년 70%컷', g ? `${g2(g.mid)} (${g2(g.lo)} ~ ${g2(g.hi)})` : null, `${line.year} · ${g ? g.n : 0}곳`],
+    ['작년 경쟁률', r ? `${one(r.mid)}:1 (${one(r.lo)} ~ ${one(r.hi)})` : null, `${line.year} · ${r ? r.n : 0}곳`],
+    ['전형', line.cat || '전부', line.cat ? '지원한 전형과 같은 것만' : '카테고리를 가리지 못했습니다'],
+  ]));
+
+  // 학과가 너무 많으면 그건 계열이 아니라 대학 전체다. 그렇게 적는다.
+  if (parts.length > 12) {
+    wrap.appendChild(el('p', 'hint',
+      '묶인 학과가 많아 계열이라기보다 대학 전체 범위에 가깝습니다. 폭넓게만 보아 주세요.'));
+  }
+
+  const tw = el('div', 'tw');
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  thead.appendChild((() => {
+    const tr = document.createElement('tr');
+    for (const t of ['묶이기 전 학과', '70%컷', '경쟁률', '모집']) tr.appendChild(el('th', null, t));
+    return tr;
+  })());
+  const tbody = document.createElement('tbody');
+  for (const f of line.found) {
+    const tr = document.createElement('tr');
+    tr.appendChild(el('td', null, f.dept));
+    tr.appendChild(el('td', 'num', g2(f.g70) || '—'));
+    tr.appendChild(el('td', 'num', f.rate != null ? `${one(f.rate)}:1` : '—'));
+    tr.appendChild(el('td', 'num', f.quota != null ? String(f.quota) : '—'));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  tw.appendChild(table);
+  wrap.appendChild(tw);
+
+  if (line.missing.length) {
+    wrap.appendChild(el('p', 'hint',
+      `입결을 찾지 못한 학과 — ${line.missing.join(', ')}`));
+  }
+  return wrap;
+}
+
+/** rows() 와 같은 표지만 제목 없이. 이미 h3 를 쓴 구역 안에서 쓴다. */
+function rowsBare(list) {
+  const have = list.filter((x) => x && x[1] != null && x[1] !== '');
+  const tw = el('div', 'tw');
+  if (!have.length) return tw;
+  const table = document.createElement('table');
+  const tbody = document.createElement('tbody');
+  for (const [k, v, note] of have) {
+    const tr = document.createElement('tr');
+    tr.appendChild(el('th', 'rowhead', k));
+    tr.appendChild(el('td', numeric(v) ? 'num' : null, String(v)));
+    tr.appendChild(el('td', 'src', note || ''));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  tw.appendChild(table);
+  return tw;
 }
 
 /** 연도별 추이. 그래프 대신 표로 둔다 — 상담에서는 정확한 숫자를 읽는다. */

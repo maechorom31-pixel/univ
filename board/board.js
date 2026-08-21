@@ -173,13 +173,22 @@ function render() {
   }
   main.appendChild(slots);
 
-  const pool = general.filter((a) => store.placementOf(a.id).slot === 'pool');
+  // 보관도 순위도 아닌 것은 전부 후보로 본다.
+  // 시트에 예전 칸 이름이 남아 있거나 전문대로 잡혔던 지원이 일반대로 바뀌면
+  // 어느 무리에도 안 걸려 카드가 조용히 사라진다. 상담 도구에서 가장 나쁜 실패다.
   const archive = general.filter((a) => store.placementOf(a.id).slot === 'archive');
+  const pool = general.filter((a) => {
+    const slot = store.placementOf(a.id).slot;
+    return slot !== 'archive' && slot !== 'rank';
+  });
 
   main.appendChild(group('후보', pool, '아직 순위를 정하지 않은 지원입니다.', student));
   if (others.length) {
-    main.appendChild(group('전문대 · 특수대', others,
+    const kept = others.filter((a) => store.placementOf(a.id).slot !== 'archive');
+    const put = others.filter((a) => store.placementOf(a.id).slot === 'archive');
+    main.appendChild(group('전문대 · 특수대', kept,
       '수시 6회 제한 밖이라 순위를 매기지 않습니다.', student));
+    if (put.length) main.appendChild(group('전문대 보관', put, '', student));
   }
   if (archive.length) main.appendChild(group('보관', archive, '', student));
 }
@@ -244,78 +253,151 @@ function openable(box, app) {
 }
 
 const g2 = (n) => (n == null ? null : Number(n).toFixed(2));
+const one = (n) => (n == null ? null : Number(n).toFixed(1));
 
 /**
- * 견줘 볼 숫자를 나란히 놓는다 — 작년 컷 · 전교과 · 대학 환산.
+ * 카드의 숫자 — **대학 쪽과 학생 쪽을 갈라 놓는다.**
  *
- * 차이값을 계산해 「여유 0.24」처럼 쓰지 않는다. 전교과 등급과 대학 환산 등급은
- * 애초에 같은 잣대가 아니라, 빼는 순간 자료가 말하지 않는 것을 말하게 된다.
- * 숫자를 그대로 두고 판단은 사람이 한다.
+ *     작년(26입결)  │  내 성적
+ *     70%컷  3.58   │  환산   2.94
+ *     실질   2.4:1  │  전교과 3.20
+ *
+ * 셋을 한 줄에 늘어놓으면 70%컷·전교과·환산이 같은 종류의 숫자로 읽힌다.
+ * 왼쪽은 **대학이 작년에 어땠나**, 오른쪽은 **내가 어디에 있나**로 서로 다른 것이다.
+ * 가운데 줄 하나가 그 경계다.
+ *
+ * 윗줄끼리 붙여 놓은 이유 — 70%컷과 대학 환산등급은 **같은 잣대**다. 눈이 가로로
+ * 한 번 움직이면 되는 자리에 둔다. 전교과는 잣대가 달라 아랫줄에 참고로 둔다.
+ * 차이값은 여전히 계산하지 않는다. 빼는 순간 자료가 말하지 않는 것을 말하게 된다.
  */
 function figures(app, student) {
-  const wrap = el('div', 'figs');
-  const add = (k, v) => {
-    if (v == null) return;
-    const box = el('div', 'fig');
-    box.appendChild(el('span', 'k', k));
-    box.appendChild(el('span', 'v num', v));
-    wrap.appendChild(box);
-  };
-
-  // 카드에는 셋만 둔다. 넷을 넣으면 줄이 접혀 견주기가 어려워진다.
-  // 50컷·연도별 추이는 카드를 눌러 여는 상세(P3)에서 본다.
   const s = store.summary(app);
   const naesin = (student && student.naesin) || {};
   const total = g2(naesin['전교과'] ?? naesin['전교과(100)']);
   const mine = app.myScore || {};
 
-  if (s.kind === 'college') {
-    // 전문대 자료는 최종등록자 평균등급과 최저등급을 준다. 환산점수는 없다.
-    if (s.linked) {
-      add('평균등급', g2(s.avg));
-      add('최저등급', g2(s.cut));
+  const wrap = el('div', 'figs');
+  const group = (title, list) => {
+    const rows = list.filter((x) => x && x[1] != null);
+    if (!rows.length) return null;
+    const box = el('div', 'fig-g');
+    box.appendChild(el('div', 'fig-h', title));
+    for (const [k, v, note] of rows) {
+      const line = el('div', 'fig');
+      line.appendChild(el('span', 'k', k));
+      line.appendChild(el('span', 'v num', v));
+      if (note) line.title = note;
+      box.appendChild(line);
     }
-    add('전교과', total);
-    return wrap;
+    return box;
+  };
+
+  let left = null;
+  if (s.kind === 'college') {
+    // 전문대는 환산점수가 없다. 최종등록자 평균등급과 최저등급이 그 자리에 온다.
+    left = group(s.year ? `작년 ${String(s.year).slice(2)}` : '작년', [
+      ['평균등급', g2(s.avg)],
+      ['최저등급', g2(s.cut)],
+    ]);
+  } else if (s.linked) {
+    // 실질경쟁률이 나오면 그걸 쓴다. 명목만으로는 추합이 얼마나 돌았는지 안 보인다.
+    const comp = s.real.value != null
+      ? ['실질', `${one(s.real.value)}:1`, `명목 ${s.rate != null ? s.rate + ':1' : '?'} · 모집과 추합을 반영한 값`]
+      : (s.rate != null ? ['경쟁률', `${s.rate}:1`, s.real.why || '추가합격 자료가 없어 명목값입니다'] : null);
+    left = group(s.year ? `작년 ${String(s.year).slice(2)}입결` : '작년', [
+      ['70%컷', g2(s.cut)],
+      comp,
+    ]);
+  } else if (s.before && s.before.line.g70) {
+    // 올해 새로 묶여 제 입결이 없는 자유전공. 묶이기 전 학과들의 선을 참고로 둔다.
+    const g = s.before.line.g70;
+    left = group('묶이기 전 참고', [
+      ['가운데', g2(g.mid), `${s.before.line.year} 70%컷 · ${g.n}개 학과의 가운데값`],
+      ['범위', `${g2(g.lo)}~${g2(g.hi)}`,
+        `${s.before.parts.length}개 학과 중 ${g.n}곳에서 값을 찾았습니다`],
+    ]);
+    if (left) left.classList.add('approx');
   }
 
-  if (s.linked) add('70컷', g2(s.cut));
-  add('전교과', total);
-  if (mine.grade != null) add('환산', g2(mine.grade));
-  else if (mine.score != null) add('환산점수', String(mine.score));
+  const right = group('내 성적', [
+    ['환산', g2(mine.grade) || (mine.score != null ? String(mine.score) : null),
+      mine.grade != null ? '대학이 제 방식으로 환산한 등급' : '대학 환산 점수'],
+    ['전교과', total, '학교 전 과목 등급. 대학 환산과는 잣대가 다릅니다'],
+  ]);
 
+  if (left) wrap.appendChild(left);
+  if (right) wrap.appendChild(right);
+  if (left && right) wrap.classList.add('two');
   return wrap;
 }
 
+/**
+ * 꼬리표 — 숫자 둘로는 안 되는, 그러나 판단을 바꾸는 것들.
+ *
+ * 고른 기준은 「이걸 모르면 상담에서 틀린 말을 하게 되는가」다.
+ *   모집인원 증감   30명이 3명이 되면 작년 컷은 더 이상 쓸 수 없다
+ *   단계별 전형     1단계를 따로 통과해야 한다. 최종 컷만 보면 안 된다
+ *   수능최저        내신이 닿아도 최저에서 떨어진다
+ *   가야 하는 날    면접·실기·논술은 겹치면 하나를 버려야 한다
+ *   연결 상태       값이 왜 비었는지 감추지 않는다
+ *
+ * 지역·계열·모집시기·50%컷·취업률 같은 것은 여기 두지 않는다. 상세에서 본다.
+ */
 function pills(app) {
   const wrap = el('div', 'pills');
   const add = (text, kind) => wrap.appendChild(el('span', `pill${kind ? ' ' + kind : ''}`, text));
 
-  if (app.quota != null) add(`${app.quota}명`);
-
   const s = store.summary(app);
-  if (!s.linked) {
-    const pill = add(store.state.enriched ? '연결 안 됨' : '자료 불러오는 중',
-      store.state.enriched ? 'warn' : 'wait');
-    if (s.why) pill.title = s.why;      // 왜 못 붙였는지는 감추지 않는다
-  } else {
-    const hasAny = s.rate != null || s.cut != null || s.avg != null;
-    if (s.year && hasAny) add(`${String(s.year).slice(2)}입결`);
-    if (s.rate != null) add(`${s.rate}:1`);
-    if (s.kind === 'college') {
-      if (s.employ != null) add(`취업 ${Math.round(s.employ)}%`);
-      if (s.transfer) add('연계편입', 'mark');
-      if (s.track) add(s.track);
+
+  // 모집인원 — 줄었으면 그게 올해 이 전형의 가장 큰 변수다
+  const now = s.quotaNow;
+  const prev = s.quotaPrev;
+  if (now != null) {
+    const d = prev != null ? now - prev : null;
+    if (d) {
+      // 붉은색은 진짜 문제에만 쓴다. 두어 명 줄어든 것까지 붉게 칠하면
+      // 정작 반 토막 난 전형이 눈에 안 들어온다.
+      const heavy = d < 0 && Math.abs(d) >= 3 && Math.abs(d) / prev >= 0.2;
+      const p = add(`${now}명 (작년 ${prev})`, heavy ? 'warn' : '');
+      p.title = `작년보다 ${Math.abs(d)}명 ${d > 0 ? '늘었습니다' : '줄었습니다'}`;
+    } else {
+      add(`${now}명`);
     }
-    if (s.cut == null) add('작년 컷 없음');
+  } else if (app.quotaText) {
+    add(app.quotaText);
   }
 
-  const day = app.dates && (app.dates['면접'] || app.dates['실기'] || app.dates['논술']);
-  if (day) {
-    const [, m, d] = day.from.split('-');
-    add(day.fixed ? `${+m}/${+d}` : `${+m}/${+d}~`, day.fixed ? '' : 'wait');
+  if (s.stages > 1) add(`${s.stages}단계`);
+  if (app.minReqText) add('최저 있음', 'mark');
+
+  // 가야 하는 날. 기간으로만 나온 것은 점선으로 둔다 — 아직 확정이 아니다.
+  const go = ['면접', '실기', '논술', '적성']
+    .map((kind) => [kind, store.dateOf(app, kind)])
+    .filter(([, d]) => d)[0];
+  if (go) {
+    const [kind, d] = go;
+    const [, m, day] = d.from.split('-');
+    add(`${kind} ${+m}/${+day}${d.fixed ? '' : '~'}`, d.fixed ? '' : 'wait');
   }
-  if (app.minReqText) add('최저 있음');
+
+  if (s.kind === 'college' && s.linked) {
+    if (s.employ != null) add(`취업 ${Math.round(s.employ)}%`);
+    if (s.transfer) add('연계편입', 'mark');
+  }
+
+  // 값이 왜 비었는지 감추지 않는다
+  if (!store.state.enriched) {
+    add('자료 불러오는 중', 'wait');
+  } else if (!s.linked && s.before) {
+    const p = add(`묶이기 전 ${s.before.line.found.length}곳 참고`, 'wait');
+    p.title = s.why;
+  } else if (!s.linked) {
+    const p = add('작년 자료 없음', 'warn');
+    if (s.why) p.title = s.why;
+  } else if (s.cut == null && s.avg == null) {
+    add('작년 컷 없음');
+  }
+
   return wrap;
 }
 

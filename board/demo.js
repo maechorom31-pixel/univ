@@ -56,6 +56,9 @@ const A = [
   mk('3204', '조선대학교', '경영학부', '종합(서류)', { quota: 50, grade: 5.6, cat: '학생부위주(종합)', date: inDays(6) }),
   mk('3204', '국립목포대학교(목포)', '자율전공학부', '교과(일반)', { quota: 39, grade: 5.6 }),
   mk('3204', '경상국립대학교(진주)', '원예과학부', '교과(일반)', { quota: 40, grade: 5.6, track: '자연' }),
+  // 올해 새로 묶인 자유전공 — 제 입결이 없어 「묶이기 전 학과」 선이 뜨는 자리
+  mk('3204', '동의대학교', '상경대학자유전공학부', '교과(일반)', { quota: 45, grade: 5.6 }),
+  mk('3204', '삼육대학교', '미래융합자유전공학부', '교과(일반)', { quota: 25, grade: 5.6 }),
   mk('3204', '광주보건대학교', '치위생과', '일반전형', { quota: 60, univType: '전문대' }),
   mk('3204', '조선간호대학교', '간호학과', '일반전형', { quota: 80, univType: '전문대' }),
   mk('3204', '동강대학교', '간호학과', '일반전형', { quota: 70, univType: '전문대' }),
@@ -95,17 +98,30 @@ const students = [
 
 for (const s of students) s.apps = A.filter((a) => a.hak === s.hak).map((a) => a.id);
 
-/** 처음 열었을 때 몇 칸은 이미 차 있게 둔다 */
+/**
+ * 처음 열었을 때 몇 칸은 이미 차 있게 둔다.
+ * 자리 번호(A[3])로 집으면 목록 가운데에 하나만 끼워 넣어도 전부 어긋난다. 이름으로 집는다.
+ */
+const at = (univ, dept) => {
+  const hit = A.find((a) => a.univ.startsWith(univ) && a.dept === dept);
+  if (!hit) throw new Error(`데모 자료에 ${univ} ${dept} 가 없습니다`);
+  return hit;
+};
+const put = (univ, dept, slot, rank) => {
+  const a = at(univ, dept);
+  return { id: a.id, hak: a.hak, slot, rank: rank == null ? '' : rank };
+};
+
 const placed = [
-  { id: A[0].id, hak: '3201', slot: 'rank', rank: 6 },
-  { id: A[1].id, hak: '3201', slot: 'rank', rank: 2 },
-  { id: A[2].id, hak: '3201', slot: 'rank', rank: 4 },
-  { id: A[3].id, hak: '3201', slot: 'rank', rank: 1 },
-  { id: A[4].id, hak: '3201', slot: 'rank', rank: 5 },
-  { id: A[5].id, hak: '3201', slot: 'archive', rank: '' },
-  { id: A[7].id, hak: '3204', slot: 'rank', rank: 1 },
-  { id: A[8].id, hak: '3204', slot: 'rank', rank: 2 },
-  { id: A[12].id, hak: '3204', slot: 'tray', rank: '' },
+  put('전남대', '영어영문학과', 'rank', 6),
+  put('한국외국어대', '자유전공학부', 'rank', 2),
+  put('숭실대', '영어영문학과', 'rank', 4),
+  put('건국대', '영어영문학과', 'rank', 1),
+  put('가톨릭대', '영어영문학과', 'rank', 5),
+  put('동국대', '영어영문학과', 'archive'),
+  put('동신대', '간호학과', 'rank', 1),
+  put('원광대', '치위생학과', 'rank', 2),
+  put('광주보건대', '치위생과', 'tray'),
 ];
 
 export const demo = {
@@ -129,8 +145,8 @@ export const studentDemo = {
   apps: A.filter((a) => a.hak === '3201'),
   state: placed.filter((r) => r.hak === '3201'),
   dates: [
-    { id: A[4].id, hak: '3201', kind: '모의면접', from: inDays(10), to: inDays(10), status: 'confirmed' },
-    { id: A[3].id, hak: '3201', kind: '면접', from: inDays(14), to: inDays(14), status: 'pending' },
+    { id: at('가톨릭대', '영어영문학과').id, hak: '3201', kind: '모의면접', from: inDays(10), to: inDays(10), status: 'confirmed' },
+    { id: at('건국대', '영어영문학과').id, hak: '3201', kind: '면접', from: inDays(14), to: inDays(14), status: 'pending' },
   ],
-  notes: [{ noteId: 'n1', hak: '3201', id: A[3].id, text: '접수번호 0021170267', visible: 'Y' }],
+  notes: [{ noteId: 'n1', hak: '3201', id: at('건국대', '영어영문학과').id, text: '접수번호 0021170267', visible: 'Y' }],
 };

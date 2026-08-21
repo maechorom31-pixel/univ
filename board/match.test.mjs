@@ -14,6 +14,7 @@ import { dirname, resolve } from 'node:path';
 import {
   univStem, campusOf, resolveUniv, buildUnivIndex,
   normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
+  splitDepts, catOf, realRate, referenceLine,
 } from './match.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -49,6 +50,47 @@ eq(normDept('[통합]수소테크융합대학'), '수소테크융합대', '앞�
 eq(normDept('경영학부'), '경영', '학부 접미 제거');
 eq(isUmbrella('통합모집(자유전공)'), true, '통합 모집 인식');
 eq(isUmbrella('간호학과'), false, '일반 학과');
+
+console.log('자유전공 — 묶이기 전 학과');
+eq(splitDepts('국어국문학과, 철학과, 사학과'), ['국어국문학과', '철학과', '사학과'], '쉼표');
+eq(splitDepts('기계공학부/전기전자공학부/항공우주공학과'),
+  ['기계공학부', '전기전자공학부', '항공우주공학과'], '빗금');
+eq(splitDepts('생명산업과학분야(농생명과학전공, 산림자원학전공)'), null,
+  '괄호가 걸친 목록은 잘못 쪼개느니 버린다');
+eq(splitDepts(''), null, '빈 값');
+
+console.log('전형 카테고리 맞추기 (즐겨찾기 → 입결)');
+eq(catOf('학생부위주(교과)'), '교과', '교과');
+eq(catOf('학생부위주(종합)'), '종합', '종합');
+eq(catOf('논술위주'), '논술', '논술');
+eq(catOf('실기/실적위주'), '실기', '실기');
+eq(catOf(''), null, '못 가리면 null — 아무 카테고리나 쓰지 않는다');
+
+console.log('실질경쟁률');
+eq(realRate(10, 10, 10).value, 5, '명목 10:1, 모집 10, 추합 10 → 5:1');
+eq(realRate(10, 10, 0).value, 10, '추합이 없으면 명목 그대로');
+eq(realRate(0.8, 10, 2).value, 0.8, '미달이면 명목값을 그대로');
+eq(realRate(2, 10, 30).value, null, '모집+추합이 지원자보다 많으면 계산하지 않는다');
+eq(realRate(null, 10, 5).value, null, '값이 없으면 null');
+
+console.log('묶이기 전 선');
+{
+  // 키는 손으로 적지 않고 key() 로 만든다 — normDept 규칙이 바뀌면 시험도 따라간다
+  const fake = { byKey: new Map([
+    [key('A', '국어국문학과'), [
+      { year: 2026, cat: '교과', g70: 4.0, rate: 5, quota: 10 },
+      { year: 2026, cat: '종합', g70: 3.0, rate: 9, quota: 5 },
+      { year: 2025, cat: '교과', g70: 9.9, rate: 1, quota: 10 }]],
+    [key('A', '철학과'), [{ year: 2026, cat: '교과', g70: 5.0, rate: 3, quota: 6 }]],
+  ]) };
+  const line = referenceLine('A', ['국어국문학과', '철학과', '없는학과'], fake, '교과');
+  eq(line.year, 2026, '가장 최근 해만 본다');
+  eq(line.g70, { lo: 4, mid: 4.5, hi: 5, n: 2 }, '교과만 모은다 — 종합 3.0 은 섞이지 않는다');
+  eq(line.missing, ['없는학과'], '못 찾은 학과를 감추지 않는다');
+  eq(referenceLine('A', ['국어국문학과'], fake, '논술'), null,
+    '그 카테고리가 없으면 빈손 — 잣대가 다른 값을 보여 주느니 낫다');
+  eq(referenceLine('A', [], fake, '교과'), null, '목록이 비면 null');
+}
 
 console.log('캠퍼스 분기');
 const idx = buildUnivIndex(['건국대', '건국대(글)', '고려대', '고려대(세)',

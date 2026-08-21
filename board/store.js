@@ -12,7 +12,7 @@
  * 학생 목록을 받는 즉시 화면을 그리고 공개 자료는 뒤에서 받는다.
  */
 import * as api from './api.js';
-import { link as makeLink, indexIpgyeol, indexMojip, indexCollege } from './match.js';
+import { link as makeLink, summarize, indexIpgyeol, indexMojip, indexCollege } from './match.js';
 
 const listeners = new Map();
 
@@ -174,46 +174,9 @@ export function link(app) {
   return result;
 }
 
-/**
- * 카드에 얹을 요약. 연결이 없으면 값을 비워 둔다 — 지어내지 않는다.
- * 일반대와 전문대는 자료가 달라서 `kind` 로 갈린다.
- */
+/** 카드에 얹을 요약. 모양은 match.js 의 summarize() 가 정한다. */
 export function summary(app) {
-  const l = link(app);
-  if (!l || l.confidence === 'none') {
-    return {
-      linked: false, kind: l ? l.kind : 'univ', rows: [],
-      why: l ? l.why : '자료를 받는 중입니다',
-    };
-  }
-
-  if (l.kind === 'college') {
-    const d = l.college[0];
-    return {
-      linked: true, kind: 'college', why: l.why, rows: l.college,
-      year: 2026,                      // College 자료는 앞이 최신 (2026·25·24)
-      rate: d.comp[0] ?? null,
-      avg: d.avg[0] ?? null,           // 최종등록자 평균등급
-      cut: d.min[0] ?? null,           // 최저등급 — 일반대의 70컷에 해당하는 자리
-      quota: d.quota ?? null,
-      employ: d.employ ?? null,
-      transfer: d.transfer || 0,
-      track: d.track || null,
-      trend: d.trend ?? null,
-    };
-  }
-
-  const rows = l.ipgyeol;
-  const latest = rows[rows.length - 1] || null;
-  return {
-    linked: true, kind: 'univ', why: l.why, rows,
-    year: latest ? latest.year : null,
-    rate: latest ? latest.rate : null,
-    cut: latest && latest.g70 != null ? latest.g70 : null,
-    cut50: latest && latest.g50 != null ? latest.g50 : null,
-    quota: latest ? latest.quota : null,
-    mojip: l.mojip[0] || null,
-  };
+  return summarize(link(app), app);
 }
 
 /* ── 쓰기 ───────────────────────────────────────────────────────── */

@@ -14,7 +14,7 @@
  * 보이지 않는 것 — 다른 학생, 교사 비공개 메모, 발표 전 결과.
  */
 import * as api from './api.js';
-import { link as makeLink, indexIpgyeol, indexMojip, indexCollege } from './match.js';
+import { link as makeLink, indexIpgyeol, indexMojip, indexCollege, summarize } from './match.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';        // 학교에서 잡아 준다 — 학생은 보기만 한다
@@ -94,16 +94,10 @@ async function loadPublic() {
   render();
 }
 
+/** 선생님 화면과 **같은** 요약을 본다. 같은 지원이 두 화면에서 다르게 보이면 안 된다. */
 function summaryOf(app) {
   if (!state.src) return null;
-  const l = makeLink(app, state.src);
-  if (l.confidence === 'none') return { linked: false, why: l.why };
-  if (l.kind === 'college') {
-    const d = l.college[0];
-    return { linked: true, kind: 'college', rate: d.comp[0], avg: d.avg[0], cut: d.min[0], employ: d.employ };
-  }
-  const last = l.ipgyeol[l.ipgyeol.length - 1];
-  return { linked: true, kind: 'univ', rate: last ? last.rate : null, cut: last ? last.g70 : null };
+  return summarize(makeLink(app, state.src), app);
 }
 
 /** 이 지원의 일정 — 학생이 넣은 값이 있으면 그것이 우선한다. */
@@ -235,6 +229,87 @@ function group(title, apps, count, help) {
   return box;
 }
 
+/**
+ * 대학 쪽 숫자와 내 성적을 갈라 놓는다.
+ *
+ *     작년 26입결        내 성적
+ *     70%컷  3.58        환산   2.94
+ *     실질   2.4:1       전교과 3.20
+ *
+ * 윗줄 둘은 **같은 잣대**다 — 대학이 제 방식으로 환산한 등급끼리라 가로로 견줄 수 있다.
+ * 전교과는 잣대가 달라 아랫줄에 참고로 둔다. 차이값은 계산하지 않는다.
+ * 「3.58인데 2.94니까 된다」는 말은 이 자료가 할 수 있는 말이 아니다.
+ */
+function figures(app) {
+  const s = summaryOf(app);
+  const naesin = (state.student && state.student.naesin) || {};
+  const total = g2(naesin['전교과'] ?? naesin['전교과(100)']);
+  const mine = app.myScore || {};
+
+  const wrap = el('div', 'figs');
+  const group = (title, list) => {
+    const rows = list.filter((x) => x && x[1] != null);
+    if (!rows.length) return null;
+    const box = el('div', 'fig-g');
+    box.appendChild(el('div', 'fig-h', title));
+    for (const [k, v] of rows) {
+      const line = el('div', 'fig');
+      line.appendChild(el('span', 'k', k));
+      line.appendChild(el('span', 'v num', v));
+      box.appendChild(line);
+    }
+    return box;
+  };
+
+  let left = null;
+  if (s && s.kind === 'college' && s.linked) {
+    left = group('작년', [['평균등급', g2(s.avg)], ['최저등급', g2(s.cut)]]);
+  } else if (s && s.linked) {
+    const comp = s.real.value != null
+      ? ['실질', `${Number(s.real.value).toFixed(1)}:1`]
+      : (s.rate != null ? ['경쟁률', `${s.rate}:1`] : null);
+    left = group(s.year ? `작년 ${String(s.year).slice(2)}입결` : '작년', [
+      ['70%컷', g2(s.cut)], comp,
+    ]);
+  } else if (s && s.before && s.before.line.g70) {
+    const g = s.before.line.g70;
+    left = group('묶이기 전 참고', [
+      ['가운데', g2(g.mid)],
+      ['범위', `${g2(g.lo)}~${g2(g.hi)}`],
+    ]);
+    if (left) left.classList.add('approx');
+  }
+
+  const right = group('내 성적', [
+    ['환산', g2(mine.grade) || (mine.score != null ? String(mine.score) : null)],
+    ['전교과', total],
+  ]);
+
+  if (left) wrap.appendChild(left);
+  if (right) wrap.appendChild(right);
+  if (left && right) wrap.classList.add('two');
+  return wrap;
+}
+
+/** 숫자로는 안 되지만 알아야 하는 것 — 뽑는 인원과 수능 최저. */
+function marks(app) {
+  const s = summaryOf(app);
+  const wrap = el('div', 'pills');
+  const add = (text, kind) => wrap.appendChild(el('span', `pill${kind ? ' ' + kind : ''}`, text));
+
+  const now = s ? s.quotaNow : app.quota;
+  const prev = s ? s.quotaPrev : null;
+  if (now != null) {
+    const d = prev != null ? now - prev : null;
+    const heavy = d < 0 && Math.abs(d) >= 3 && Math.abs(d) / prev >= 0.2;
+    if (d) add(`${now}명 뽑음 (작년 ${prev})`, heavy ? 'warn' : '');
+    else add(`${now}명 뽑음`);
+  }
+  if (s && s.stages > 1) add(`${s.stages}단계`);
+  if (app.minReqText) add('수능 최저 있음', 'mark');
+  return wrap;
+}
+
 function card(app) {
   const box = el('article', 'mycard');
   const place = state.placement.get(String(app.id)) || {};
@@ -242,22 +317,8 @@ function card(app) {
   box.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
 
-  const s = summaryOf(app);
-  const figs = el('div', 'figs');
-  const add = (k, v) => {
-    if (v == null) return;
-    const f = el('div', 'fig');
-    f.appendChild(el('span', 'k', k));
-    f.appendChild(el('span', 'v num', v));
-    figs.appendChild(f);
-  };
-  if (s && s.linked) {
-    if (s.kind === 'college') { add('평균등급', g2(s.avg)); add('최저등급', g2(s.cut)); }
-    else add('작년 70컷', g2(s.cut));
-    add('경쟁률', s.rate != null ? `${s.rate}:1` : null);
-  }
-  if (app.quota != null) add('모집', `${app.quota}명`);
-  box.appendChild(figs);
+  box.appendChild(figures(app));
+  box.appendChild(marks(app));
 
   const mock = dateOf(app, MOCK);
   if (mock) {

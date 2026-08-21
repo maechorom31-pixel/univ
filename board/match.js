@@ -146,6 +146,147 @@ export function isUmbrella(dept) {
   return UMBRELLA.test(String(dept || ''));
 }
 
+/* ── 자유전공 · 학과통합 ──────────────────────────────────────────── */
+
+/**
+ * 모집요강의 `[유형1] …` `[유형2] …` 꼬리표.
+ *
+ *   유형1  전공을 정하지 않고 뽑는다 — 세부모집단위에 **대학의 거의 모든 학과**가 적힌다
+ *   유형2  계열·단과대 단위로 묶는다 — 묶인 학과들만 적힌다
+ *
+ * 둘 다 세부모집단위가 「잘게 나눈 이름」이 아니라 **묶이기 전 학과 목록**이다.
+ */
+const FREE_TAG = /^\[(유형\d)\]\s*/;
+
+/** 이전 학과 목록을 쪼갠다. 자료가 쉼표와 빗금을 섞어 쓴다. */
+export function splitDepts(text) {
+  const raw = String(text || '');
+  if (!raw.trim()) return null;
+  const list = raw
+    .split(/\s*[,/]\s*/)
+    .map((t) => t.trim())
+    .filter((t) => t && t.length <= 40);
+  // 괄호가 열린 채 잘린 조각(`생명산업과학분야(농생명과학전공` 같은 것)은 버린다
+  const clean = list.filter((t) => (t.match(/\(/g) || []).length === (t.match(/\)/g) || []).length);
+  return clean.length ? clean : null;
+}
+
+/**
+ * 꼬리표 없이도 세부모집단위가 학과 목록인 경우가 있다
+ * (`기계공학과, 신소재공학과, …` 처럼). 이걸 학과명으로 쓰면 200자짜리 키가 생긴다.
+ *
+ * 보수적으로 본다 — 셋 이상으로 쪼개지고, 조각 대부분이 학과 이름꼴일 때만.
+ */
+const DEPT_TAIL = /(학과|학부|전공|계열|과|부)$/;
+function looksLikeList(text) {
+  const list = splitDepts(text);
+  if (!list || list.length < 3) return null;
+  const named = list.filter((t) => DEPT_TAIL.test(t)).length;
+  return named >= Math.ceil(list.length * 0.7) ? list : null;
+}
+
+/** 즐겨찾기의 전형유형 → 입결의 카테고리. 못 가리면 null. */
+export function catOf(typeCat) {
+  const t = String(typeCat || '');
+  if (/논술/.test(t)) return '논술';
+  if (/실기|실적|특기/.test(t)) return '실기';
+  if (/교과/.test(t)) return '교과';
+  if (/종합/.test(t)) return '종합';
+  return null;
+}
+
+const mid = (list) => {
+  const a = [...list].sort((x, y) => x - y);
+  const h = Math.floor(a.length / 2);
+  return a.length % 2 ? a[h] : (a[h - 1] + a[h]) / 2;
+};
+
+/**
+ * 실질경쟁률 — 못 구하면 사유를 함께 돌려준다.
+ *
+ *     실질경쟁률 = 명목경쟁률 × 모집인원 ÷ (모집인원 + 추가합격인원)
+ *
+ * planner.html 이 쓰던 식 그대로다. 모집인원 + 추가합격이 지원자 수보다 많으면
+ * 추합란에 최종 인원이 아니라 누적 예비번호가 적힌 것이므로 계산하지 않는다.
+ * 억지로 계산하면 1 미만이 나와 미달처럼 보인다.
+ *
+ * @return {{value: ?number, why: string}}
+ */
+export function realRate(nominal, quota, filled) {
+  if (nominal == null || quota == null || filled == null) return { value: null, why: '' };
+  if (nominal < 1) return { value: nominal, why: '미달이라 명목값을 그대로 씁니다' };
+  const applicants = nominal * quota;
+  if (quota + filled > applicants) {
+    return { value: null, why: '추가합격이 누적 예비번호로 적힌 것으로 보여 계산하지 않았습니다' };
+  }
+  return { value: (nominal * quota) / (quota + filled), why: '' };
+}
+
+/**
+ * 묶이기 전 학과들의 작년 선.
+ *
+ * 올해 새로 묶여 제 입결이 없는 모집단위를 볼 때 쓴다. **참고값이다.**
+ * 묶은 뒤의 경쟁률과 컷은 대개 묶기 전과 다르게 나오므로 평균 하나로 줄이지 않고
+ * 범위와 가운데값을 함께 준다. 어느 학과에서 왔는지도 그대로 돌려준다.
+ *
+ * 전형이 다르면 잣대가 다르다. 지원한 전형과 같은 카테고리(교과/종합/논술/실기)만
+ * 본다. 그 카테고리가 하나도 없으면 빈손으로 돌아간다 — 종합 컷을 교과 지원자에게
+ * 보여 주느니 아무것도 안 보이는 편이 낫다.
+ *
+ * @param {string} univ   입결 쪽 대학명
+ * @param {string[]} depts 묶이기 전 학과 이름들
+ * @param {Object} ipgyeol {byKey}
+ * @param {?string} cat   '교과' | '종합' | '논술' | '실기' | null(전부)
+ * @return {?Object} { year, cat, found:[{dept,g70,rate,quota}], missing:[string],
+ *                     g70:{lo,mid,hi}, rate:{lo,mid,hi}, quota }
+ */
+export function referenceLine(univ, depts, ipgyeol, cat) {
+  if (!univ || !depts || !depts.length || !ipgyeol) return null;
+
+  // 어느 해를 볼지는 자료가 정한다. 가장 최근 해만 본다.
+  let year = 0;
+  const bag = [];
+  for (const d of depts) {
+    const rows = ipgyeol.byKey.get(key(univ, d)) || [];
+    for (const r of rows) if (r.year > year) year = r.year;
+    bag.push([d, rows]);
+  }
+  if (!year) return null;
+
+  const found = [];
+  const missing = [];
+  for (const [dept, rows] of bag) {
+    const mine = rows.filter((r) => r.year === year && (!cat || r.cat === cat));
+    const g70 = mine.map((r) => r.g70).filter((x) => x != null);
+    const rate = mine.map((r) => r.rate).filter((x) => x != null);
+    const quota = mine.map((r) => r.quota).filter((x) => x != null);
+    if (!g70.length && !rate.length) { missing.push(dept); continue; }
+    found.push({
+      dept,
+      g70: g70.length ? mid(g70) : null,
+      rate: rate.length ? mid(rate) : null,
+      quota: quota.length ? quota.reduce((a, b) => a + b, 0) : null,
+    });
+  }
+  if (!found.length) return null;
+
+  const spread = (pick) => {
+    const v = found.map(pick).filter((x) => x != null);
+    if (!v.length) return null;
+    return { lo: Math.min(...v), mid: mid(v), hi: Math.max(...v), n: v.length };
+  };
+  const quotas = found.map((f) => f.quota).filter((x) => x != null);
+
+  return {
+    year, cat: cat || null,
+    found: found.sort((a, b) => (a.g70 ?? 99) - (b.g70 ?? 99)),
+    missing,
+    g70: spread((f) => f.g70),
+    rate: spread((f) => f.rate),
+    quota: quotas.length ? quotas.reduce((a, b) => a + b, 0) : null,
+  };
+}
+
 /* ── 연결 ─────────────────────────────────────────────────────────── */
 
 /**
@@ -158,7 +299,7 @@ export function isUmbrella(dept) {
 export function link(app, src) {
   const none = (why) => ({
     key: '', kind: 'univ', ipgyeol: [], college: [], mojip: [],
-    related: [], confidence: 'none', why,
+    related: [], before: null, confidence: 'none', why,
   });
 
   if (app.univType === '전문대') return linkCollege(app, src, none);
@@ -174,18 +315,42 @@ export function link(app, src) {
     .sort((a, b) => a.year - b.year);
 
   const mojipUniv = resolveUniv(app.univ, src.mojip.index);
-  const mojip = mojipUniv ? (src.mojip.byKey.get(key(mojipUniv, app.dept)) || []) : [];
+  const mojip = pickMojip(
+    mojipUniv ? (src.mojip.byKey.get(key(mojipUniv, app.dept)) || []) : [],
+    app,
+  );
+
+  /*
+   * 자유전공·학과통합이면 모집요강이 **묶이기 전 학과 목록**을 갖고 있다.
+   * 그걸로 작년 선을 그려 둔다. 제 입결이 있으면 그게 먼저고 이건 곁들임,
+   * 없으면(올해 새로 묶였으면) 이것만 남는다. 어느 쪽이든 참고값이다.
+   */
+  const parts = (mojip.find((m) => m.parts && m.parts.length) || {}).parts || null;
+  const free = (mojip.find((m) => m.free) || {}).free || null;
+  const before = parts
+    ? referenceLine(univ, parts, src.ipgyeol, catOf(app.typeCat))
+    : null;
 
   // 통합·자유전공이면 함께 볼 학과를 같이 돌려준다
   const related = isUmbrella(app.dept)
     ? (src.related && src.related.get(k)) || []
     : [];
 
+  const bundle = before ? { type: free, parts, line: before } : null;
+
   if (rows.length) {
     return {
       key: k, kind: 'univ', ipgyeol: rows, college: [], mojip, related,
-      confidence: 'exact',
+      before: bundle, confidence: 'exact',
       why: `${univ} · ${app.dept}`,
+    };
+  }
+  if (bundle) {
+    return {
+      key: k, kind: 'univ', ipgyeol: [], college: [], mojip, related,
+      before: bundle, confidence: 'loose',
+      why: `올해 새로 묶인 모집단위라 작년 입결이 없습니다.`
+        + ` 묶이기 전 학과 ${bundle.line.found.length}곳의 선을 참고로 봅니다`,
     };
   }
   if (related.length) {
@@ -193,13 +358,38 @@ export function link(app, src) {
     if (borrowed.length) {
       return {
         key: k, kind: 'univ', ipgyeol: [], college: [], mojip, related,
-        confidence: 'loose',
+        before: null, confidence: 'loose',
         why: `통합 모집이라 관련 학과 ${related.length}곳의 입결을 함께 봅니다`,
       };
     }
   }
   return none(`${univ}에 「${app.dept}」 입결이 없습니다`);
 }
+
+/**
+ * 한 학과에 전형이 여럿이면 모집요강 행도 여럿이다. **지원한 전형과 같은 줄을 골라야 한다.**
+ * 아무거나(첫 줄) 쓰면 종합으로 넣은 학생에게 교과의 작년 모집인원과 추합이 붙어,
+ * 「30명 (작년 3명)」 같은 엉뚱한 증감이 뜬다.
+ *
+ * 이름이 딱 맞는 줄 → 카테고리(교과/종합/논술/실기)라도 맞는 줄 → 그래도 없으면 원래 순서.
+ * 골라낸 줄을 앞으로 옮길 뿐 버리지는 않는다. 상세에서 나머지도 볼 수 있어야 한다.
+ */
+function pickMojip(rows, app) {
+  if (rows.length < 2) return rows;
+  const want = norm(app.typeSub) || norm(app.typeName);
+  const cat = catOf(app.typeCat);
+  const score = (r) => {
+    const t = norm(r.type);
+    if (want && t && (t === want || t.includes(want) || want.includes(t))) return 0;
+    if (cat && r.type && String(r.type).includes(cat)) return 1;
+    return 2;
+  };
+  return rows.map((r, i) => [score(r), i, r])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+    .map((x) => x[2]);
+}
+
+const norm = (s) => String(s || '').replace(/[\s()·]/g, '');
 
 /**
  * 전문대는 다른 자료를 본다 — College 저장소의 `data/departments.json`.
@@ -226,8 +416,60 @@ function linkCollege(app, src, none) {
 
   return {
     key: k, kind: 'college', ipgyeol: [], college: rows, mojip: [], related: [],
-    confidence: 'exact',
+    before: null, confidence: 'exact',
     why: `${univ} · ${app.dept}`,
+  };
+}
+
+/**
+ * Link + Application → 화면이 쓰는 요약 한 덩이.
+ *
+ * 교사 보드와 학생 화면이 **같은 함수**를 본다. 예전에는 각자 요약을 만들다
+ * 같은 지원이 두 화면에서 다른 숫자로 보일 수 있었다.
+ *
+ * `linked` 는 이 모집단위 제 입결이 있는가다. 올해 새로 묶인 자유전공처럼
+ * 제 입결이 없어도 `before`(묶이기 전 학과들의 선)가 있을 수 있다. 다른 값이므로
+ * 화면에서도 다르게 적는다.
+ */
+const NO_RATE = { value: null, why: '' };
+
+export function summarize(l, app) {
+  if (!l) return { linked: false, kind: 'univ', rows: [], before: null, real: NO_RATE, why: '자료를 받는 중입니다' };
+  if (l.confidence === 'none') {
+    return { linked: false, kind: l.kind, rows: [], before: null, real: NO_RATE, why: l.why };
+  }
+
+  if (l.kind === 'college') {
+    const d = l.college[0];
+    return {
+      linked: true, kind: 'college', why: l.why, rows: l.college, before: null, real: NO_RATE,
+      year: 2026,                      // College 자료는 앞이 최신 (2026·25·24)
+      rate: d.comp[0] ?? null,
+      avg: d.avg[0] ?? null,           // 최종등록자 평균등급
+      cut: d.min[0] ?? null,           // 최저등급 — 일반대의 70컷에 해당하는 자리
+      quotaNow: d.quota ?? null, quotaPrev: null, quota: d.quota ?? null,
+      employ: d.employ ?? null, fill: d.fill ?? null,
+      transfer: d.transfer || 0, track: d.track || null, trend: d.trend ?? null,
+    };
+  }
+
+  const rows = l.ipgyeol;
+  const latest = rows[rows.length - 1] || null;
+  const mo = l.mojip[0] || null;
+  return {
+    linked: rows.length > 0, kind: 'univ', why: l.why, rows,
+    before: l.before,                  // {type:'유형2', parts, line} | null
+    year: latest ? latest.year : null,
+    rate: latest ? latest.rate : null,
+    cut: latest && latest.g70 != null ? latest.g70 : null,
+    cut50: latest && latest.g50 != null ? latest.g50 : null,
+    quota: latest ? latest.quota : null,
+    mojip: mo,
+    // 모집인원 증감과 실질경쟁률은 모집요강에서 온다. 화면에서 다시 계산하지 않는다.
+    quotaNow: app && app.quota != null ? app.quota : (mo ? mo.quota : null),
+    quotaPrev: mo ? mo.quotaPrev : null,
+    real: mo ? realRate(mo.rate26, mo.quotaPrev, mo.filled26) : NO_RATE,
+    stages: mo ? mo.stages : null,
   };
 }
 
@@ -286,10 +528,17 @@ export function indexMojip(doc) {
     names.add(univ);
     // 모집요강은 `모집단위`와 더 잘게 나눈 `세부모집단위`를 함께 준다.
     // 즐겨찾기 쪽 표기가 어느 쪽에 맞을지 모르므로 둘 다 색인해 둔다.
-    const dept = val(r, '모집단위') || '';
+    const unit = val(r, '모집단위') || '';
     const sub = val(r, '세부모집단위') || '';
+    // 자유전공(유형1·유형2)이면 세부모집단위가 잘게 나눈 이름이 아니라
+    // **묶이기 전 학과들의 목록**이다. 그걸 학과명으로 쓰면 안 된다.
+    const tag = unit.match(FREE_TAG);
+    const parts = tag ? splitDepts(sub) : looksLikeList(sub);
+    const bare = unit.replace(FREE_TAG, '').trim();
+    const dept = parts ? bare : unit;
     const row = {
-      univ, dept: sub || dept,
+      univ, unit: bare, dept: parts ? bare : (sub || unit),
+      free: tag ? tag[1] : null, parts,
       type: val(r, '세부전형'), track: val(r, '계열'),
       quota: val(r, '모집2027'), quotaPrev: val(r, '모집2026'),
       rate26: val(r, '경쟁2026'), rate25: val(r, '경쟁2025'),
@@ -301,7 +550,10 @@ export function indexMojip(doc) {
       dInterview: val(r, '면접일정'), dFinal: val(r, '합격자발표'),
       eligibility: val(r, '지원자격'),
     };
-    for (const name of new Set([dept, sub].filter(Boolean))) {
+    // 자유전공은 모집단위 이름으로만 건다. 이전 학과 목록으로 걸면
+    // 그 학과를 따로 지원한 학생에게 엉뚱한 전형이 붙는다.
+    const keys = parts ? [dept] : [dept, sub].filter(Boolean);
+    for (const name of new Set(keys)) {
       const k = key(univ, name);
       if (!byKey.has(k)) byKey.set(k, []);
       byKey.get(k).push(row);
