@@ -12,32 +12,29 @@
  *
  * 배포
  * ----
- *  1. 즐겨찾기 엑셀을 구글 드라이브에 올려 스프레드시트로 연다
- *  2. 확장 프로그램 → Apps Script → 이 파일을 붙여넣고 저장
- *  3. TEACHERS 에 선생님 구글 계정을 적는다
- *  4. 배포 → 새 배포 → 웹 앱 · 실행: 나 · 액세스: 모든 사용자
- *     (익명 호출을 허용하되 handle_() 안에서 계정을 직접 확인한다)
- *  5. 나온 /exec URL 을 보드 화면 ⚙️ 설정에 넣는다
+ *  즐겨찾기 엑셀을 구글 드라이브에 올려 스프레드시트로 연 뒤, 확장 프로그램 →
+ *  Apps Script 에서 이 파일을 붙여넣고 저장한다. 그다음 배포 → 새 배포 →
+ *  웹 앱 · 실행: 나 · 액세스: 모든 사용자로 배포하고, 나온 /exec 주소를
+ *  보드 화면 설정에 넣으면 된다.
+ *
+ *  기본은 **주소를 아는 사람이 쓰는** 구조다. 주소를 공유하지 않는 것이 잠금이다.
+ *  계정을 지정해 잠그려면 `설정` 시트 A열에 계정을 적는다(access_ 참고).
+ *  담임이 볼 반은 서버가 아니라 화면에서 정한다 — 컴퓨터마다 기본 반을 두고,
+ *  다른 반이나 학년 전체로는 화면에서 바꾼다.
+ *
+ *  코드를 고친 뒤에는 배포 → 배포 관리 → 수정(연필) → 새 버전 → 배포를 해야
+ *  바뀐 내용이 반영된다.
  *
  * 레코드 모양은 board/CONTRACT.md 가 정본이다. 고칠 때는 그 문서를 먼저 고친다.
  */
 
 /* ===== 설정 ========================================================= */
 
-/** 보드를 쓸 수 있는 교사 계정. 비워 두면 아무도 못 쓴다(막힌 상태가 기본). */
-var TEACHERS = [
-  // 'someone@example.com',
-];
-
-/** 담임이 자기 반만 보게 하려면 여기에 적는다. 없으면 전체를 본다. */
-var HOMEROOM = {
-  // 'someone@example.com': '2',
-};
-
 /** 즐겨찾기 원본이 들어 있는 시트 이름. 여러 개면 앞에서부터 찾는다. */
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
 var SHEET = {
+  config:  '설정',      // 쓸 수 있는 교사 계정
   state:   '배치',      // 6칸 배치
   note:    '메모',
   result:  '결과',
@@ -47,6 +44,7 @@ var SHEET = {
 };
 
 var HEADERS = {
+  설정:  ['이메일', '메모'],
   배치:  ['id', 'hak', 'slot', 'rank', 'by', 'at'],
   메모:  ['noteId', 'hak', 'id', 'text', 'visible', 'by', 'at'],
   결과:  ['id', 'hak', 'stage1', 'final', 'reason', 'waitNo', 'enrolled', 'by', 'at'],
@@ -114,14 +112,15 @@ function handle_(p) {
   // 학생용 경로는 토큰으로만 연다 — 자기 것만 보인다
   if (action === 'student') return studentView_(p.token);
 
-  var who = teacher_();
-  if (!who) {
+  var me = access_();
+  if (!me) {
     return { ok: false, error: '이 보드를 쓸 수 있는 계정이 아닙니다. 3학년실에 문의하세요.' };
   }
+  var who = me.email || '이름 없는 접속';
 
   switch (action) {
-    case 'ping':       return { ok: true, who: who, at: now_() };
-    case 'students':   return loadAll_(who);
+    case 'ping':       return { ok: true, who: who, locked: me.locked, at: now_() };
+    case 'students':   return loadAll_(me);
     case 'setState':   return setState_(p, who);
     case 'addNote':    return addNote_(p, who);
     case 'removeNote': return removeNote_(p, who);
@@ -132,12 +131,33 @@ function handle_(p) {
   }
 }
 
-function teacher_() {
+/**
+ * 쓸 수 있는지 본다.
+ *
+ * 기본은 **열린 상태**다. 배포 주소를 아는 사람만 들어올 수 있고, 선생님들이
+ * 학교 컴퓨터·집·휴대폰을 오가며 쓰기 때문에 구글 계정으로 고정하면 정작
+ * 써야 할 사람이 막히는 일이 더 잦다. 주소 자체가 열쇠인 셈이라,
+ * **주소를 공유하지 않는 것**이 이 도구의 실질적인 잠금이다.
+ *
+ * 잠그고 싶으면 `설정` 시트 A열에 쓸 계정을 적는다. **한 줄이라도 적히면**
+ * 그때부터는 그 명단만 들어올 수 있다. 코드에 폴백 명단을 두지 않으므로
+ * 시트에서 지우면 곧바로 반영된다.
+ *
+ * @return {?{email:string, locked:boolean}}
+ */
+function access_() {
   var email = '';
   try { email = Session.getActiveUser().getEmail() || ''; } catch (err) { email = ''; }
-  if (!email) return null;
-  for (var i = 0; i < TEACHERS.length; i++) {
-    if (String(TEACHERS[i]).toLowerCase() === email.toLowerCase()) return email;
+
+  var list = rows_(SHEET.config).filter(function (r) {
+    return String(r['이메일'] || '').trim();
+  });
+  if (!list.length) return { email: email, locked: false };
+
+  for (var i = 0; i < list.length; i++) {
+    if (String(list[i]['이메일']).trim().toLowerCase() === email.toLowerCase()) {
+      return { email: email, locked: true };
+    }
   }
   return null;
 }
@@ -291,8 +311,9 @@ function parseFavorites_(values, opts) {
       }
     }
 
+    // 학번은 4자리다 — 3217 = 3학년 2반 17번. 반은 한 자리, 번호는 두 자리로 채운다.
     var hak = f.grade && f.cls && f.no
-      ? txt_(f.grade) + pad2_(parseInt(f.cls, 10)) + pad2_(parseInt(f.no, 10))
+      ? txt_(f.grade) + txt_(f.cls) + pad2_(parseInt(f.no, 10))
       : '';
     if (!hak || !f.name) { skipped++; continue; }
 
@@ -445,19 +466,18 @@ function log_(who, action, detail) {
 
 /* ===== 액션 ========================================================= */
 
-function loadAll_(who) {
+/**
+ * 학년 전체를 보낸다.
+ *
+ * 반을 서버에서 잘라 보내지 않는 이유 — 담임도 다른 반을 봐야 할 때가 있고,
+ * 3학년실은 전체를 본다. 대신 화면이 이 컴퓨터에 정해 둔 반을 먼저 보여 주고,
+ * 다른 반이나 학년 전체로는 화면에서 바꾼다.
+ */
+function loadAll_(me) {
   var parsed = parseFavorites_(sourceSheet_().getDataRange().getValues());
-  var only = HOMEROOM[who];
-  var students = parsed.students, apps = parsed.apps;
-  if (only) {
-    students = students.filter(function (s) { return String(s.cls) === String(only); });
-    var keep = {};
-    students.forEach(function (s) { keep[s.hak] = 1; });
-    apps = apps.filter(function (a) { return keep[a.hak]; });
-  }
   return {
-    ok: true, who: who, at: now_(),
-    students: students, apps: apps,
+    ok: true, who: me.email || '이름 없는 접속', locked: me.locked, at: now_(),
+    students: parsed.students, apps: parsed.apps,
     unknownCols: parsed.unknownCols, skipped: parsed.skipped,
     state: rows_(SHEET.state), notes: rows_(SHEET.note),
     results: rows_(SHEET.result), dates: rows_(SHEET.date)
