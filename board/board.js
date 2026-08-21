@@ -235,11 +235,22 @@ function figures(app, student) {
   // 카드에는 셋만 둔다. 넷을 넣으면 줄이 접혀 견주기가 어려워진다.
   // 50컷·연도별 추이는 카드를 눌러 여는 상세(P3)에서 본다.
   const s = store.summary(app);
-  if (s.linked) add('70컷', g2(s.cut));
   const naesin = (student && student.naesin) || {};
-  add('전교과', g2(naesin['전교과'] ?? naesin['전교과(100)']));
-
+  const total = g2(naesin['전교과'] ?? naesin['전교과(100)']);
   const mine = app.myScore || {};
+
+  if (s.kind === 'college') {
+    // 전문대 자료는 최종등록자 평균등급과 최저등급을 준다. 환산점수는 없다.
+    if (s.linked) {
+      add('평균등급', g2(s.avg));
+      add('최저등급', g2(s.cut));
+    }
+    add('전교과', total);
+    return wrap;
+  }
+
+  if (s.linked) add('70컷', g2(s.cut));
+  add('전교과', total);
   if (mine.grade != null) add('환산', g2(mine.grade));
   else if (mine.score != null) add('환산점수', String(mine.score));
 
@@ -254,12 +265,20 @@ function pills(app) {
 
   const s = store.summary(app);
   if (!s.linked) {
-    add(store.state.enriched ? '연결 안 됨' : '입결 불러오는 중', store.state.enriched ? 'warn' : 'wait');
+    const pill = add(store.state.enriched ? '연결 안 됨' : '자료 불러오는 중',
+      store.state.enriched ? 'warn' : 'wait');
+    if (s.why) pill.title = s.why;      // 왜 못 붙였는지는 감추지 않는다
   } else {
-    if (s.year) add(`${String(s.year).slice(2)}입결`);
+    const hasAny = s.rate != null || s.cut != null || s.avg != null;
+    if (s.year && hasAny) add(`${String(s.year).slice(2)}입결`);
     if (s.rate != null) add(`${s.rate}:1`);
+    if (s.kind === 'college') {
+      if (s.employ != null) add(`취업 ${Math.round(s.employ)}%`);
+      if (s.transfer) add('연계편입', 'mark');
+      if (s.track) add(s.track);
+    }
+    if (s.cut == null) add('작년 컷 없음');
   }
-  if (s.linked && s.cut == null) add('작년 컷 없음');
 
   const day = app.dates && (app.dates['면접'] || app.dates['실기'] || app.dates['논술']);
   if (day) {

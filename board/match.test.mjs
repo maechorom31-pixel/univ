@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import {
   univStem, campusOf, resolveUniv, buildUnivIndex,
-  normDept, key, isUmbrella, link, indexIpgyeol, indexMojip,
+  normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
 } from './match.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -68,8 +68,17 @@ eq(resolveUniv('없는대학교(서울)', idx), null, '없으면 null — 지어
 /* ── 실제 자료 ───────────────────────────────────────────────────── */
 const ip = indexIpgyeol(JSON.parse(readFileSync(resolve(ROOT, 'data/ipgyeol.json'), 'utf8')));
 const mo = indexMojip(JSON.parse(readFileSync(resolve(ROOT, 'data/mojip2027.json'), 'utf8')));
+
+// 전문대는 옆 저장소(College)에 있다. 없으면 그 부분만 건너뛴다.
+let co = null;
+try {
+  co = indexCollege(JSON.parse(readFileSync(resolve(ROOT, '../College/data/departments.json'), 'utf8')));
+} catch (err) {
+  console.log('\n(College 자료가 없어 전문대 확인은 건너뜁니다)');
+}
 console.log(`\n자료 — 입결 대학 ${ip.univNames.length} · 학과키 ${ip.byKey.size}`
-  + ` / 모집요강 대학 ${mo.univNames.length} · 학과키 ${mo.byKey.size}`);
+  + ` / 모집요강 대학 ${mo.univNames.length} · 학과키 ${mo.byKey.size}`
+  + (co ? ` / 전문대 ${co.univNames.length} · 학과키 ${co.byKey.size}` : ''));
 
 const files = process.argv.slice(2);
 if (!files.length) {
@@ -89,7 +98,7 @@ const gs = new Function('Utilities', 'SpreadsheetApp', 'ContentService', 'LockSe
   `${readFileSync(resolve(HERE, 'apps-script/Code.gs'), 'utf8')}\nreturn { parseFavorites_ };`,
 )(Utilities, stub, stub, stub, stub);
 
-const src = { ipgyeol: ip, mojip: mo, related: new Map() };
+const src = { ipgyeol: ip, mojip: mo, college: co, related: new Map() };
 const pct = (n, d) => (d ? `${((n / d) * 100).toFixed(1)}%` : '—');
 
 for (const file of files) {
@@ -124,6 +133,16 @@ for (const file of files) {
   const umbrella = general.filter((a) => isUmbrella(a.dept));
   console.log(`  통합·자유전공 ${umbrella.length}건`
     + ` (그중 입결 직접 연결 ${umbrella.filter((a) => link(a, src).confidence === 'exact').length}건)`);
+
+  if (co) {
+    const col = apps.filter((a) => a.univType === '전문대');
+    const okCol = col.filter((a) => link(a, src).confidence !== 'none');
+    console.log(`  전문대 ${okCol.length}/${col.length}  ${pct(okCol.length, col.length)}`);
+    for (const a of col) {
+      const l = link(a, src);
+      if (l.confidence === 'none') console.log(`     ✗ ${a.univ} ${a.dept} — ${l.why}`);
+    }
+  }
 }
 
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');

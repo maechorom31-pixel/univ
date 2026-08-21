@@ -157,11 +157,13 @@ export function isUmbrella(dept) {
  */
 export function link(app, src) {
   const none = (why) => ({
-    key: '', ipgyeol: [], mojip: [], related: [], confidence: 'none', why,
+    key: '', kind: 'univ', ipgyeol: [], college: [], mojip: [],
+    related: [], confidence: 'none', why,
   });
 
+  if (app.univType === '전문대') return linkCollege(app, src, none);
   if (app.univType && app.univType !== '일반대') {
-    return none(`${app.univType}는 전문대 자료에서 봅니다`);
+    return none(`${app.univType}는 입결 자료가 없어 직접 확인해야 합니다`);
   }
 
   const univ = resolveUniv(app.univ, src.ipgyeol.index);
@@ -181,7 +183,7 @@ export function link(app, src) {
 
   if (rows.length) {
     return {
-      key: k, ipgyeol: rows, mojip, related,
+      key: k, kind: 'univ', ipgyeol: rows, college: [], mojip, related,
       confidence: 'exact',
       why: `${univ} · ${app.dept}`,
     };
@@ -190,13 +192,43 @@ export function link(app, src) {
     const borrowed = related.flatMap((rk) => src.ipgyeol.byKey.get(rk) || []);
     if (borrowed.length) {
       return {
-        key: k, ipgyeol: [], mojip, related,
+        key: k, kind: 'univ', ipgyeol: [], college: [], mojip, related,
         confidence: 'loose',
         why: `통합 모집이라 관련 학과 ${related.length}곳의 입결을 함께 봅니다`,
       };
     }
   }
   return none(`${univ}에 「${app.dept}」 입결이 없습니다`);
+}
+
+/**
+ * 전문대는 다른 자료를 본다 — College 저장소의 `data/departments.json`.
+ * 3개년 경쟁률·평균등급·최저등급에 취업률·충원율·연계편입이 함께 온다.
+ */
+function linkCollege(app, src, none) {
+  if (!src.college) return none('전문대 자료를 받는 중입니다');
+
+  const univ = resolveUniv(app.univ, src.college.index);
+  if (!univ) return none(`전문대 자료에 「${app.univ}」를 찾지 못했습니다`);
+
+  const k = key(univ, app.dept);
+  let rows = src.college.byKey.get(k) || [];
+
+  // 즐겨찾기는 `간호학과(4년제)` 처럼 수업연한을 학과명에 넣는다. College 자료는
+  // 그걸 `level` 이라는 별도 값으로 갖고 있어 이름만으로는 안 붙는다.
+  // 구분자를 떼고 다시 찾은 뒤 수업연한으로 가린다.
+  const years = (app.dept.match(/([2-6])\s*년제/) || [])[1];
+  if (!rows.length && years) {
+    const plain = key(univ, String(app.dept).replace(/\([2-6]\s*년제\)/g, ''));
+    rows = (src.college.byKey.get(plain) || []).filter((r) => Number(r.level) === Number(years));
+  }
+  if (!rows.length) return none(`${univ}에 「${app.dept}」 자료가 없습니다`);
+
+  return {
+    key: k, kind: 'college', ipgyeol: [], college: rows, mojip: [], related: [],
+    confidence: 'exact',
+    why: `${univ} · ${app.dept}`,
+  };
 }
 
 /** 연결 못한 것만 모은다. 미연결 큐 화면과 검증 요청에 쓴다. */
@@ -274,6 +306,41 @@ export function indexMojip(doc) {
       if (!byKey.has(k)) byKey.set(k, []);
       byKey.get(k).push(row);
     }
+  }
+  return { index: buildUnivIndex(names), byKey, univNames: [...names] };
+}
+
+/**
+ * College 저장소의 학과 목록을 조회용 색인으로 바꾼다.
+ * 같은 호스트(maechorom31-pixel.github.io)라 따로 받아 와도 출처가 같다.
+ */
+export function indexCollege(list) {
+  const byKey = new Map();
+  const names = new Set();
+  for (const d of list || []) {
+    const univ = d.college;
+    if (!univ) continue;
+    names.add(univ);
+    const ip = d.ipgyeol || {};
+    const row = {
+      univ, dept: d.unit,
+      region: d.sido, cat: d.cat2 || d.cat1, level: d.level,
+      track: ip.track || null, phase: ip.phase || null,
+      quota: ip.quota ?? null,
+      comp: ip.comp || [],        // 3개년 경쟁률 (앞이 최신)
+      avg: ip.avg || [],          // 3개년 최종등록자 평균등급
+      min: ip.min || [],          // 3개년 최저등급
+      trend: ip.trend ?? null,
+      tracks: d.tracks || {},     // 전형 유형별 등급
+      employ: d.employ ?? null,   // 취업률
+      fill: d.fill ?? null,       // 충원율
+      transfer: d.transfer ?? 0,  // 연계편입 경로 수
+      tuition: d.tuition ?? null,
+      change: d.change || null,
+    };
+    const kk = key(univ, d.unit);
+    if (!byKey.has(kk)) byKey.set(kk, []);
+    byKey.get(kk).push(row);
   }
   return { index: buildUnivIndex(names), byKey, univNames: [...names] };
 }

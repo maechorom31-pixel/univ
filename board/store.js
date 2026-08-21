@@ -12,7 +12,7 @@
  * 학생 목록을 받는 즉시 화면을 그리고 공개 자료는 뒤에서 받는다.
  */
 import * as api from './api.js';
-import { link as makeLink, indexIpgyeol, indexMojip } from './match.js';
+import { link as makeLink, indexIpgyeol, indexMojip, indexCollege } from './match.js';
 
 const listeners = new Map();
 
@@ -30,6 +30,7 @@ export const state = {
 
 let ipgyeol = null;
 let mojip = null;
+let college = null;
 let offline = false;      // 보기용 자료로 열었는가. 그때는 서버를 부르지 않는다
 const linkCache = new Map();
 
@@ -87,24 +88,40 @@ function apply(data) {
   linkCache.clear();
 }
 
-/** 공개 자료(입결·모집요강)를 받아 지표를 붙인다. */
+/**
+ * 공개 자료를 받아 지표를 붙인다.
+ *
+ * 전문대는 자료가 다른 저장소(College)에 있다. 같은 호스트라 출처가 같아서
+ * 그대로 받아 올 수 있고, 없더라도 일반대 쪽은 그대로 쓴다.
+ */
+const SOURCES = [
+  ['ipgyeol', 'data/ipgyeol.json', indexIpgyeol, '입결'],
+  ['mojip', 'data/mojip2027.json', indexMojip, '모집요강'],
+  ['college', '../College/data/departments.json', indexCollege, '전문대 자료'],
+];
+
 export async function enrich() {
   if (state.enriched) return;
-  try {
-    const [ip, mo] = await Promise.all([
-      fetch('data/ipgyeol.json').then((r) => r.json()),
-      fetch('data/mojip2027.json').then((r) => r.json()),
-    ]);
-    ipgyeol = indexIpgyeol(ip);
-    mojip = indexMojip(mo);
-    state.enriched = true;
-    linkCache.clear();
-    emit('change', 'enriched');
-  } catch (err) {
-    // 지표가 없어도 보드 자체는 쓸 수 있다. 조용히 넘기지 말고 알린다.
-    state.error = '입결 자료를 불러오지 못했습니다. 경쟁률·컷 없이 보드만 표시합니다.';
-    emit('change', 'enriched');
-  }
+  const missing = [];
+  const got = await Promise.all(SOURCES.map(async ([name, url, build, label]) => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(String(res.status));
+      return build(await res.json());
+    } catch (err) {
+      missing.push(label);
+      return null;
+    }
+  }));
+  [ipgyeol, mojip, college] = got;
+
+  state.enriched = true;
+  linkCache.clear();
+  // 일부만 못 받아도 보드는 쓸 수 있다. 조용히 넘기지 말고 무엇이 빠졌는지 알린다.
+  state.error = missing.length
+    ? `불러오지 못한 자료 — ${missing.join(' · ')}. 해당 지표 없이 표시합니다.`
+    : '';
+  emit('change', 'enriched');
 }
 
 /* ── 조회 ───────────────────────────────────────────────────────── */
@@ -132,31 +149,51 @@ export function placementOf(id) {
 
 /** 지원 한 건의 입결·모집요강 연결. 공개 자료가 아직이면 null. */
 export function link(app) {
-  if (!ipgyeol || !mojip) return null;
+  if (!state.enriched) return null;
   if (linkCache.has(app.id)) return linkCache.get(app.id);
-  const result = makeLink(app, { ipgyeol, mojip, related: new Map() });
+  const result = makeLink(app, { ipgyeol, mojip, college, related: new Map() });
   linkCache.set(app.id, result);
   return result;
 }
 
-/** 카드에 얹을 요약. 연결이 없으면 null 필드로 둔다 — 지어내지 않는다. */
+/**
+ * 카드에 얹을 요약. 연결이 없으면 값을 비워 둔다 — 지어내지 않는다.
+ * 일반대와 전문대는 자료가 달라서 `kind` 로 갈린다.
+ */
 export function summary(app) {
   const l = link(app);
   if (!l || l.confidence === 'none') {
-    return { linked: false, why: l ? l.why : '입결 자료를 받는 중입니다', rows: [] };
+    return {
+      linked: false, kind: l ? l.kind : 'univ', rows: [],
+      why: l ? l.why : '자료를 받는 중입니다',
+    };
   }
+
+  if (l.kind === 'college') {
+    const d = l.college[0];
+    return {
+      linked: true, kind: 'college', why: l.why, rows: l.college,
+      year: 2026,                      // College 자료는 앞이 최신 (2026·25·24)
+      rate: d.comp[0] ?? null,
+      avg: d.avg[0] ?? null,           // 최종등록자 평균등급
+      cut: d.min[0] ?? null,           // 최저등급 — 일반대의 70컷에 해당하는 자리
+      quota: d.quota ?? null,
+      employ: d.employ ?? null,
+      transfer: d.transfer || 0,
+      track: d.track || null,
+      trend: d.trend ?? null,
+    };
+  }
+
   const rows = l.ipgyeol;
   const latest = rows[rows.length - 1] || null;
-  const mine = app.myScore && app.myScore.grade != null ? app.myScore.grade : null;
-  const cut = latest && latest.g70 != null ? latest.g70 : null;
   return {
-    linked: true,
-    why: l.why,
-    rows,
+    linked: true, kind: 'univ', why: l.why, rows,
     year: latest ? latest.year : null,
     rate: latest ? latest.rate : null,
-    cut,
-    gap: mine != null && cut != null ? +(cut - mine).toFixed(2) : null,
+    cut: latest && latest.g70 != null ? latest.g70 : null,
+    cut50: latest && latest.g50 != null ? latest.g50 : null,
+    quota: latest ? latest.quota : null,
     mojip: l.mojip[0] || null,
   };
 }
