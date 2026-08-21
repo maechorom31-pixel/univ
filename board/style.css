@@ -208,8 +208,10 @@ button { font: inherit; color: inherit; }
 .fig { display: grid; }
 .fig .k { font-size: var(--t-xs); color: var(--muted); line-height: 1.4; white-space: nowrap; }
 .fig .v { font-size: var(--t-sm); font-weight: 600; line-height: 1.35; font-variant-numeric: tabular-nums; }
-.card .move { display: grid; grid-template-columns: 1fr auto; gap: var(--s2); align-items: center; }
-.card select {
+/* 자리 옮기기 상자와 「자세히」. 카드 안에서도 목록 줄에서도 같은 모양이다. */
+.move { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); align-items: center; }
+.move .btn { white-space: nowrap; }
+.card select, .move select {
   font: inherit; font-size: var(--t-xs); padding: 4px var(--s2);
   border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
   max-width: 100%;
@@ -238,6 +240,7 @@ button { font: inherit; color: inherit; }
   .row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
 }
 .row .txt { min-width: 0; }
+.row .move { align-self: start; }
 .row .univ { font-weight: 600; }
 .row .dept { font-size: var(--t-xs); color: var(--muted); }
 
@@ -335,6 +338,113 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
+/* ── 표 ───────────────────────────────────────────────────────── */
+
+/* 표는 좁은 화면에서 스스로 가로로 넘긴다. 본문이 통째로 밀리면 안 된다. */
+.tw { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tw table { border-collapse: collapse; width: 100%; font-size: var(--t-xs); }
+.tw th, .tw td {
+  text-align: left; padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.5;
+}
+.tw thead th {
+  font-weight: 600; color: var(--muted); white-space: nowrap;
+  border-bottom: 1px solid var(--line-strong);
+}
+.tw tbody tr:last-child th, .tw tbody tr:last-child td { border-bottom: 0; }
+.tw td.num, .tw th.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tw td.muted { color: var(--muted); }
+
+/* ── 상세 ─────────────────────────────────────────────────────── */
+
+.overlay {
+  position: fixed; inset: 0; z-index: var(--z-panel);
+  background: rgba(26, 26, 26, 0.32);
+  padding: var(--s4);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.detail {
+  max-width: 560px; margin: 0 auto;
+  padding: 0;                       /* 머리와 몸통이 각자 여백을 갖는다 */
+  box-shadow: 0 12px 32px rgba(26, 26, 26, 0.18);
+}
+.detail:focus { outline: none; }
+.detail:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+/* 머리는 붙여 둔다. 표가 길어도 어느 전형을 보는 중인지 잃지 않게. */
+.detail-head {
+  position: sticky; top: 0; z-index: 1;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s3); align-items: start;
+  padding: var(--s4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  border-radius: 10px 10px 0 0;
+}
+.detail-head .univ { font-size: var(--t-md); font-weight: 700; line-height: 1.3; }
+.detail-head .dept { font-size: var(--t-xs); color: var(--muted); line-height: 1.5; margin-top: 2px; }
+
+.detail-body { padding: 0 var(--s4) var(--s4); }
+.detail-body > .note { margin-top: var(--s4); }
+
+.detail-block:empty { display: none; }
+.detail-block { margin-top: var(--s5); }
+.detail-block h3 {
+  font-size: var(--t-xs); font-weight: 600; color: var(--muted);
+  letter-spacing: 0.02em; margin-bottom: var(--s2);
+}
+.detail-block .hint { font-size: var(--t-xs); color: var(--muted); line-height: 1.6; }
+.detail-block .tw + .hint { margin-top: var(--s2); }
+
+.rowhead {
+  font-weight: 400; color: var(--muted); white-space: nowrap;
+  width: 1%;                        /* 이름 칸은 글자만큼만 */
+}
+.tw td.src {
+  color: var(--muted); font-size: 11px; text-align: right;
+  white-space: nowrap; width: 1%;
+}
+
+/* 수능최저·지원자격 원문. 줄바꿈을 살리고 어절 단위로 접는다. */
+.longtext {
+  font-size: var(--t-xs); line-height: 1.7; color: var(--text-2);
+  white-space: pre-wrap; word-break: keep-all;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  padding: var(--s3);
+}
+
+/* 상담 메모 */
+.memo-list { list-style: none; margin: 0 0 var(--s3); padding: 0; }
+.memo-list li { border: 1px solid var(--line); border-radius: 6px; padding: var(--s3); }
+.memo-list li + li { margin-top: var(--s2); }
+.memo-text { font-size: var(--t-xs); line-height: 1.7; white-space: pre-wrap; word-break: keep-all; }
+.memo-foot {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s2); align-items: center;
+  margin-top: var(--s2); font-size: 11px; color: var(--muted);
+}
+.memo-new textarea {
+  font: inherit; font-size: 16px;   /* 16px 미만이면 iOS가 포커스 시 화면을 확대한다 */
+  width: 100%; line-height: 1.6; resize: vertical;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
+}
+.memo-bar {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s3); align-items: center; margin-top: var(--s2);
+}
+.memo-bar label {
+  display: grid; grid-auto-flow: column; grid-auto-columns: auto;
+  justify-content: start; align-items: center;
+  font-size: var(--t-xs); color: var(--text-2); cursor: pointer;
+}
+.memo-bar input[type='checkbox'] { width: 18px; height: 18px; margin: 0 var(--s2) 0 0; }
+
+@media (min-width: 560px) {
+  .overlay { padding: var(--s6) var(--s4); }
+}
+
 /* ── 설정 ─────────────────────────────────────────────────────── */
 
 .setup { display: grid; gap: var(--s3); max-width: 640px; }
@@ -364,4 +474,18 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
   .card { border: 1px solid #999; break-inside: avoid; page-break-inside: avoid; }
   .card .dept, .roster .hak, .pill, .who .meta { color: #000; }
   .roster { max-height: none; overflow: visible; }
+
+  /* 상세를 열어 둔 채 인쇄하면 그 전형 한 장만 나온다 — 상담 기록으로 그대로 쓴다 */
+  body[data-detail] .wrap { display: none; }
+  body[data-detail] .overlay {
+    position: static; padding: 0; background: none; overflow: visible;
+  }
+  .detail { max-width: none; box-shadow: none; border: 0; }
+  .detail-head { position: static; padding: 0 0 var(--s3); }
+  .detail-body { padding: 0; overflow: visible; }
+  .detail-block, .tw, .tw table { break-inside: auto; page-break-inside: auto; }
+  .tw { overflow: visible; }
+  .tw td.src, .memo-new { display: none; }
+  .rowhead, .longtext, .memo-foot { color: #000; }
+  .longtext { background: none; }
 }

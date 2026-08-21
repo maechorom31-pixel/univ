@@ -370,7 +370,9 @@ function parseFavorites_(values, opts) {
 
 /** 안정키 — 원본을 갈아끼워도 메모·순위가 붙어 있게 한다. CONTRACT.md §3 */
 function appId_(app) {
-  var seed = [app.hak, app.univ, app.typeSub, app.dept].join(' ');
+  // 구분자는 학과명·전형명에 절대 나오지 않는 문자여야 한다. 공백으로 이으면
+  // `가 나` + `다` 와 `가` + `나 다` 가 같은 씨앗이 되어 메모가 뒤섞인다.
+  var seed = [app.hak, app.univ, app.typeSub, app.dept].join('\u0001');
   return sha1_(seed).slice(0, 16);
 }
 

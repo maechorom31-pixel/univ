@@ -135,7 +135,7 @@ export async function enrich() {
  * 지금 보고 있는 반과 학생. 보드와 일정판이 같은 선택을 본다.
  * 화면마다 따로 들고 있으면 탭을 옮길 때 선택이 풀린다.
  */
-export const selection = { cls: '', hak: '' };
+export const selection = { cls: '', hak: '', appId: '' };
 
 export function select(next) {
   Object.assign(selection, next);
@@ -268,6 +268,59 @@ export async function setDate(app, kind, from, to) {
     await api.setDate({ id: app.id, hak: app.hak, kind, from, to: to || from });
   } catch (err) {
     if (before) state.dates.set(key, before); else state.dates.delete(key);
+    emit('change', 'state');
+    throw err;
+  }
+}
+
+/* ── 메모 ───────────────────────────────────────────────────────── */
+
+/**
+ * 이 지원(또는 이 학생)에 달린 메모.
+ * `id` 를 주면 그 지원에 달린 것만, 안 주면 학생에게 달린 것까지 모두.
+ */
+export function notesOf(hak, id) {
+  return state.notes
+    .filter((n) => String(n.hak) === String(hak) && (!id || String(n.id) === String(id)))
+    .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+}
+
+/**
+ * 메모를 단다. `visible` 이 참이면 학생 화면에도 같이 보인다.
+ * 화면을 먼저 바꾸고 서버에 보낸 뒤, 실패하면 되돌린다.
+ */
+export async function addNote(hak, id, text, visible) {
+  const body = String(text || '').trim();
+  if (!body) return null;
+  const noteId = `tmp-${Date.now()}`;
+  const row = {
+    noteId, hak, id: id || '', text: body,
+    visible: visible ? 'Y' : 'N', by: state.who || '', at: new Date().toISOString(),
+  };
+  state.notes = [...state.notes, row];
+  emit('change', 'state');
+  if (offline) return row;
+  try {
+    const res = await api.addNote({ hak, id: id || '', text: body, visible: visible ? 'Y' : 'N' });
+    if (res && res.noteId) row.noteId = String(res.noteId);   // 서버가 준 번호로 바꿔 둔다
+    return row;
+  } catch (err) {
+    state.notes = state.notes.filter((n) => n !== row);
+    emit('change', 'state');
+    throw err;
+  }
+}
+
+/** 메모를 지운다. */
+export async function removeNote(noteId) {
+  const before = state.notes;
+  state.notes = state.notes.filter((n) => String(n.noteId) !== String(noteId));
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.removeNote(noteId);
+  } catch (err) {
+    state.notes = before;
     emit('change', 'state');
     throw err;
   }

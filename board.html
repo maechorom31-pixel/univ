@@ -64,6 +64,9 @@
   </div>
 </main>
 
+<!-- 상세는 본문 밖에 둔다. 보드를 다시 그려도 열어 둔 상세가 닫히지 않게 하기 위해서다. -->
+<div class="overlay" id="detail" hidden></div>
+
 <script type="module">
 import * as api from './board/api.js';
 import * as store from './board/store.js';
@@ -73,6 +76,11 @@ import { start as startLinks } from './board/links.js';
 
 // iOS 사파리는 터치 리스너가 없으면 :active 가 발화하지 않는다
 document.addEventListener('touchstart', () => {}, { passive: true });
+
+// 덮개의 빈 곳을 누르면 상세를 닫는다. 안쪽(카드)에서 시작된 누름은 그대로 둔다.
+document.getElementById('detail').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) store.select({ appId: '' });
+});
 
 const conn = document.getElementById('conn');
 const who = document.getElementById('who');
