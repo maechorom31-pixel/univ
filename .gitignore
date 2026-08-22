@@ -1,6 +1,11 @@
 # 학생 개인정보 보호: 수시지원 원본·파생 데이터는 절대 커밋 금지 (tools/DESIGN.md §0)
 *.xlsx
 *.xls
+
+# 지난해 지원 결과 보고서 원본 — 2부에 학생 실명·학번이 들어 있다.
+# 여기서 뽑아 쓰는 것은 1부의 집계 숫자뿐이고, 그 결과인
+# data/report_history.json 에는 개인정보가 없다.
+data/report_source.hwpx
 parsed*.json
 peer-local*.html
 peer_data*.json

@@ -764,6 +764,129 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
+/* ── 예년 서식 문서 ───────────────────────────────────────────────
+ *
+ * 진학 대장과 지원 결과 보고서는 학교가 쓰던 서식이 이미 있다. 2025 대장
+ * PDF 를 실측해 칸 너비(표 전체 286mm)와 글자 크기(본문 9pt, 제목 18pt)를
+ * 그대로 옮겼다. 화면에서도 같은 모양으로 보여야 인쇄 전에 확인할 수 있다.
+ */
+
+.sheet-title {
+  text-align: center; font-size: 15pt; font-weight: 700;
+  letter-spacing: -0.01em; margin: 0 0 4mm;
+}
+/*
+ * 한글로 만든 예년 문서의 위계를 그대로 옮긴다. 제목만 가운데, 나머지는
+ * 왼쪽에 붙이고 들여쓰기를 주지 않는다 — 관공서 문서가 그렇게 생겼다.
+ */
+.doc-title {
+  text-align: center; font-size: 16pt; font-weight: 700;
+  letter-spacing: -0.02em; margin: 0 0 2mm;
+}
+.doc-date { text-align: center; font-size: 10pt; margin: 0 0 10mm; }
+.sheet-stamp { text-align: right; font-size: 9pt; margin: -2mm 0 2mm; }
+.doc-h1 { font-size: 12pt; font-weight: 700; margin: 9mm 0 3mm; }
+.doc-h1:first-of-type { margin-top: 0; }
+.doc-h2 { font-size: 10.5pt; font-weight: 700; margin: 6mm 0 2mm; }
+.sheet-doc .tw { margin-bottom: 2mm; }
+.sheet-doc .detail-block { margin: 0 0 6mm; }
+.sheet-doc .detail-block > h3 {
+  font-size: 10.5pt; font-weight: 700; margin: 6mm 0 2mm;
+}
+.sheet-doc .uni-block { margin: 0 0 4mm; }
+.sheet-doc .uni-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 9.5pt; margin: 0 0 1mm;
+}
+.sheet-doc .uni-head .nm { font-weight: 700; }
+
+/* 대장 — 학생 한 명이 네 줄, 지원 한 건이 세로 한 칸 */
+table.ledger {
+  table-layout: fixed; width: 100%; border-collapse: collapse;
+  font-size: 9pt; line-height: 1.35;
+}
+table.ledger th, table.ledger td {
+  border: 0.4pt solid #000; padding: 1.2mm 1mm;
+  word-break: keep-all; overflow-wrap: break-word; vertical-align: middle;
+}
+table.ledger thead th {
+  background: #EDEDED; font-weight: 700; text-align: center; line-height: 1.25;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+table.ledger thead th { padding-left: 0.4mm; padding-right: 0.4mm; }
+table.ledger thead th small { font-size: 7pt; font-weight: 600; }
+table.ledger td.fix { text-align: center; padding-left: 0.4mm; padding-right: 0.4mm; }
+/* 이름은 끊지 않는다. 「가나 / 다」로 갈리면 대장에서 사람을 못 찾는다 */
+table.ledger td.fix.nm { font-weight: 700; white-space: nowrap; font-size: 8.5pt; }
+/* 빈 칸도 제 높이를 지킨다. 아직 지원을 안 넣은 학생 줄이 납작하게 눌리면
+   대장이 아니라 줄이 겹친 것처럼 보인다 */
+table.ledger td.slot { text-align: center; height: 5.6mm; }
+table.ledger tr.band-top td.slot:not(.empty) {
+  background: #F4F4F4; font-weight: 700;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+table.ledger td.slot-result.pass { font-weight: 700; }
+/* 등록 대학은 대학과 학과를 두 줄로. 칸이 좁으니 학과는 한 단계 작게 둔다 */
+table.ledger td.reg { font-weight: 700; text-align: center; line-height: 1.3; }
+table.ledger td.reg .d { font-weight: 600; font-size: 8pt; margin-top: 0.6mm; }
+table.ledger td.memo { text-align: left; vertical-align: top; }
+table.ledger td.memo ul { margin: 0; padding: 0; list-style: none; }
+table.ledger td.memo li { text-indent: -2.4mm; padding-left: 2.4mm; }
+table.ledger td.memo li::before { content: '– '; }
+/* 학생이 바뀌는 자리에 굵은 선을 둬야 네 줄 덩어리가 눈에 잡힌다 */
+table.ledger tr.stu-top > td { border-top: 0.8pt solid #000; }
+
+/* 보고서 — 결재 문서용 표 */
+table.gov {
+  width: 100%; border-collapse: collapse; font-size: 9pt; line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+table.gov th, table.gov td {
+  border: 0.4pt solid #000; padding: 1.2mm 1.4mm; text-align: center;
+  word-break: keep-all; overflow-wrap: break-word;
+}
+/*
+ * 두 줄로 갈리면 안 되는 칸.
+ *
+ * 이름이 「김가 / 빈」으로 갈리면 표에서 사람을 못 찾는다. 숫자도 마찬가지라
+ * 「8.45 / :1」이나 「1,2 / 34」로 갈리면 읽다가 걸린다. 머리글도 한 줄로 둔다 —
+ * 두 줄이 되면 그 행만 키가 커져 표가 들쭉날쭉해진다.
+ */
+table.gov td.nm, table.gov td.num { white-space: nowrap; }
+/*
+ * 머리글은 줄바꿈을 막지 않는다. 「모집 인원」·「1단계 결과」처럼 긴 이름이
+ * 좁은 칸에 들어가는데 한 줄로 묶으면 옆 칸을 덮고 글자가 겹친다(실제로 그랬다).
+ * 대신 낱말 가운데서는 안 끊기게 둔다.
+ */
+table.gov th { word-break: keep-all; overflow-wrap: break-word; line-height: 1.2; }
+table.gov.fixed th { font-size: 8pt; padding: 1mm 0.6mm; }
+table.gov.fixed td { padding: 1mm 0.8mm; }
+table.gov.fixed { table-layout: fixed; }
+/* 너비를 못박으면 긴 이름이 칸을 넘칠 수 있으니 그때만 낱말 안에서 끊는다 */
+table.gov.fixed td { overflow-wrap: break-word; }
+table.gov thead th, table.gov th.rowhead, table.gov th.sub {
+  background: #E9E9E9; font-weight: 700;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+table.gov th.rowhead { text-align: center; }
+/* 설명이 들어가는 칸만 왼쪽 정렬. 가운데로 두면 문장이 떠 보인다 */
+table.gov td.lead { text-align: left; }
+table.gov td.nm { font-weight: 600; }
+/* 합격은 굵기로만 구분한다. 흑백 복합기에서 색은 사라진다 */
+table.gov td.won { font-weight: 700; }
+table.gov tr.sum > * { font-weight: 700; background: #F5F5F5;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+/* 표의 바깥 테두리만 한 단계 굵게 — 한글 표의 기본 모양이다 */
+table.gov { border: 0.8pt solid #000; }
+
+/*
+ * 화면에서도 종이와 같은 비율로 보여야 인쇄 전에 확인이 된다. 표 폭 286mm 를
+ * px 로 환산해 최소 폭을 박아 두지 않으면, 좁은 화면에서 「반·번호·성명」이
+ * 한 글자씩 세로로 쌓여 실제 인쇄와 딴판이 된다.
+ */
+.sheet-land .tw { overflow-x: auto; }
+.sheet-land table.ledger { min-width: 1080px; }
+
 /* ── 인쇄 ─────────────────────────────────────────────────────── */
 
 @media print {
@@ -789,13 +912,33 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
   .sheet .tw { overflow: visible; }
   .sheet table { font-size: 8.5pt; }
   .sheet th, .sheet td { padding: 3pt 4pt; line-height: 1.4; }
-  table.ledger { table-layout: fixed; width: 100%; min-width: 0; }
+  table.ledger { table-layout: fixed; width: 100%; min-width: 0; font-size: 9pt; }
   /* 왼쪽 명단은 화면을 옮겨 다니는 도구지 종이에 실을 것이 아니다 */
   .layout > aside { display: none !important; }
   .sheet thead { display: table-header-group; }   /* 쪽이 넘어가도 머리가 따라간다 */
   .sheet tr { break-inside: avoid; page-break-inside: avoid; }
   .uni-block { break-inside: avoid; page-break-inside: avoid; }
   .views, .panel-head .count, .section-label { display: none !important; }
+  .panel-head, .note, .hint, .tools { display: none !important; }
+
+  /*
+   * 대장은 A4 **가로**, 보고서는 세로다. 한 문서 안에서 방향을 나누려면
+   * 이름 붙인 페이지(@page land)를 써야 한다. 여백은 2025 대장 실측값이다
+   * (좌 6.1mm · 우 4.9mm · 표 상단 16.2mm · 제목 6mm).
+   */
+  @page land { size: A4 landscape; margin: 6mm 5mm 10mm 6mm; }
+  /* 명단 표가 열셋이라 좌우 20mm 로는 글자가 겹친다. 12mm 로 16mm 를 번다 */
+  @page doc  { size: A4 portrait;  margin: 15mm 12mm; }
+  .sheet-land { page: land; }
+  .sheet-doc  { page: doc; }
+  .sheet-land .sheet-title { font-size: 18pt; margin: 0 0 3mm; }
+  .sheet-doc table { font-size: 8.5pt; }
+  .sheet-land table.ledger { font-size: 9pt; }
+  .sheet-land table.ledger th, .sheet-land table.ledger td { padding: 1.2mm 1mm; }
+  /* 네 줄 덩어리가 쪽 사이에서 갈리면 대학과 결과가 다른 장에 실린다 */
+  table.ledger tbody tr { break-inside: avoid; page-break-inside: avoid; }
+  .doc-h1, .doc-h2 { break-after: avoid; page-break-after: avoid; }
+  .gov { break-inside: auto; }
 
   /* 상세를 열어 둔 채 인쇄하면 그 전형 한 장만 나온다 — 상담 기록으로 그대로 쓴다 */
   body[data-detail] .wrap { display: none; }
