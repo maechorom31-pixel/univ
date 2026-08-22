@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 수시 지원 · 나주고 3학년</title>
+<!-- 파비콘을 안 두면 브라우저가 /favicon.ico 를 찾다 404 를 남긴다. 콘솔이 지저분하면
+     진짜 오류를 못 알아본다. 파일을 더 두지 않으려고 데이터 URI 로 박아 둔다. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='14'%3E%F0%9F%93%8B%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="board/style.css">
+</head>
+<body class="student">
+
+<header class="bar">
+  <div class="bar-in">
+    <div>
+      <h1>내 수시 지원</h1>
+      <p class="sub" id="who">불러오는 중</p>
+    </div>
+    <div class="bar-tools">
+      <button class="btn" id="print" type="button">인쇄</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="me"></div>
+  <p class="hint" id="foot">
+    경쟁률과 작년 컷은 대학이 공개한 자료를 정리한 참고값입니다.
+    최종 판단은 담임 선생님과 상의해 주세요.
+  </p>
+</main>
+
+<script type="module">
+import * as api from './board/api.js';
+import { start } from './board/student.js';
+
+// iOS 사파리는 터치 리스너가 없으면 :active 가 발화하지 않는다
+document.addEventListener('touchstart', () => {}, { passive: true });
+document.getElementById('print').onclick = () => window.print();
+
+const params = new URLSearchParams(location.search);
+const token = params.get('s') || params.get('token') || '';
+
+if (params.has('demo')) {
+  const { studentDemo } = await import('./board/demo.js');
+  start('demo', studentDemo);
+} else if (!token) {
+  document.getElementById('me').innerHTML =
+    '<p class="note error">주소가 올바르지 않습니다. 담임 선생님이 보내 준 링크로 열어 주세요.</p>';
+  document.getElementById('who').textContent = '';
+} else {
+  // 학생 링크에는 Apps Script 주소가 함께 들어온다. 없으면 이 브라우저에 저장된 것을 쓴다.
+  const url = params.get('api');
+  // 링크가 준 주소는 이 화면에서만 쓴다. 브라우저에 남기면 교사 보드가 이 주소로 바뀐다.
+  if (url) api.configure(url, { persist: false });
+  start(token);
+}
+</script>
+
+</body>
+</html>
