@@ -171,6 +171,11 @@ button { font: inherit; color: inherit; }
 /* ── 학생 머리글 ──────────────────────────────────────────────── */
 
 .who { display: grid; gap: var(--s1); margin-bottom: var(--s4); }
+.who-line {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s3); align-items: center;
+}
+.who-line .btn { white-space: nowrap; }
 .who .name { font-size: var(--t-md); font-weight: 700; }
 .who .meta { font-size: var(--t-xs); color: var(--muted); }
 .who .meta b { color: var(--text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -348,6 +353,18 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 .note.error { border-color: var(--err); background: var(--err-face); color: var(--err); }
 .note b { font-weight: 600; }
 
+/* 학생 화면 — 숫자 앞에 두는 읽는 법 */
+.howto {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+  padding: var(--s3); margin: var(--s2) 0 var(--s4);
+  font-size: var(--t-xs); line-height: 1.7; color: var(--text-2);
+  word-break: keep-all;
+}
+.howto b { color: var(--text); font-weight: 600; }
+
+/* 빈 안내문이 자리를 차지하지 않게 */
+.hint:empty, .field .hint:empty { display: none; }
+
 .empty-state {
   border: 1px dashed var(--line-strong); border-radius: 8px;
   padding: var(--s6) var(--s4); text-align: center; color: var(--muted); font-size: var(--t-xs);
@@ -516,6 +533,25 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
   table.ledger col { width: auto !important; }
 }
 
+/* ── 결과 입력 ────────────────────────────────────────────────── */
+
+.res { display: grid; gap: var(--s2); margin-bottom: var(--s2); }
+@media (min-width: 480px) {
+  .res { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .res .res-f:last-child { grid-column: 1 / -1; }
+}
+.res-f { display: grid; gap: 2px; min-width: 0; }
+.res-f .k { font-size: var(--t-xs); color: var(--muted); }
+.res-f select, .res-f input {
+  font: inherit; font-size: 16px;   /* 16px 미만이면 iOS가 포커스 시 화면을 확대한다 */
+  min-height: 40px; padding: 0 var(--s2); width: 100%;
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
+}
+.res-bar {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s3); align-items: center;
+}
+
 /* ── 얼마나 믿을 수 있나 ──────────────────────────────────────── */
 
 .sure {
@@ -632,7 +668,8 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
   .detail-body { padding: 0; overflow: visible; }
   .detail-block, .tw, .tw table { break-inside: auto; page-break-inside: auto; }
   .tw { overflow: visible; }
-  .tw td.src, .memo-new { display: none; }
+  .tw td.src, .memo-new, .res-bar .btn { display: none; }
+  .res-f select, .res-f input { border: 0; padding: 0; min-height: 0; font-size: 9pt; }
   .rowhead, .longtext, .memo-foot { color: #000; }
   .longtext { background: none; }
 }

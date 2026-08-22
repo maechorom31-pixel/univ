@@ -140,13 +140,36 @@ function render() {
   const events = eventsOf(apps);
 
   const head = el('div', 'who');
-  head.appendChild(el('div', 'name', student
+  const line = el('div', 'who-line');
+  line.appendChild(el('div', 'name', student
     ? `${student.hak} ${tidy(student.name)} 일정`
     : (cls ? `${cls}반 일정` : '학년 전체 일정')));
+
+  // 담임이 제일 자주 보는 것은 「그날 누가 어디로 가는지」인데, 학생을 한 번 고르면
+  // 반을 바꾸는 것 말고는 돌아갈 길이 없었다. 반이 하나뿐이면 그 단추조차 없다.
+  if (student) {
+    const back = el('button', 'btn', cls ? `${cls}반 전체 보기` : '학년 전체 보기');
+    back.type = 'button';
+    back.onclick = () => store.select({ hak: '' });
+    line.appendChild(back);
+  }
+  head.appendChild(line);
   const kinds = ATTEND.filter((k) => events.some((e) => e.kind === k));
-  head.appendChild(el('div', 'meta', events.length
-    ? `${events.length}건 · ${kinds.join(' · ') || '발표만'}`
-    : '아직 일정이 없습니다'));
+  const bits = [];
+  if (events.length) bits.push(`${events.length}건`);
+  if (kinds.length) bits.push(kinds.join(' · '));
+
+  // 확정 겹침과 「겹칠 수 있음」을 **따로 센다.**
+  // 뭉쳐서 「겹치는 날 5건」이라 적으면, 정작 하나를 버려야 하는 진짜 겹침 한 건이
+  // 기간 때문에 생긴 잠재 넷에 묻힌다. 겁만 주고 판단은 못 돕는다.
+  if (student) {
+    const cs = clashes(events);
+    const sure = cs.filter((c) => c.sure).length;
+    const maybe = cs.length - sure;
+    if (sure) bits.push(`겹침 ${sure}건`);
+    if (maybe) bits.push(`겹칠 수 있음 ${maybe}건`);
+  }
+  head.appendChild(el('div', 'meta', bits.join(' · ') || '아직 일정이 없습니다'));
   main.appendChild(head);
 
   if (!events.length) {
@@ -169,7 +192,8 @@ function render() {
 function clashPanel(list) {
   const box = el('section', 'panel');
   const head = el('div', 'panel-head');
-  head.appendChild(el('h2', '', '겹치는 날'));
+  const sure = list.filter((c) => c.sure).length;
+  head.appendChild(el('h2', '', sure ? '겹치는 날' : '겹칠 수 있는 날'));
   head.appendChild(el('span', 'count num', `${list.length}건`));
   box.appendChild(head);
 

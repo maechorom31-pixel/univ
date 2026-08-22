@@ -39,7 +39,10 @@ export function url() {
 function once(action, params, timeoutMs) {
   return new Promise((resolve, reject) => {
     if (!apiUrl) {
-      reject(new Error('Apps Script 주소가 설정되지 않았습니다.'));
+      // 학생도 이 오류를 본다. 링크에서 `api` 조각이 잘려 나가면 여기로 온다.
+      // 「Apps Script 주소」는 학생이 못 알아듣는 말이라 양쪽 다 읽히게 적는다.
+      reject(new Error('주소가 온전하지 않습니다.'
+        + ' 링크를 끝까지 복사했는지 확인하시고, 그래도 안 되면 담임 선생님께 다시 받아 주세요.'));
       return;
     }
     const cb = `__board_cb_${Date.now()}_${seq += 1}`;
@@ -88,11 +91,10 @@ export async function call(action, params, opts = {}) {
   throw last;
 }
 
-export const ping = () => call('ping', {});
 export const students = () => call('students', {}, { timeout: 45000 });
 export const setState = (s) => call('setState', s);
 export const addNote = (n) => call('addNote', n);
 export const removeNote = (noteId) => call('removeNote', { noteId });
 export const setResult = (r) => call('setResult', r);
 export const setDate = (d) => call('setDate', d);
-export const issueToken = (hak) => call('issueToken', { hak });
+

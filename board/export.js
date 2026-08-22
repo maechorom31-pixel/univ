@@ -160,7 +160,7 @@ function ledgerRow(app) {
   const s = store.summary(app);
   const p = store.placementOf(app.id);
   const go = ['면접', '실기', '논술'].map((k) => store.dateOf(app, k)).find(Boolean);
-  const r = app.result || {};
+  const r = store.resultOf(app);
   const mine = app.myScore || {};
   return [
     p.slot === 'rank' ? `${p.rank}` : (SLOT_NAME[p.slot] || '후보'),
@@ -308,7 +308,11 @@ function ledgerPage(student) {
 function rowsForReport() {
   const out = [];
   for (const student of store.studentsOf('')) {          // 보고서는 늘 학년 전체다
-    for (const app of store.appsOf(student.hak)) out.push({ app, student });
+    for (const app of store.appsOf(student.hak)) {
+      // 선생님이 시트에 적은 결과를 얹어서 넘긴다. 통계는 그걸 봐야 한다 —
+      // 예비번호와 등록 여부는 즐겨찾기에 없거나 늦다.
+      out.push({ app: { ...app, result: store.resultOf(app) }, student });
+    }
   }
   return out;
 }

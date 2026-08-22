@@ -218,17 +218,8 @@ export function detailPanel(app, student, onClose) {
   /* 9.5 이 숫자를 얼마나 믿을 수 있나 */
   body.appendChild(howSure(s, mine.grade));
 
-  /* 10. 결과 — 발표가 나기 시작하면 채워진다 */
-  const r = app.result || {};
-  if (r.final || r.stage1 || r.waitNo || r.enrolled) {
-    body.appendChild(rows('결과', [
-      ['1단계', r.stage1, '즐겨찾기'],
-      ['최종', r.final, '즐겨찾기'],
-      ['사유', r.reason, '즐겨찾기'],
-      ['최초 후보 순위', r.waitNo, '즐겨찾기'],
-      ['등록 여부', r.enrolled, '즐겨찾기'],
-    ]));
-  }
+  /* 10. 결과 — 보고 적는다 */
+  body.appendChild(result(app));
 
   /* 11. 상담 메모 */
   body.appendChild(memo(app, student));
@@ -465,6 +456,103 @@ function howSure(s, mine) {
   wrap.appendChild(el('p', 'hint',
     '유의확률(p값)이나 신뢰구간은 내지 않습니다. 입결은 대학이 공개한 요약값이라'
     + ' 합격자 한 사람 한 사람의 점수가 없고, 그것 없이는 계산할 수 없는 값입니다.'));
+  return wrap;
+}
+
+const STAGE1 = ['', '합격', '불합격'];
+const FINAL = ['', '최초합격', '충원합격', '불합격', '미등록'];
+
+/**
+ * 결과 — 보고 적는다.
+ *
+ * 즐겨찾기가 결과를 주긴 하지만 **12월에는 담임이 먼저 안다.** 예비번호가 몇 번
+ * 돌았는지, 등록을 했는지는 대교협 자료가 늦거나 아예 없다.
+ * 처음에 보내 주신 시트가 정확히 이 일을 하던 것이라 여기에 옮겼다.
+ *
+ * 적은 값은 즐겨찾기 값 **위에** 덮인다. 칸을 비우고 저장하면 도로 즐겨찾기 값이 된다.
+ * 어느 쪽에서 온 값인지 화면에 적는다.
+ */
+function result(app) {
+  const wrap = el('div', 'detail-block');
+  wrap.appendChild(el('h3', '', '결과'));
+
+  const r = store.resultOf(app);
+  const alertBox = el('p', 'note error');
+  alertBox.hidden = true;
+  wrap.appendChild(alertBox);
+
+  const form = el('div', 'res');
+  const fields = {};
+
+  const pick = (key, label, options) => {
+    const box = el('label', 'res-f');
+    box.appendChild(el('span', 'k', label));
+    const sel = document.createElement('select');
+    for (const o of options) {
+      const opt = document.createElement('option');
+      opt.value = o;
+      opt.textContent = o || '—';
+      if ((r[key] || '') === o) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    // 즐겨찾기가 준 표기가 목록에 없으면 그것도 넣어 준다. 버리면 안 된다.
+    if (r[key] && !options.includes(r[key])) {
+      const opt = document.createElement('option');
+      opt.value = r[key];
+      opt.textContent = r[key];
+      opt.selected = true;
+      sel.appendChild(opt);
+    }
+    box.appendChild(sel);
+    fields[key] = sel;
+    form.appendChild(box);
+  };
+
+  const text = (key, label, placeholder) => {
+    const box = el('label', 'res-f');
+    box.appendChild(el('span', 'k', label));
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = r[key] || '';
+    input.placeholder = placeholder || '';
+    box.appendChild(input);
+    fields[key] = input;
+    form.appendChild(box);
+  };
+
+  pick('stage1', '1단계', STAGE1);
+  pick('final', '최종', FINAL);
+  text('waitNo', '예비번호', '예) 7');
+  pick('enrolled', '등록', ['', '등록', '미등록']);
+  text('reason', '불합격 사유', '예) 수능최저 미충족');
+  wrap.appendChild(form);
+
+  const bar = el('div', 'res-bar');
+  const from = el('span', 'hint', r.edited
+    ? `선생님이 적은 값입니다${r.at ? ` · ${String(r.at).slice(0, 10)}` : ''}`
+    : (r.final || r.stage1 ? '즐겨찾기에서 온 값입니다' : '아직 결과가 없습니다'));
+  bar.appendChild(from);
+
+  const save = el('button', 'btn btn-primary', '결과 저장');
+  save.type = 'button';
+  save.onclick = async () => {
+    save.disabled = true;
+    alertBox.hidden = true;
+    try {
+      await store.setResult(app, {
+        stage1: fields.stage1.value, final: fields.final.value,
+        waitNo: fields.waitNo.value.trim(), enrolled: fields.enrolled.value,
+        reason: fields.reason.value.trim(),
+      });
+    } catch (err) {
+      alertBox.textContent = `결과를 저장하지 못했습니다 — ${err.message}`;
+      alertBox.hidden = false;
+    } finally {
+      save.disabled = false;
+    }
+  };
+  bar.appendChild(save);
+  wrap.appendChild(bar);
   return wrap;
 }
 

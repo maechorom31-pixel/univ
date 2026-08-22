@@ -115,6 +115,7 @@ function dateOf(app, kind) {
 function render() {
   const main = $('#me');
   main.textContent = '';
+  firstApplyNo = false;
 
   if (state.error) {
     main.appendChild(note(`오류: ${state.error}`, true));
@@ -139,7 +140,33 @@ function render() {
 
   main.appendChild(group('지원 6칸', ranked, `${ranked.length}/6`,
     ranked.length ? '' : '아직 순위가 정해지지 않았습니다. 상담 때 함께 정합니다.'));
-  if (rest.length) main.appendChild(group('그 밖의 지원', rest, `${rest.length}곳`, ''));
+
+  /*
+   * 숫자를 처음 만나는 자리에 읽는 법을 둔다.
+   *
+   * 카드에는 「70%컷 2.96 / 내 환산 3.17」이 나란히 있는데, 옆에 선생님이 없으면
+   * 학생은 이걸 보고 혼자 「나는 떨어지는구나」로 끝낸다. 실제로는 작년 한 해의
+   * 한 지점일 뿐이고, 올해 모집인원·경쟁률·최저가 다르면 통째로 달라진다.
+   *
+   * 이 말은 맨 아래 각주에도 있지만 거기까지 스크롤하는 학생은 없다.
+   * 숫자 바로 앞에 둬야 읽는다.
+   */
+  if (ranked.length || rest.length) {
+    const how = el('p', 'howto');
+    how.appendChild(el('b', '', '숫자 읽는 법'));
+    how.appendChild(document.createTextNode(' 왼쪽은 '));
+    how.appendChild(el('b', '', '작년에 붙은 사람들'));
+    how.appendChild(document.createTextNode(
+      '의 성적이고 오른쪽이 내 성적입니다. 작년 한 해의 한 지점일 뿐이라,'
+        + ' 올해 뽑는 인원이나 경쟁률이 달라지면 함께 움직입니다.'
+        + ' 숫자만 보고 혼자 판단하지 말고 담임 선생님과 같이 봐 주세요.'));
+    main.appendChild(how);
+  }
+
+  if (rest.length) {
+    main.appendChild(group('그 밖의 지원', rest, `${rest.length}곳`,
+      '6칸에 넣지 않았거나 6회 제한 밖(전문대·특수대)인 지원입니다.'));
+  }
 }
 
 function upcoming() {
@@ -368,6 +395,9 @@ function dateRow(app, kind, d) {
   return wrap;
 }
 
+/** 접수번호 안내를 이미 한 번 냈나. 일곱 장에 같은 문장이 일곱 번 나오면 소음이다. */
+let firstApplyNo = false;
+
 function applyNoRow(app) {
   const wrap = el('div', 'field');
   const id = `n-${app.id}`;
@@ -379,7 +409,8 @@ function applyNoRow(app) {
     && String(n.text || '').startsWith('접수번호'));
   wrap.appendChild(el('p', 'hint', saved
     ? `${String(saved.text).replace('접수번호', '').trim()} 로 저장되어 있습니다.`
-    : '원서를 넣고 받은 번호를 적어 두면 나중에 찾기 쉽습니다.'));
+    : (firstApplyNo ? '' : '원서를 넣고 받은 번호를 적어 두면 나중에 찾기 쉽습니다.')));
+  if (!saved) firstApplyNo = true;   // 같은 안내를 카드마다 되풀이하지 않는다
 
   const row = el('div', 'field-in');
   const input = document.createElement('input');

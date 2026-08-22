@@ -473,13 +473,6 @@ export function summarize(l, app) {
   };
 }
 
-/** 연결 못한 것만 모은다. 미연결 큐 화면과 검증 요청에 쓴다. */
-export function unlinked(apps, src) {
-  return apps
-    .map((app) => ({ app, link: link(app, src) }))
-    .filter((x) => x.link.confidence === 'none');
-}
-
 /* ── 비슷한 학과 찾기 ─────────────────────────────────────────────── */
 
 /**

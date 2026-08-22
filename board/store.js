@@ -30,6 +30,7 @@ export const state = {
   notes: [],
   dates: new Map(),      // `${id}|${kind}` → { from, to, status }
   aliases: new Map(),    // `${univ}|${dept}` → { toUniv, toDept, note }
+  results: new Map(),    // id → { stage1, final, reason, waitNo, enrolled }
   source: { name: '', known: true },   // 어느 탭을 읽었나
   unknownCols: [],
   error: '',
@@ -90,6 +91,13 @@ function apply(data) {
   state.students = new Map((data.students || []).map((s) => [s.hak, s]));
   state.apps = new Map((data.apps || []).map((a) => [a.id, a]));
   state.notes = data.notes || [];
+  // 선생님이 시트에 적어 둔 결과. 즐겨찾기가 준 값 위에 덮어쓴다 —
+  // 예비번호가 도는 12월에는 대교협보다 담임이 먼저 안다.
+  state.results = new Map((data.results || []).map((r) => [String(r.id), {
+    stage1: String(r.stage1 || ''), final: String(r.final || ''),
+    reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
+    enrolled: String(r.enrolled || ''), by: r.by || '', at: r.at || '',
+  }]));
   state.aliases = new Map((data.aliases || [])
     .map((r) => [`${r.univ}|${r.dept}`, {
       toUniv: String(r.toUniv || ''), toDept: String(r.toDept || ''),
@@ -205,11 +213,6 @@ export function link(app) {
 }
 
 /* ── 학과 별칭 ─────────────────────────────────────────────────── */
-
-/** 이 지원에 걸린 별칭. 없으면 null. */
-export function aliasOf(app) {
-  return state.aliases.get(`${app.univ}|${app.dept}`) || null;
-}
 
 /** 같은 대학에서 이름이 닮은 학과. 고르지는 않는다 — 사람이 고른다. */
 export function candidatesFor(app, n) {
@@ -367,6 +370,51 @@ export async function setDate(app, kind, from, to) {
     await api.setDate({ id: app.id, hak: app.hak, kind, from, to: to || from });
   } catch (err) {
     if (before) state.dates.set(key, before); else state.dates.delete(key);
+    emit('change', 'state');
+    throw err;
+  }
+}
+
+/* ── 결과 ───────────────────────────────────────────────────────── */
+
+/**
+ * 이 지원의 결과.
+ *
+ * 두 곳에서 온다 — 즐겨찾기 export 와 선생님이 시트에 적은 것.
+ * **시트가 이긴다.** 예비번호가 도는 12월에는 대교협 자료보다 담임이 먼저 알고,
+ * 등록 여부는 애초에 대교협이 모른다.
+ *
+ * 칸별로 덮어쓴다. 시트에 최종만 적었다면 1단계는 즐겨찾기 값이 그대로 남는다.
+ */
+export function resultOf(app) {
+  const base = (app && app.result) || {};
+  const mine = state.results.get(String(app && app.id)) || {};
+  const pick = (k) => (mine[k] ? mine[k] : (base[k] || null));
+  return {
+    stage1: pick('stage1'), final: pick('final'), reason: pick('reason'),
+    waitNo: pick('waitNo'), enrolled: pick('enrolled'),
+    edited: Boolean(mine.final || mine.stage1 || mine.waitNo || mine.enrolled),
+    by: mine.by || '', at: mine.at || '',
+  };
+}
+
+/** 결과를 적는다. 빈 칸으로 저장하면 즐겨찾기 값으로 되돌아간다. */
+export async function setResult(app, next) {
+  const id = String(app.id);
+  const before = new Map(state.results);
+  const row = {
+    stage1: next.stage1 || '', final: next.final || '', reason: next.reason || '',
+    waitNo: next.waitNo || '', enrolled: next.enrolled || '',
+    by: state.who || '', at: new Date().toISOString(),
+  };
+  const empty = !row.stage1 && !row.final && !row.reason && !row.waitNo && !row.enrolled;
+  if (empty) state.results.delete(id); else state.results.set(id, row);
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.setResult({ id, hak: app.hak, ...next });
+  } catch (err) {
+    state.results = before;
     emit('change', 'state');
     throw err;
   }
