@@ -726,6 +726,13 @@ function rankTable(key, rows) {
  * 오는 일이 있다. 그때 지역만 보면 수도권 칸이 통째로 0 이 되므로 예년 명단에
  * 이름이 있으면 그것도 수도권으로 친다.
  */
+/**
+ * 캠퍼스 표기를 뗀 이름. 「연세대학교(서울)」 → 「연세대학교」.
+ *
+ * 즐겨찾기와 예년 문서가 같은 대학을 다르게 적을 때 이걸로 맞춘다.
+ * **이름 그대로 맞춰 본 다음에만** 쓴다 — 먼저 쓰면 「한양대학교(ERICA)」가
+ * 「한양대학교」에 딸려 들어간다. 둘은 예년 명단에 따로 있는 다른 대학이다.
+ */
 const bare = (n) => stats.univKey(n).replace(/\s*[（(][^)）]*[)）]\s*$/, '').trim();
 
 /**
@@ -838,8 +845,8 @@ function report() {
 
   box.appendChild(sheet);
 
-  // 열이 열둘인 명단은 A4 가로로 뽑는다 — `finalReport` 의 2부와 같은 까닭이다
-  const part2 = el('section', 'sheet sheet-land');
+  // 명단도 세로다 — 대학 이름이 묶음 머리줄로 빠져 A4 세로에 들어간다
+  const part2 = el('section', 'sheet sheet-doc');
   part2.appendChild(el('h2', 'doc-h1', '2. 대학별 수시 지원 세부 현황'));
   for (const key of ['라', '마', '바', '사', '아', '자']) {
     const hist = history && history.ranking && history.ranking[key];
@@ -847,7 +854,7 @@ function report() {
     const list = groupRows(key, rows);
     if (!list.length) continue;
     part2.appendChild(el('h3', 'doc-h2', `${key}. ${hist.title.replace(/ 수시 전형 지원 결과.*$/, '')}`));
-    part2.appendChild(detailTable(list));
+    part2.appendChild(detailTable(key, list));
   }
   box.appendChild(part2);
 
@@ -859,27 +866,26 @@ function report() {
   return box;
 }
 
-/** 2부 명단. 예년 서식의 칸 이름을 그대로 쓴다. */
-function detailTable(list) {
-  /*
-   * **대학과 모집단위를 따로 세운다.**
-   *
-   * 한 칸에 붙여 두면 「가톨릭대학교(성심) 영어영문학과」가 좁은 칸에서 두 줄로
-   * 갈리고, 갈리는 자리가 칸마다 달라서 표가 들쭉날쭉해진다. 나누면 둘 다
-   * 제 폭 안에 한 줄로 들어간다. 칸 이름만 늘고 내용은 그대로다.
-   */
-  const cols = ['연번', '학번', '이름', '대학', '모집단위', '전형 유형',
-    '모집', '경쟁률', '환산', '모집', '경쟁률', '70%컷'];
-  const sorted = list.slice().sort((a, b) =>
-    String(a.student.hak).localeCompare(String(b.student.hak)));
+/**
+ * 2부 명단. 예년 서식의 칸 이름을 그대로 쓴다.
+ *
+ * **대학별로 묶고, 차례는 1부 통계표와 같다**(`univOrder`). 학번순으로만
+ * 늘어놓으면 한 학생의 여섯 장이 여섯 대학에 흩어져 「이 대학에 누가 넣었나」를
+ * 종이에서 훑을 수 없다. 대학 이름은 묶음 머리줄이 지고 칸에서는 뺀다.
+ */
+const DETAIL_COLS = ['연번', '학번', '이름', '모집단위', '전형 유형',
+  '모집', '경쟁률', '환산', '모집', '경쟁률', '70%컷'];
+
+function detailTable(key, rows) {
+  const { names, byName } = univOrder(key, rows);
   const tw = el('div', 'tw');
   const table = document.createElement('table');
   table.className = 'gov';
-  widths(table, ['4%', '6%', '6%', '16%', '15%', '15%', '5%', '6%', '6%', '5%', '6%', '6%']);
+  widths(table, ['4%', '6%', '7%', '20%', '20%', '5%', '7%', '7%', '6%', '7%', '7%']);
 
   const thead = document.createElement('thead');
   const r1 = document.createElement('tr');
-  cols.slice(0, 9).forEach((c) => {
+  DETAIL_COLS.slice(0, 8).forEach((c) => {
     const th = el('th', null, c);
     th.rowSpan = 2;
     r1.appendChild(th);
@@ -888,32 +894,50 @@ function detailTable(list) {
   prev.colSpan = 3;
   r1.appendChild(prev);
   const r2 = document.createElement('tr');
-  cols.slice(9).forEach((c) => r2.appendChild(el('th', 'sub', c)));
+  DETAIL_COLS.slice(8).forEach((c) => r2.appendChild(el('th', 'sub', c)));
   thead.appendChild(r1);
   thead.appendChild(r2);
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  sorted.forEach(({ app, student }, i) => {
-    const sm = store.summary(app);
-    const mine = app.myScore || {};
-    const tr = document.createElement('tr');
-    [
-      ['num', i + 1],
-      ['num', student.hak],
-      ['nm', tidy(student.name)],
-      [null, brk(shortUniv(app.univ))],
-      [null, brk(app.dept || '')],
-      ['type', brk(typeText(app))],
-      ['num', app.quota ?? ''],
-      ['num', sm.real && sm.real.rate != null ? Number(sm.real.rate).toFixed(2) : ''],
-      ['num', mine.grade != null ? Number(mine.grade).toFixed(2) : ''],
-      ['num', sm.quotaPrev ?? ''],
-      ['num', sm.linked && sm.rate != null ? Number(sm.rate).toFixed(2) : ''],
-      ['num', sm.linked && sm.cut != null ? Number(sm.cut).toFixed(2) : ''],
-    ].forEach(([cl, v]) => tr.appendChild(el('td', cl, v === '' || v == null ? '—' : String(v))));
-    tbody.appendChild(tr);
-  });
+  let n = 0;
+  let g = 0;
+  for (const name of names) {
+    const mine = appsOf(byName, name);
+    if (!mine.length) continue;
+    g += 1;
+    const grp = document.createElement('tr');
+    grp.className = 'grp';
+    const head = el('td', 'lead', `${g}) ${name}`);
+    head.colSpan = DETAIL_COLS.length;
+    grp.appendChild(head);
+    tbody.appendChild(grp);
+
+    const sorted = mine.slice().sort((a, b) =>
+      String(a.student.hak).localeCompare(String(b.student.hak)));
+    for (const { app, student } of sorted) {
+      const sm = store.summary(app);
+      const score = app.myScore || {};
+      n += 1;
+      const tr = document.createElement('tr');
+      [
+        ['num', n],
+        ['num', student.hak],
+        ['nm', tidy(student.name)],
+        [null, brk(app.dept || '')],
+        ['type', brk(typeText(app))],
+        ['num', app.quota ?? ''],
+        ['num', rateText(app, sm)],
+        ['num', score.grade != null ? Number(score.grade).toFixed(2) : ''],
+        ['num', sm.quotaPrev ?? ''],
+        ['num', sm.linked && sm.rate != null ? Number(sm.rate).toFixed(2) : ''],
+        ['num', sm.linked && sm.cut != null ? Number(sm.cut).toFixed(2) : ''],
+      ].forEach(([cl, v]) => tr.appendChild(
+        el('td', cl, v === '' || v == null ? '—' : String(v)),
+      ));
+      tbody.appendChild(tr);
+    }
+  }
   table.appendChild(tbody);
   tw.appendChild(table);
   return tw;
@@ -1264,18 +1288,61 @@ function medTable(rows) {
 }
 
 /** 대학 묶음 하나 — 대학마다 지원·합격·등록. */
-function outcomeTable(key, rows) {
+/**
+ * 이 묶음의 대학을 **예년 문서의 차례대로** 세운다.
+ *
+ * 통계표(1부)와 명단(2부)이 같은 차례를 봐야 종이에서 오르내리며 찾을 수 있다.
+ * 예년 문서의 명단에 없는 대학은 뒤에 가나다순으로 붙인다 — 빠뜨리지 않으려고.
+ *
+ * 돌려주는 것은 `{ names, byName }` 다. `names` 는 차례대로 세운 이름이고
+ * `byName` 은 그 이름(정규화한 키)으로 찾는 지원들이다.
+ */
+function univOrder(key, rows) {
   const hist = (history && history.ranking && history.ranking[key]) || null;
-  const names = hist ? hist.rows.map((r) => r.name) : [];
+  const listed = hist ? hist.rows.map((r) => r.name) : [];
+
+  /*
+   * **캠퍼스 표기가 달라도 예년 명단의 그 대학이다.**
+   *
+   * 즐겨찾기는 「연세대학교(서울)」로 주는데 예년 명단은 「연세대학교」다. 이름이
+   * 안 맞으니 예년 명단의 그 줄은 0으로 남고, 옆에 「연세대학교(서울)」이라는
+   * 줄이 따로 생겼다. 지원이 없어 접는 줄을 넣고 나서야 드러났다 —
+   * 지원 1건이 있는데도 「지원 없음」 목록에 연세대학교·고려대학교가 들어 있었다.
+   *
+   * 그래서 두 번 훑는다. **먼저 이름 그대로** 맞춰 보고, 그 다음 괄호를 뗀
+   * 이름으로 맞춘다. 차례가 중요하다 — 「한양대학교(ERICA)」는 예년 명단에
+   * 제 이름으로 있으니 첫 번째에서 잡히고, 괄호를 뗀 「한양대학교」에 딸려
+   * 들어가지 않는다. 분교(세종·글로컬·미래)도 마찬가지다.
+   *
+   * 괄호를 떼는 것이 위험하지 않은 까닭 — `groupRows` 가 이미 묶음을 갈라 놨다.
+   * 「고려대학교(세종)」은 「자. 호남권 이외」로 가 있고, 거기 명단에는 제 이름이
+   * 그대로 있어 첫 번째에서 잡힌다.
+   */
+  const slot = new Map();
+  for (const name of listed) slot.set(stats.univKey(name), name);
+  for (const name of listed) {
+    const b = bare(name);
+    if (!slot.has(b)) slot.set(b, name);
+  }
+
   const byName = new Map();
   for (const r of rows) {
     const k = stats.univKey(r.app.univ);
-    if (!byName.has(k)) byName.set(k, []);
-    byName.get(k).push(r);
+    const to = slot.get(k) || slot.get(bare(r.app.univ)) || shortUniv(r.app.univ);
+    if (!byName.has(to)) byName.set(to, []);
+    byName.get(to).push(r);
   }
-  const known = new Set(names.map((n) => stats.univKey(n)));
-  const extra = [...byName.keys()].filter((k) => !known.has(k)).sort((a, b) => a.localeCompare(b, 'ko'));
-  const list = [...names, ...extra];
+  const known = new Set(listed);
+  const extra = [...byName.keys()].filter((n) => !known.has(n))
+    .sort((a, b) => a.localeCompare(b, 'ko'));
+  return { names: [...listed, ...extra], byName };
+}
+
+/** 그 대학의 지원들. 없으면 빈 배열. */
+const appsOf = (byName, name) => byName.get(name) || [];
+
+function outcomeTable(key, rows) {
+  const { names: list, byName } = univOrder(key, rows);
 
   const tw = el('div', 'tw');
   const table = document.createElement('table');
@@ -1303,7 +1370,7 @@ function outcomeTable(key, rows) {
   const filled = [];
   const none = [];
   for (const name of list) {
-    const mine = tally(byName.get(stats.univKey(name)) || []);
+    const mine = tally(appsOf(byName, name));
     (OUT_FIELDS.some((f) => mine[f]) ? filled : none).push({ name, mine });
   }
 
@@ -1350,43 +1417,72 @@ function outcomeTable(key, rows) {
   return tw;
 }
 
-/** 2부 명단 — 지원 보고서의 명단에 1단계·최종 결과를 더한다. */
-function finalDetail(list) {
-  const sorted = list.slice().sort((a, b) =>
-    String(a.student.hak).localeCompare(String(b.student.hak)));
+/**
+ * 2부 명단 — 지원 보고서의 명단에 1단계·최종 결과를 더한다.
+ *
+ * **대학별로 묶는다.** 학번순으로만 늘어놓으면 한 학생의 여섯 장이 여섯 대학에
+ * 흩어져 「이 대학에 누가 넣었나」를 종이에서 훑을 수 없다. 결재로 올라가는
+ * 문서에서 묻는 것은 대개 그쪽이다. 차례는 1부 통계표와 **같다**(`univOrder`) —
+ * 예년 문서의 주요 대학 차례. 그래야 오르내리며 찾을 수 있다.
+ *
+ * 대학 이름은 묶음 머리줄이 지고 있으므로 칸에서는 뺀다. 그 폭이 모집단위와
+ * 전형 이름으로 가서, 열이 하나 줄고 칸은 더 넉넉해진다.
+ */
+const FINAL_COLS = ['연번', '학번', '이름', '모집단위', '전형 유형', '모집', '경쟁률',
+  '환산', '최종 결과'];
+
+function finalDetail(key, rows) {
+  const { names, byName } = univOrder(key, rows);
   const tw = el('div', 'tw');
   const table = document.createElement('table');
   table.className = 'gov';
-  widths(table, ['4%', '6%', '7%', '17%', '16%', '16%', '5%', '6%', '6%', '17%']);
+  widths(table, ['5%', '7%', '8%', '21%', '21%', '6%', '7%', '7%', '18%']);
 
   const thead = document.createElement('thead');
   const r1 = document.createElement('tr');
-  ['연번', '학번', '이름', '대학', '모집단위', '전형 유형', '모집', '경쟁률',
-    '환산', '최종 결과'].forEach((c) => r1.appendChild(el('th', null, c)));
+  FINAL_COLS.forEach((c) => r1.appendChild(el('th', null, c)));
   thead.appendChild(r1);
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  sorted.forEach(({ app, student }, i) => {
-    const sm = store.summary(app);
-    const mine = app.myScore || {};
-    const r = store.resultOf(app);
-    const v = vOf(app);
-    const tr = document.createElement('tr');
-    [
-      ['num', i + 1],
-      ['num', student.hak],
-      ['nm', tidy(student.name)],
-      [null, brk(shortUniv(app.univ))],
-      [null, brk(app.dept || '')],
-      ['type', brk(typeText(app))],
-      ['num', app.quota ?? ''],
-      ['num', rateText(app, sm)],
-      ['num', mine.grade != null ? Number(mine.grade).toFixed(2) : ''],
-      [v.passed ? 'won verdict' : 'verdict', resultText(r)],
-    ].forEach(([cl, val]) => tr.appendChild(el('td', cl, val === '' || val == null ? '—' : String(val))));
-    tbody.appendChild(tr);
-  });
+  let n = 0;
+  let g = 0;
+  for (const name of names) {
+    const mine = appsOf(byName, name);
+    if (!mine.length) continue;
+    g += 1;
+    const grp = document.createElement('tr');
+    grp.className = 'grp';
+    const head = el('td', 'lead', `${g}) ${name}`);
+    head.colSpan = FINAL_COLS.length;
+    grp.appendChild(head);
+    tbody.appendChild(grp);
+
+    const sorted = mine.slice().sort((a, b) =>
+      String(a.student.hak).localeCompare(String(b.student.hak)));
+    for (const { app, student } of sorted) {
+      const sm = store.summary(app);
+      const score = app.myScore || {};
+      const r = store.resultOf(app);
+      const v = vOf(app);
+      n += 1;
+      const tr = document.createElement('tr');
+      [
+        ['num', n],
+        ['num', student.hak],
+        ['nm', tidy(student.name)],
+        [null, brk(app.dept || '')],
+        ['type', brk(typeText(app))],
+        ['num', app.quota ?? ''],
+        ['num', rateText(app, sm)],
+        ['num', score.grade != null ? Number(score.grade).toFixed(2) : ''],
+        [v.passed ? 'won verdict' : 'verdict', resultText(r)],
+      ].forEach(([cl, val]) => tr.appendChild(
+        el('td', cl, val === '' || val == null ? '—' : String(val)),
+      ));
+      tbody.appendChild(tr);
+    }
+  }
   table.appendChild(tbody);
   tw.appendChild(table);
   return tw;
@@ -1496,21 +1592,19 @@ function finalReport() {
   box.appendChild(sheet);
 
   /*
-   * **명단은 A4 가로로 뽑는다.**
-   *
-   * 열이 열이다 — 연번·학번·이름·대학·모집단위·전형·모집·경쟁률·환산·최종 결과.
-   * 세로(186mm)에 밀어 넣으면 「한국외국어대학교(서울)」 같은 긴 이름이 두 줄로
-   * 갈리고, 갈리는 자리가 줄마다 달라 표가 들쭉날쭉해진다. 가로는 286mm 라
-   * 절반 넘게 넓다. 통계는 세로 그대로 두고 이 한 덩이만 방향을 바꾼다.
+   * 명단도 **세로**다. 대학 이름이 묶음 머리줄로 빠지면서 칸에서 가장 긴 것이
+   * 사라져 A4 세로 186mm 에 들어간다. 한 문서 안에서 방향이 바뀌면 인쇄해 놓고
+   * 넘길 때 손이 걸리니, 들어가면 안 바꾸는 게 낫다.
+   * (`scripts/check_print.mjs` 가 정말 들어가는지 잰다.)
    */
-  const list2 = el('section', 'sheet sheet-land');
+  const list2 = el('section', 'sheet sheet-doc');
   list2.appendChild(el('h2', 'doc-h1', '2. 대학별 세부 현황'));
   let m = 0;
   for (const [key, title] of FINAL_GROUPS) {
     const list = groupRows(key, rows);
     if (!list.length) continue;
     list2.appendChild(el('h3', 'doc-h2', `${LETTERS[m++]}. ${title}`));
-    list2.appendChild(finalDetail(list));
+    list2.appendChild(finalDetail(key, list));
   }
   box.appendChild(list2);
   return box;
@@ -1534,6 +1628,11 @@ function finalTable(rows) {
     }
   }
   out.push([]);
+  /*
+   * 붙여 넣는 표에는 대학 칸을 남긴다. 화면·종이는 대학별로 묶어 머리줄이
+   * 대학을 지고 있지만, 엑셀로 가는 것은 평평한 표라 줄마다 제 대학이 있어야
+   * 거르고 정렬할 수 있다.
+   */
   out.push(['학번', '이름', '대학', '모집단위', '전형 유형', '모집 인원', '경쟁률',
     '환산 성적', '1단계 결과', '최종 결과']);
   for (const { app, student } of rows) {
