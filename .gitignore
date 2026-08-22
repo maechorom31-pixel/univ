@@ -1,0 +1,3 @@
+# 원본 자료(대용량) — 빌드 시 data/source.xlsx 로 직접 배치
+data/source.xlsx
+.DS_Store
