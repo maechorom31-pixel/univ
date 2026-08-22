@@ -605,6 +605,42 @@ export function typeGroups(rows) {
 }
 
 /**
+ * 신설 전형에 곁들일 **관련 전형**을 고른다.
+ *
+ * 두 갈래다.
+ *
+ *   하나로 좁혀졌으면   그 전형만 (이름이 닮아 붙었던 것 — 「지역의사제」↔「지역인재」)
+ *   못 좁혔으면        같은 유형의 전형을 **전부** 범위로
+ *
+ * 둘째가 오히려 흔하고, 흔한 게 맞다. 올해 처음 뽑는 전형이면 작년에 그것과
+ * 짝지을 전형이 애초에 없는 게 정상이다. 경성대 영어영문 「교과(지역인재)」가
+ * 그렇다 — 작년 교과는 「교과(일반계교과)」 4.30 과 「교과(일반계면접)」 4.70 이었다.
+ * 하나를 골라 주는 것보다 둘 다 보여 주고 「이 학과 교과는 이 언저리」라고
+ * 말하는 편이 정직하다.
+ *
+ * **유형이 다르면 아무것도 안 준다.** 논술 신설에 교과 컷을 참고랍시고 보여 주면
+ * 그건 참고가 아니라 헛말이다.
+ */
+function nearbyOf(rows, cat, picked) {
+  const fits = (g) => !cat || g.rows.some((r) => r.cat === cat || String(r.type).includes(cat));
+  if (picked.rows.length && fits({ rows: picked.rows })) {
+    return { groups: [{ name: picked.type, rows: picked.rows }], sole: true };
+  }
+  const groups = [...typeGroups(rows).values()].filter(fits);
+  if (!groups.length) return null;
+  return {
+    sole: false,
+    groups: groups
+      .map((g) => ({ name: g.name, rows: g.rows }))
+      .sort((a, b) => {
+        const av = a.rows[a.rows.length - 1].g70;
+        const bv = b.rows[b.rows.length - 1].g70;
+        return (av == null) - (bv == null) || (av ?? 0) - (bv ?? 0);
+      }),
+  };
+}
+
+/**
  * 지원한 전형의 입결 줄만 고른다.
  * =====================================================================
  * 입결은 (대학·학과) 로만 묶여 있어서 한 학과에 전형이 여럿 들어 있다.
@@ -666,7 +702,25 @@ export function pickIpgyeol(rows, app) {
     if (hit.length === 1) return take(hit[0], 'cat');
   }
 
-  if (keys.length === 1) return take(keys[0], 'only');
+  /*
+   * 이 학과 입결에 전형이 하나뿐이면 그것으로 본다 — **다만 유형이 같을 때만.**
+   *
+   * 유형까지 어긋나면 논술 지원자에게 교과 컷이, 태권도 실기 지원자에게 실기실적
+   * 컷이 붙는다. 실제로 그랬다 — 동국대 바이오시스템 논술에 교과(학교장추천) 1.30,
+   * 광주대 태권도 교과에 실기실적 7.38. 하나뿐이라는 것은 고를 게 없다는 뜻이지
+   * 그게 맞다는 뜻이 아니다.
+   *
+   * 그래서 `only` 는 이제 **지원자 쪽 유형을 못 가렸을 때만** 나온다. 유형이 같으면
+   * 위의 `cat` 갈래가 이미 잡기 때문이다. 재 보니 예전 `only` 38건은 전부 유형이
+   * 어긋난 것이었다 — 이 갈래는 여태 위험한 경우에만 도달하고 있었다.
+   */
+  if (keys.length === 1) {
+    const one = groups.get(keys[0]);
+    if (!cat || one.rows.some((r) => r.cat === cat || String(r.type).includes(cat))) {
+      return take(keys[0], 'only');
+    }
+    return { rows: [], fit: 'none', type: null, among: [one.name] };
+  }
 
   /*
    * 못 골랐으면 **무엇들 사이에서 못 골랐는지**를 함께 돌려준다.
@@ -792,7 +846,7 @@ export function summarize(l, app) {
     const mo = (l.mojip && l.mojip[0]) || null;
     return {
       linked: false, kind: l.kind, rows: [], mine: [], before: null, why: l.why,
-      isNew: isNewThisYear(l.mojip), alias: l.alias || null,
+      isNew: isNewThisYear(l.mojip), alias: l.alias || null, nearby: null,
       mojip: mo,
       quotaNow: app && app.quota != null ? app.quota : (mo ? mo.quota : null),
       quotaPrev: mo ? mo.quotaPrev : null,
@@ -822,13 +876,33 @@ export function summarize(l, app) {
    * 못 가려내면 비운다 — 옆 전형의 숫자를 대신 앉히지 않는다. pickIpgyeol 참고.
    */
   const picked = pickIpgyeol(rows, app || {});
-  const mineRows = picked.rows;
+  const isNew = isNewThisYear(l.mojip);
+
+  /*
+   * **올해 신설이면 붙은 줄은 이 전형의 작년이 아니다.**
+   *
+   * 건국대(글로컬) 의예과 「지역의사제(광역권)」는 올해 처음 뽑는데, 이름이 닮아
+   * 「교과(지역인재)」에 붙어 그 컷 1.35 를 이 전형의 작년 값인 양 달고 나왔다.
+   * 신설 전형 2,205건 가운데 572건이 그랬다.
+   *
+   * 작년에 없던 전형이니 작년 컷도 없는 게 맞다. 다만 옆 전형이 아무 말도 안 해 주는
+   * 것은 아니다 — 같은 대학 같은 학과의 **유형이 같은 전형**이면 대략의 선은 된다.
+   * 자유전공의 「묶이기 전 학과 참고」와 같은 자리에 같은 꼴로 둔다.
+   *
+   * 유형까지 다르면 참고로도 안 준다. 논술 신설에 교과 컷을 참고랍시고 보여 주면
+   * 그건 참고가 아니라 헛말이다.
+   */
+  const want = catOf(app && app.typeCat) || catOf(app && app.typeSub) || catOf(app && app.typeName);
+  const nearby = isNew ? nearbyOf(rows, want, picked) : null;
+
+  const mineRows = nearby ? [] : picked.rows;
   const latest = mineRows[mineRows.length - 1] || null;
   const mo = l.mojip[0] || null;
   return {
     linked: rows.length > 0, kind: 'univ', why: l.why, rows,
-    mine: mineRows,                    // 지원한 전형의 줄만
-    isNew: isNewThisYear(l.mojip),     // 올해 처음 뽑는 전형인가 (모집요강이 말한다)
+    mine: mineRows,                    // 지원한 전형의 줄만 (신설이면 빈다)
+    nearby,                            // 신설일 때 곁들이는 관련 전형 {type, rows, fit}
+    isNew,                             // 올해 처음 뽑는 전형인가 (모집요강이 말한다)
     alias: l.alias || null,            // 선생님이 손으로 이어 둔 학과가 있으면 그것
     type: picked.type,                 // 입결 쪽 전형 이름 (즐겨찾기와 다를 수 있다)
     typeFit: picked.fit,               // exact | near | cat | only | none

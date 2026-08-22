@@ -18,6 +18,7 @@
 import * as store from './store.js';
 import { detailPanel } from './card.js';
 import { normType } from './match.js';
+import { josa } from './text.js';
 
 const RANKS = [1, 2, 3, 4, 5, 6];
 const SLOT_LABEL = { rank: '순위', pool: '후보', archive: '보관', tray: '전문대' };
@@ -42,12 +43,6 @@ const el = (tag, cls2, text) => {
 const tidy = (s) => String(s || '').replace(/ (?=[^ ]{1,4}$)/, ' ');
 
 /** 받침을 보고 조사를 고른다. 화면에 `학부을(를)` 같은 표기를 내지 않기 위해서다. */
-function josa(word, withBatchim, without) {
-  const last = String(word || '').trim().slice(-1);
-  const code = last.charCodeAt(0);
-  if (code >= 0xac00 && code <= 0xd7a3) return (code - 0xac00) % 28 ? withBatchim : without;
-  return withBatchim;                      // 숫자·영문으로 끝나면 보수적으로
-}
 
 /** 알림에 쓸 짧은 이름 — 캠퍼스 괄호를 떼고 학과를 붙인다. */
 const shortName = (app) => `${app.univ.replace(/\(.*/, '')} ${app.dept}`;
@@ -678,12 +673,17 @@ function pills(app) {
     p.title = `작년 숫자는 「${to}」의 것입니다. 점검 화면에서 이어 둔 것입니다.`;
   }
 
-  if (s.typeFit === 'none') {
+  /*
+   * **신설이면 「전형 못 가림」을 겹쳐 달지 않는다.** 작년에 없던 전형이니 작년
+   * 자료에서 못 가리는 게 당연하다. 둘을 나란히 붙이면 자료가 잘못된 것처럼 읽힌다.
+   */
+  if (s.typeFit === 'none' && !s.isNew) {
     // 학과 입결은 있는데 이 전형이 어느 줄인지 못 가렸다. 「자료 없음」과는 다른 말이다.
     const p = add('전형 못 가림', 'warn');
     p.title = '이 학과 입결에 전형이 여럿인데 지원한 전형을 가려내지 못했습니다.'
       + ' 카드를 열어 연도별 추이에서 봐 주세요.';
-  } else if (s.cut == null && s.avg == null) {
+  } else if (s.cut == null && s.avg == null && !s.isNew) {
+    // 신설이면 「올해 신설」이 이미 말했다. 겹쳐 달면 둘 다 흐려진다.
     add('작년 컷 없음');
   }
 

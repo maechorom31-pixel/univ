@@ -143,6 +143,9 @@ export 한 행 = 한 건.
   type:    "교과(일반)",       // 입결 쪽 전형 이름 — 즐겨찾기와 다를 수 있다
   typeFit: "exact" | "near" | "cat" | "only" | "none",
   among:   [ "교과(추천)", "교과(학교장추천)" ],  // none 일 때만. 후보 이름들
+  isNew:   true,             // 올해 신설 (모집요강의 작년 모집인원·경쟁률이 둘 다 빔)
+  nearby:  { sole, groups }, // 신설일 때 곁들이는 관련 전형. mine 은 비어 있다
+  alias:   { toUniv, toDept, note },  // 선생님이 점검 화면에서 손으로 이어 둔 것
   cut, cut50, rate, quota, ...                 // mine 의 가장 최근 해
 }
 ```

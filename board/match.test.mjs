@@ -17,6 +17,7 @@ import {
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
   normType, pickIpgyeol, typeGroups, univKind,
 } from './match.js';
+import { josa } from './text.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -168,6 +169,16 @@ console.log('전형 이름 정규화');
   diff('교과(지역)', '교과(학교장추천)', '지역과 학교장추천도 다르다');
 }
 
+console.log('조사 고르기');
+eq(josa('간호학과', '을', '를'), '를', '받침 없음');
+eq(josa('영어영문학과', '이', '가'), '가', '과 는 받침 없음');
+eq(josa('경영학부', '을', '를'), '를', '부 도 받침 없음');
+eq(josa('건축학', '을', '를'), '을', '학 은 받침 있음');
+eq(josa('교과(지역인재)', '은', '는'), '는', '뒤 괄호는 떼고 본다');
+eq(josa('「종합(서류형)」', '은', '는'), '은', '형 은 받침 있음');
+eq(josa('AI', '을', '를'), '을', '영문은 보수적으로');
+eq(josa('', '은', '는'), '은', '빈 값');
+
 console.log('쌍둥이 행 걸러내기');
 {
   const doc = (rows) => ({
@@ -297,7 +308,13 @@ console.log('지원한 전형의 입결 줄 고르기');
   eq(f.type, '교과(가야인재)', '교과 쪽');
 
   const g = pickIpgyeol([r(2026, '교과(일반)', 3.2)], { typeSub: '전혀다른것', typeCat: '' });
-  eq(g.fit, 'only', '전형이 하나뿐이면 그것');
+  eq(g.fit, 'only', '전형이 하나뿐이고 내 유형을 못 가렸으면 그것');
+
+  // **유형이 어긋나면 하나뿐이어도 안 쓴다.** 논술 지원자에게 교과 컷이 붙던 자리다.
+  const wrongCat = pickIpgyeol([r(2026, '교과(학교장추천)', 1.3)],
+    { typeSub: '논술(논술)', typeCat: '논술위주' });
+  eq(wrongCat.fit, 'none', '하나뿐이라는 것은 그게 맞다는 뜻이 아니다');
+  eq(wrongCat.among, ['교과(학교장추천)'], '무엇이 있었는지는 말해 준다');
   eq(pickIpgyeol([], { typeSub: '교과(일반)' }).fit, 'none', '빈 목록');
 }
 

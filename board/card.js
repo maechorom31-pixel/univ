@@ -15,6 +15,7 @@
 import * as store from './store.js';
 import { realRate, normType, typeGroups } from './match.js';
 import { confidence, pctText } from './confidence.js';
+import { josa } from './text.js';
 
 export { realRate };
 
@@ -117,7 +118,7 @@ export function detailPanel(app, student, onClose) {
     body.appendChild(p);
   }
 
-  if (s && s.linked && s.kind === 'univ' && s.typeFit === 'none') {
+  if (s && s.linked && s.kind === 'univ' && s.typeFit === 'none' && !s.isNew) {
     /*
      * 학과 입결은 있는데 지원한 전형이 어느 줄인지 못 가렸다.
      * 옆 전형의 컷을 앉히면 그럴듯하게 틀린다 — 비워 두고, 아래 표에서 직접 보게 한다.
@@ -275,6 +276,9 @@ export function detailPanel(app, student, onClose) {
   /* 8. 묶이기 전 학과들 */
   body.appendChild(bundled(s));
 
+  /* 8.5 신설 전형이면 곁들이는 관련 전형 */
+  body.appendChild(nearbyBlock(s, app));
+
   /* 9. 연도별 추이 */
   body.appendChild(trend(s));
 
@@ -320,6 +324,80 @@ function rows(title, list) {
     tr.appendChild(el('td', 'src', src || ''));
     tbody.appendChild(tr);
   }
+  table.appendChild(tbody);
+  tw.appendChild(table);
+  wrap.appendChild(tw);
+  return wrap;
+}
+
+/**
+ * 올해 신설 전형에 곁들이는 **관련 전형**.
+ *
+ * 작년에 없던 전형이니 작년 컷도 없는 게 맞다. 그래도 같은 대학 같은 학과의
+ * 유형이 같은 전형이면 대략의 선은 된다 — 건국대(글로컬) 의예과 「지역의사제」에
+ * 「교과(지역인재)」를 곁들이는 식이다.
+ *
+ * **이 전형의 값인 척하지 않는다.** 그래서 머리 숫자(컷·경쟁률·모집)에는 안 넣고
+ * 여기 따로 둔다. 자유전공의 「묶이기 전 학과 참고」와 같은 자리, 같은 꼴이다.
+ */
+function nearbyBlock(s, app) {
+  const wrap = el('div', 'detail-block');
+  if (!s || !s.nearby || !s.nearby.groups.length) return wrap;
+  const { groups, sole } = s.nearby;
+
+  wrap.appendChild(el('h3', '', '참고 — 이 학과의 관련 전형'));
+
+  const p = el('p', 'note');
+  p.appendChild(document.createTextNode('「'));
+  const name = app.typeSub || app.typeName || '이 전형';
+  p.appendChild(el('b', null, name));
+  p.appendChild(document.createTextNode(
+    `」${josa(name, '은', '는')} 올해 신설이라 작년 값이 없습니다. `));
+  p.appendChild(document.createTextNode(sole
+    ? `이름이 닮은 「${groups[0].name}」을(를) 곁들입니다 — `
+    : `같은 학과 같은 유형의 전형 ${groups.length}개를 곁들입니다 — `));
+  p.appendChild(el('b', null, '이 전형의 작년 값이 아닙니다'));
+  p.appendChild(document.createTextNode(
+    '. 대략의 선으로만 봐 주세요. 신설 전형은 첫해 경쟁률과 컷이 크게 흔들립니다.'));
+  wrap.appendChild(p);
+
+  // 여럿이면 「이 언저리」를 먼저 한 줄로. 하나하나 읽기 전에 폭이 보여야 한다.
+  const lasts = groups.map((g) => g.rows[g.rows.length - 1].g70).filter((v) => v != null);
+  if (lasts.length > 1) {
+    const lo = Math.min(...lasts);
+    const hi = Math.max(...lasts);
+    wrap.appendChild(rowsBare([['작년 이 학과 · 이 유형',
+      lo === hi ? g2(lo) : `${g2(lo)} ~ ${g2(hi)}`,
+      `${groups.length}개 전형의 가장 최근 70%컷`]]));
+  }
+
+  const tw = el('div', 'tw');
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const tr = document.createElement('tr');
+  for (const t of ['연도', '모집', '경쟁률', '70%컷', '50%컷']) tr.appendChild(el('th', null, t));
+  thead.appendChild(tr);
+  const tbody = document.createElement('tbody');
+  for (const g of groups) {
+    if (groups.length > 1) {
+      const head = document.createElement('tr');
+      head.className = 'group';
+      const cell = el('th', 'gname', g.name);
+      cell.colSpan = 5;
+      head.appendChild(cell);
+      tbody.appendChild(head);
+    }
+    for (const row of g.rows.slice().reverse()) {
+      const line = document.createElement('tr');
+      line.appendChild(el('td', 'num', String(row.year)));
+      line.appendChild(el('td', 'num', row.quota != null ? String(row.quota) : '—'));
+      line.appendChild(el('td', 'num', row.rate != null ? `${row.rate}:1` : '—'));
+      line.appendChild(el('td', 'num', g2(row.g70) || '—'));
+      line.appendChild(el('td', 'num', g2(row.g50) || '—'));
+      tbody.appendChild(line);
+    }
+  }
+  table.appendChild(thead);
   table.appendChild(tbody);
   tw.appendChild(table);
   wrap.appendChild(tw);
