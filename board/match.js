@@ -621,14 +621,15 @@ export function typeGroups(rows) {
  * **유형이 다르면 아무것도 안 준다.** 논술 신설에 교과 컷을 참고랍시고 보여 주면
  * 그건 참고가 아니라 헛말이다.
  */
-function nearbyOf(rows, cat, picked) {
+function nearbyOf(rows, cat, picked, reason) {
   const fits = (g) => !cat || g.rows.some((r) => r.cat === cat || String(r.type).includes(cat));
   if (picked.rows.length && fits({ rows: picked.rows })) {
-    return { groups: [{ name: picked.type, rows: picked.rows }], sole: true };
+    return { reason, groups: [{ name: picked.type, rows: picked.rows }], sole: true };
   }
   const groups = [...typeGroups(rows).values()].filter(fits);
   if (!groups.length) return null;
   return {
+    reason,
     sole: false,
     groups: groups
       .map((g) => ({ name: g.name, rows: g.rows }))
@@ -846,7 +847,7 @@ export function summarize(l, app) {
     const mo = (l.mojip && l.mojip[0]) || null;
     return {
       linked: false, kind: l.kind, rows: [], mine: [], before: null, why: l.why,
-      isNew: isNewThisYear(l.mojip), alias: l.alias || null, nearby: null,
+      isNew: isNewThisYear(l.mojip), alias: l.alias || null, nearby: null, catMissing: null,
       mojip: mo,
       quotaNow: app && app.quota != null ? app.quota : (mo ? mo.quota : null),
       quotaPrev: mo ? mo.quotaPrev : null,
@@ -893,15 +894,51 @@ export function summarize(l, app) {
    * 그건 참고가 아니라 헛말이다.
    */
   const want = catOf(app && app.typeCat) || catOf(app && app.typeSub) || catOf(app && app.typeName);
-  const nearby = isNew ? nearbyOf(rows, want, picked) : null;
+
+  /*
+   * **머리 숫자를 못 채우는 경우가 셋인데, 서로 다른 말이다.**
+   *
+   *   신설          작년에 없던 전형이다 → 같은 유형을 곁들인다
+   *   못 가림        전형이 여럿이라 어느 줄인지 모른다 → 같은 유형을 범위로 곁들인다
+   *   유형이 없음    이 학과 입결에 그 유형이 아예 없다 → 곁들일 것도 없다
+   *
+   * 셋을 「전형 못 가림」 하나로 뭉치면, 논술 지원자가 「자료 정리가 덜 됐나 보다」로
+   * 읽는다. 실제로는 **논술 입결을 공개하는 대학이 적어서** 없는 것이다 —
+   * 입결 75,200행 가운데 논술은 966행뿐이고 그중 70%컷이 있는 것은 46% 다.
+   */
+  const catMissing = want
+    && !rows.some((r) => r.cat === want || String(r.type).includes(want))
+    ? want : null;
+  const blank = isNew || picked.fit === 'none';
+  const nearby = blank && !catMissing
+    ? nearbyOf(rows, want, picked, isNew ? 'new' : 'unsure')
+    : null;
 
   const mineRows = nearby ? [] : picked.rows;
-  const latest = mineRows[mineRows.length - 1] || null;
+
+  /*
+   * **가장 최근 해에 컷이 없으면 그 앞 해를 본다.**
+   *
+   * 예전에는 그냥 마지막 줄을 썼다. 그런데 2026 줄은 있는데 70%컷 칸만 비어 있는
+   * 경우가 흔하다 — 대학이 그해 것을 아직 안 냈거나 안 내기로 한 것이다. 그러면
+   * 2022~2025 네 해치 컷을 갖고도 카드가 통째로 빈칸이 됐다. 강원대 교육학과
+   * 교과(지역교과)가 그랬다. 이런 줄이 521건이다.
+   *
+   * 컷이 있는 가장 최근 줄을 **통째로** 쓴다. 칸마다 다른 해에서 긁어모으면
+   * 경쟁률은 2026, 컷은 2025 인 카드가 되고 그건 어느 해 이야기도 아니다.
+   * 대신 어느 해 것인지 화면에 적는다 — 카드 제목이 「작년 25입결」이 된다.
+   */
+  const withCut = mineRows.filter((r) => r.g70 != null);
+  const latest = withCut[withCut.length - 1] || mineRows[mineRows.length - 1] || null;
+  // 줄은 붙었는데 어느 해에도 컷이 없는 경우. 「연결 실패」와는 다른 말이다.
+  const cutMissing = mineRows.length > 0 && withCut.length === 0;
   const mo = l.mojip[0] || null;
   return {
     linked: rows.length > 0, kind: 'univ', why: l.why, rows,
     mine: mineRows,                    // 지원한 전형의 줄만 (신설이면 빈다)
-    nearby,                            // 신설일 때 곁들이는 관련 전형 {type, rows, fit}
+    nearby,                            // 곁들이는 관련 전형 {reason, sole, groups}
+    catMissing,                        // 이 학과 입결에 그 유형이 아예 없으면 그 유형 이름
+    cutMissing,                        // 전형은 붙었는데 어느 해에도 70%컷이 없으면 true
     isNew,                             // 올해 처음 뽑는 전형인가 (모집요강이 말한다)
     alias: l.alias || null,            // 선생님이 손으로 이어 둔 학과가 있으면 그것
     type: picked.type,                 // 입결 쪽 전형 이름 (즐겨찾기와 다를 수 있다)
@@ -1106,6 +1143,21 @@ export function paperDates(app, sched) {
  * data/ipgyeol.json 을 조회용 색인으로 바꾼다.
  * @param {{columns:string[], rows:Array}} doc
  */
+/**
+ * 등급 칸 하나를 읽는다. **범위 밖이면 없는 것으로 친다.**
+ *
+ * 원본에 70%컷이 `0` 으로 적힌 줄이 9개 있다(국립순천대 사범대 몇 곳). 등급에 0 은
+ * 없다 — 값을 못 구했다는 뜻으로 0 을 넣은 것이다. 그대로 두면 화면에 `0.00` 으로
+ * 찍히고, 그건 **만점처럼 읽힌다.** 빈칸이 훨씬 낫다.
+ *
+ * 9등급제라 상한은 9. 반올림 표기를 감안해 9.5 까지만 받는다.
+ */
+function grade(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 && n <= 9.5 ? n : null;
+}
+
 export function indexIpgyeol(doc) {
   const c = Object.fromEntries(doc.columns.map((name, i) => [name, i]));
   const byKey = new Map();
@@ -1118,7 +1170,7 @@ export function indexIpgyeol(doc) {
       univ, dept: r[c['학과']], year: r[c['연도']],
       cat: r[c['카테고리']], type: r[c['전형']], track: r[c['계열']],
       quota: r[c['모집']], rate: r[c['경쟁률']],
-      g50: r[c['등급50']], g70: r[c['등급70']], applied: r[c['지원']],
+      g50: grade(r[c['등급50']]), g70: grade(r[c['등급70']]), applied: r[c['지원']],
       region: r[c['지역']],
     };
     if (!byKey.has(k)) byKey.set(k, []);

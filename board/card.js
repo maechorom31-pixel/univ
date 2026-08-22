@@ -118,7 +118,43 @@ export function detailPanel(app, student, onClose) {
     body.appendChild(p);
   }
 
-  if (s && s.linked && s.kind === 'univ' && s.typeFit === 'none' && !s.isNew) {
+  /*
+   * **이 학과 입결에 그 유형이 아예 없는 경우.**
+   * 「전형을 못 가렸다」와 다른 말이다 — 가려낼 것이 애초에 없다.
+   * 특히 논술이 그렇다. 입결 75,200행 가운데 논술은 966행뿐이고 그중 70%컷이 있는
+   * 것은 46% 다. 공개하는 대학이 적다. 「자료 정리가 덜 됐나」로 읽히면 안 된다.
+   */
+  if (s && s.catMissing) {
+    const note = el('p', 'note');
+    note.appendChild(document.createTextNode('이 학과에는 '));
+    note.appendChild(el('b', null, `${s.catMissing} 전형 입결이 없습니다`));
+    note.appendChild(document.createTextNode(
+      s.catMissing === '논술'
+        ? '. 논술은 결과를 공개하는 대학이 적어 자료가 성깁니다 — 전체 입결의 1.3% 뿐이고'
+          + ' 그중 70%컷이 적힌 것은 절반이 안 됩니다. 대학 홈페이지의 선행학습영향평가'
+          + ' 보고서에 논술 결과가 실리는 경우가 있으니 그쪽을 봐 주세요.'
+        : `. 아래 「연도별 추이」에는 다른 유형의 전형만 있습니다 — ${s.catMissing}과(와)는`
+          + ' 잣대가 달라 견주지 마세요.'));
+    body.appendChild(note);
+  }
+
+  /*
+   * **전형은 붙었는데 어느 해에도 70%컷이 안 적힌 경우.**
+   * 「연결이 안 됐다」도 「자료가 없다」도 아니다 — 줄은 있고 그 칸만 비어 있다.
+   * 대학이 그 전형의 결과를 안 낸 것이라 더 찾아봐도 안 나온다. 그렇게 적는다.
+   */
+  if (s && s.cutMissing) {
+    const note = el('p', 'note');
+    note.appendChild(document.createTextNode(`「${s.type}」${josa(s.type, '은', '는')} 입결에 `));
+    note.appendChild(el('b', null, '줄은 있는데 70%컷 칸이 비어 있습니다'));
+    note.appendChild(document.createTextNode(
+      '. 대학이 그 전형의 합격선을 공개하지 않은 것이라 다른 데서도 나오지 않습니다.'
+      + ' 아래 「연도별 추이」의 경쟁률과 모집인원은 볼 수 있습니다.'));
+    body.appendChild(note);
+  }
+
+  if (s && s.linked && s.kind === 'univ' && s.typeFit === 'none'
+      && !s.isNew && !s.catMissing && !s.nearby) {
     /*
      * 학과 입결은 있는데 지원한 전형이 어느 줄인지 못 가렸다.
      * 옆 전형의 컷을 앉히면 그럴듯하게 틀린다 — 비워 두고, 아래 표에서 직접 보게 한다.
@@ -351,14 +387,16 @@ function nearbyBlock(s, app) {
   p.appendChild(document.createTextNode('「'));
   const name = app.typeSub || app.typeName || '이 전형';
   p.appendChild(el('b', null, name));
-  p.appendChild(document.createTextNode(
-    `」${josa(name, '은', '는')} 올해 신설이라 작년 값이 없습니다. `));
+  p.appendChild(document.createTextNode(s.nearby.reason === 'new'
+    ? `」${josa(name, '은', '는')} 올해 신설이라 작년 값이 없습니다. `
+    : `」${josa(name, '이', '가')} 작년 입결의 어느 전형인지 가려내지 못했습니다. `));
   p.appendChild(document.createTextNode(sole
-    ? `이름이 닮은 「${groups[0].name}」을(를) 곁들입니다 — `
+    ? `이름이 닮은 「${groups[0].name}」${josa(groups[0].name, '을', '를')} 곁들입니다 — `
     : `같은 학과 같은 유형의 전형 ${groups.length}개를 곁들입니다 — `));
   p.appendChild(el('b', null, '이 전형의 작년 값이 아닙니다'));
-  p.appendChild(document.createTextNode(
-    '. 대략의 선으로만 봐 주세요. 신설 전형은 첫해 경쟁률과 컷이 크게 흔들립니다.'));
+  p.appendChild(document.createTextNode(s.nearby.reason === 'new'
+    ? '. 대략의 선으로만 봐 주세요. 신설 전형은 첫해 경쟁률과 컷이 크게 흔들립니다.'
+    : '. 대략의 선으로만 봐 주세요. 어느 것이 이 전형인지는 대학 홈페이지에서 확인해 주세요.'));
   wrap.appendChild(p);
 
   // 여럿이면 「이 언저리」를 먼저 한 줄로. 하나하나 읽기 전에 폭이 보여야 한다.

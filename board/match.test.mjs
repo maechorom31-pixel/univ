@@ -15,7 +15,7 @@ import {
   univStem, campusOf, resolveUniv, buildUnivIndex,
   normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
-  normType, pickIpgyeol, typeGroups, univKind,
+  normType, pickIpgyeol, typeGroups, univKind, summarize,
 } from './match.js';
 import { josa } from './text.js';
 
@@ -266,6 +266,38 @@ console.log('이름이 바뀐 전형 잇기');
   eq(pick.type, '종합(바람개비)', '화면에는 올해 표기를 쓴다');
   eq(pick.rows.length, 2, '두 해를 다 준다');
   eq(merged.size, 2, '학과 안에 묶음은 둘');
+}
+
+console.log('컷이 있는 가장 최근 해를 쓴다');
+{
+  const ipDoc = (rows) => ({
+    columns: ['지역', '대학', '연도', '카테고리', '전형', '학과', '계열', '모집', '경쟁률', '등급50', '등급70', '지원'],
+    rows: rows.map(([year, g70, g50]) =>
+      ['호남', '가대', year, '교과', '교과(일반)', '간호학과', '자연', 10, 5, g50, g70, 50]),
+  });
+  const moDoc = { columns: [], rows: [], strings: [], textCols: [] };
+  const app = { univType: '일반대', univ: '가대학교', dept: '간호학과',
+    typeSub: '교과(일반)', typeName: '교과(일반)', typeCat: '학생부위주(교과)' };
+  const run = (rows) => {
+    const src = { ipgyeol: indexIpgyeol(ipDoc(rows)), mojip: indexMojip(moDoc),
+      college: null, related: new Map() };
+    return summarize(link(app, src), app);
+  };
+
+  // 가장 최근 해에 컷이 없으면 그 앞 해를 본다 — 예전에는 통째로 빈칸이 됐다
+  const a = run([[2024, 3.4, 3.2], [2025, 3.2, 3.0], [2026, null, null]]);
+  eq(a.cut, 3.2, '2026 이 비어 있으면 2025 를 쓴다');
+  eq(a.year, 2025, '어느 해 것인지도 그 해로 적는다');
+  eq(a.cutMissing, false, '컷이 있으니 미공개가 아니다');
+
+  // 줄은 통째로 있는데 어느 해에도 컷이 없으면 그건 미공개다
+  const b = run([[2025, null, null], [2026, null, null]]);
+  eq(b.cut, null, '없으면 없는 것');
+  eq(b.cutMissing, true, '「연결 실패」가 아니라 「미공개」다');
+
+  const c = run([[2025, 3.2, 3.0], [2026, 3.1, 2.9]]);
+  eq(c.year, 2026, '둘 다 있으면 가장 최근');
+  eq(c.cutMissing, false, '평소에는 false');
 }
 
 console.log('지원한 전형의 입결 줄 고르기');
