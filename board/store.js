@@ -16,6 +16,7 @@ import {
   link as makeLink, summarize, examDate, examKindFits, paperDates,
   candidates as similarDepts,
   indexIpgyeol, indexMojip, indexCollege, indexSchedule,
+  splitDepts, referenceLine, resolveUniv, catOf,
 } from './match.js';
 
 const listeners = new Map();
@@ -205,12 +206,34 @@ export function link(app) {
   if (linkCache.has(app.id)) return linkCache.get(app.id);
 
   const alias = state.aliases.get(`${app.univ}|${app.dept}`);
-  const target = alias && (alias.toUniv || alias.toDept)
-    ? { ...app, univ: alias.toUniv || app.univ, dept: alias.toDept || app.dept }
+  const to = splitDepts(alias && alias.toDept) || [];
+
+  /*
+   * **학과를 여럿 이을 수 있다.**
+   *
+   * 자유전공·통합모집은 한 학과에 대응하지 않는다. 「자유전공학부」의 작년 자리를
+   * 물으면 답이 「경영학과 · 경제학과 · 행정학과」 셋인 식이다. 하나만 고르게 하면
+   * 셋 중 아무거나 골라 그 값을 이 학과의 값인 양 달게 된다.
+   *
+   * 그래서 여럿이면 **이름을 바꾸지 않는다.** 모집요강이 주는 「묶이기 전 학과」와
+   * 같은 자리에 같은 꼴로 — 범위와 가운데값과 학과별 값을 다 보여 준다.
+   * 하나면 예전처럼 그 이름으로 바꿔 붙인다.
+   */
+  const one = to.length === 1 ? to[0] : (to.length ? null : (alias && alias.toDept) || '');
+  const target = alias && (alias.toUniv || one)
+    ? { ...app, univ: alias.toUniv || app.univ, dept: one || app.dept }
     : app;
 
   const result = makeLink(target, { ipgyeol, mojip, college, related: new Map() });
   if (alias) result.alias = alias;
+
+  if (to.length > 1) {
+    const univ = resolveUniv(alias.toUniv || app.univ, ipgyeol.index);
+    const line = univ ? referenceLine(univ, to, ipgyeol, catOf(app.typeCat)) : null;
+    // 선생님이 고른 것이라 출처를 밝힌다 — 모집요강이 준 것과 섞이면 안 된다.
+    if (line) result.before = { type: '손으로 이음', parts: to, line, byHand: true };
+  }
+
   linkCache.set(app.id, result);
   return result;
 }

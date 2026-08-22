@@ -26,7 +26,9 @@ const tidy = (s) => String(s || '').replace(/ (?=[^ ]{1,4}$)/, ' ');
 const shortUniv = (s) => String(s || '').replace(/\s*[-–—]\s*.*$/, '');
 
 let notice = '';
-let busy = '';               // 지금 저장 중인 묶음의 key
+let busy = '';
+/* 묶음마다 「여럿 고르는 중」인 학과들. 저장하면 비운다. */
+const picked = new Map();               // 지금 저장 중인 묶음의 key
 
 export function start() {
   store.on('change', render);
@@ -123,20 +125,61 @@ function groupRow(g) {
       '이 대학에서 닮은 이름을 찾지 못했습니다. 대학 이름부터 다를 수 있습니다.'));
   } else {
     box.appendChild(el('p', 'section-label', '이 대학의 닮은 학과'));
+    box.appendChild(el('p', 'hint',
+      '하나를 누르면 그 학과로 잇습니다. 여럿 고르면 참고선으로 봅니다 —'
+      + ' 자유전공·통합모집처럼 작년의 한 학과에 대응하지 않는 자리에 씁니다.'));
+
+    /*
+     * **여럿 고를 수 있어야 한다.**
+     * 「자유전공학부」의 작년 자리를 물으면 답이 「경영 · 경제 · 행정」 셋인 식이다.
+     * 하나만 고르게 하면 셋 중 아무거나 골라 그 값을 이 학과의 값인 양 달게 된다.
+     * 여럿이면 이름을 바꾸지 않고 범위·가운데값·학과별 값을 보여 준다.
+     */
     const opts = el('div', 'cands');
+    const chosen = picked.get(g.key) || new Set();
     for (const c of cands) {
-      const b = el('button', 'cand');
+      const b = el('button', `cand${chosen.has(c.dept) ? ' on' : ''}`);
       b.type = 'button';
       b.disabled = busy === g.key;
+      b.setAttribute('aria-pressed', String(chosen.has(c.dept)));
       b.appendChild(el('span', 'nm', tidy(c.dept)));
       const meta = [];
       if (c.years.length) meta.push(`${c.years[c.years.length - 1]}까지`);
       meta.push(`닮음 ${Math.round(c.score * 100)}%`);
       b.appendChild(el('span', 'mt', meta.join(' · ')));
-      b.onclick = () => join(g, c.dept);
+      b.onclick = () => {
+        // 처음 누른 하나는 바로 잇는다. 대부분이 그 경우다.
+        if (!chosen.size) { join(g, c.dept); return; }
+        if (chosen.has(c.dept)) chosen.delete(c.dept); else chosen.add(c.dept);
+        picked.set(g.key, chosen);
+        render();
+      };
+      // 길게 눌러 고르지 않아도 되게, 두 번째부터는 「더 고르기」로 들어간다
       opts.appendChild(b);
     }
     box.appendChild(opts);
+
+    if (chosen.size) {
+      const bar = el('div', 'field-in');
+      bar.appendChild(el('p', 'hint',
+        `고른 학과 ${chosen.size}개 — ${[...chosen].join(' · ')}`));
+      const go = el('button', 'btn btn-primary', `${chosen.size}개를 참고선으로 잇기`);
+      go.type = 'button';
+      go.disabled = busy === g.key;
+      go.onclick = () => { picked.delete(g.key); join(g, [...chosen].join(', ')); };
+      bar.appendChild(go);
+      const clear = el('button', 'btn', '고른 것 지우기');
+      clear.type = 'button';
+      clear.onclick = () => { picked.delete(g.key); render(); };
+      bar.appendChild(clear);
+      box.appendChild(bar);
+    } else {
+      const more = el('button', 'btn', '여러 학과를 골라 참고선으로 잇기');
+      more.type = 'button';
+      more.disabled = busy === g.key;
+      more.onclick = () => { picked.set(g.key, new Set([cands[0].dept])); render(); };
+      box.appendChild(more);
+    }
   }
 
   // 이름을 직접 넣는 길도 둔다. 후보에 없는 경우가 있다.

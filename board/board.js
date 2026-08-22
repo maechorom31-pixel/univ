@@ -423,8 +423,41 @@ function dropTarget(box, where) {
   });
 }
 
+/**
+ * 이 지원에 상담 메모가 있으면 표시를 단다.
+ *
+ * **꼬리표로 달지 않는다.** 「메모 있음」이라 적으면 「30명」·「면접 9/4」 옆에서
+ * 자리를 뺏는데, 메모는 판단을 바꾸는 값이 아니라 「여기 이야기가 있었다」는 자국이다.
+ * 카드 왼쪽에 얇은 띠 하나로 둔다 — 여섯 칸을 훑을 때 어디를 이미 상담했는지가
+ * 한눈에 보이고, 안 훑을 때는 눈에 안 걸린다.
+ */
+function markMemo(box, app) {
+  const n = store.notesOf(app.hak, app.id).length;
+  if (!n) return;
+  box.classList.add('memoed');
+  box.title = `상담 메모 ${n}건`;
+}
+
+/**
+ * **등록한 곳은 테두리로 표시한다.**
+ *
+ * 12월에 여섯 칸을 보면 첫 물음이 「어디로 갔나」다. 합격이 여럿이어도 가는 곳은
+ * 하나고, 그 하나가 한눈에 보여야 한다. 꼬리표 「등록」을 다는 것보다 카드 자체를
+ * 둘러 두는 편이 훑을 때 빨리 걸린다.
+ */
+function markEnrolled(box, app) {
+  const r = store.resultOf(app);
+  if (!r || !r.enrolled) return;
+  // 「미등록」도 「등록」을 품고 있다. stats.js verdict 과 같은 규칙으로 가른다.
+  if (/미등록|포기|취소|안\s*함|^N$/.test(String(r.enrolled))) return;
+  box.classList.add('enrolled');
+  box.title = [box.title, '이 학교에 등록했습니다'].filter(Boolean).join(' · ');
+}
+
 function card(app, rank, student) {
   const box = el('div', 'card');
+  markMemo(box, app);
+  markEnrolled(box, app);
   dragSource(box, app);
   // 찬 칸에 놓으면 자리를 맞바꾼다. move() 가 밀려난 것을 알아서 옮긴다.
   dropTarget(box, (dropped) => (dropped.id === app.id ? null : `rank:${rank}`));
@@ -772,6 +805,8 @@ function group(title, apps, help, student, slot) {
   const stack = el('div', 'stack');
   for (const app of apps) {
     const row = el('div', 'row');
+    markMemo(row, app);
+    markEnrolled(row, app);
     dragSource(row, app);
     openable(row, app);
     const txt = el('div', 'txt');

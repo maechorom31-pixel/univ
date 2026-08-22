@@ -205,6 +205,37 @@ button { font: inherit; color: inherit; }
 }
 .card.over { border-color: var(--amber); background: var(--amber-face); }
 .card.dragging, .row.dragging { opacity: 0.45; }
+
+/* 상담 메모가 달린 지원. 왼쪽 띠 하나로만 표시한다 —
+   꼬리표로 달면 판단을 바꾸는 값들 옆에서 자리를 뺏는데, 메모는 그런 값이 아니라
+   「여기 이야기가 있었다」는 자국이다. 여섯 칸을 훑을 때 어디를 상담했는지가
+   한눈에 보이고, 안 훑을 때는 눈에 안 걸리는 세기로 둔다. */
+.card.memoed, .row.memoed {
+  border-left: 3px solid var(--amber);
+  padding-left: calc(var(--s3) - 2px);
+}
+/* `.row` 는 원래 왼쪽 여백이 없다. 띠를 붙이면 글이 밀리므로 여백을 함께 준다. */
+.row.memoed { padding-left: var(--s3); }
+
+/* 등록한 곳. 12월에 여섯 칸을 보면 「어디로 갔나」가 첫 물음이라, 메모 띠보다
+   진하게 둘러 눈에 먼저 걸리게 한다. 합격 여러 곳 중 실제로 간 한 곳이다. */
+.card.enrolled, .row.enrolled {
+  border: 2px solid var(--amber); background: var(--amber-face);
+  padding: calc(var(--s3) - 1px);
+}
+.row.enrolled { padding: calc(var(--s3) - 1px) var(--s3); }
+.card.enrolled.memoed, .row.enrolled.memoed { border-left-width: 4px; }
+
+/* 「이 학교로 갑니다」 — 합격을 골랐을 때만 나온다 */
+.go-in {
+  display: flex; align-items: center; margin-top: var(--s2);
+  font-size: var(--t-sm); cursor: pointer;
+}
+.go-in[hidden] { display: none; }
+.go-in input { width: 18px; height: 18px; margin-right: var(--s2); accent-color: var(--amber); }
+
+/* 고른 후보 — 여럿을 참고선으로 이을 때 */
+.cand.on { border-color: var(--amber); background: var(--amber-face); }
 /* 받을 수 있는 묶음. 끌어 왔을 때만 티가 난다 — 평소에는 아무 표시도 하지 않는다. */
 .panel.drops.over { border-color: var(--amber); background: var(--amber-face); }
 .row { cursor: grab; }

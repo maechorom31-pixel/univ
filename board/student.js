@@ -520,6 +520,17 @@ const CHOICE = [
   // 붙고 나서 안 간 것이다. **합격은 합격으로 세고**, 등록 여부만 따로 적는다.
   { label: '합격했지만 등록 안 함', final: '최초합격', stage1: '', enrolled: '미등록' },
 ];
+/**
+ * 합격을 골랐을 때만 「여기로 갑니다」를 묻는다.
+ *
+ * **「불합격」이 「합격」을 품고 있다.** 글자로만 보면 떨어진 칸에도 등록 물음이 뜬다.
+ * 아닌 것을 먼저 걸러 낸 뒤에 맞는 것을 본다 — stats.js 의 「미등록/등록」과 같은 자리다.
+ */
+const asksEnrolled = (label) => {
+  const c = choiceOf(label);
+  if (!c || !c.final || c.enrolled === '미등록') return false;
+  return !/불합격|탈락|미선발/.test(c.final) && /합격/.test(c.final);
+};
 const FINAL = CHOICE.map((c) => c.label);
 const choiceOf = (label) => CHOICE.find((c) => c.label === label) || null;
 
@@ -606,17 +617,39 @@ function resultRow(app) {
   const btn = el('button', 'btn btn-primary', '저장');
   btn.type = 'button';
   btn.disabled = state.busy;
-  btn.onclick = () => saveResult(app, sel.value, wait.value.trim());
   row.appendChild(btn);
   wrap.appendChild(row);
+
+  /*
+   * **등록은 합격과 다른 물음이다.**
+   * 두 곳에 붙어도 가는 곳은 하나다. 12월에 담임이 여섯 칸을 보면 첫 물음이
+   * 「어디로 갔나」인데, 그건 학생만 안다. 합격을 골랐을 때만 묻는다 —
+   * 늘 띄우면 여섯 칸이 다 체크칸이 된다.
+   */
+  const go = el('label', 'go-in');
+  const check = document.createElement('input');
+  check.type = 'checkbox';
+  check.checked = /^등록/.test(String(saved.enrolled || base.enrolled || ''));
+  check.disabled = state.busy;
+  go.appendChild(check);
+  go.appendChild(el('span', '', '이 학교로 갑니다 (등록)'));
+  go.hidden = !asksEnrolled(now);
+  sel.addEventListener('change', () => { go.hidden = !asksEnrolled(sel.value); });
+  wrap.appendChild(go);
+
+  btn.onclick = () => saveResult(app, sel.value, wait.value.trim(),
+    !go.hidden && check.checked);
   return wrap;
 }
 
-async function saveResult(app, label, waitNo) {
+async function saveResult(app, label, waitNo, enrolled) {
   // 고른 말을 어느 칸에 넣을지는 CHOICE 표가 정한다. 여기서 다시 짐작하지 않는다.
   const c = choiceOf(label) || { final: label, stage1: '', enrolled: '' };
   const row = {
-    final: c.final, stage1: c.stage1, enrolled: c.enrolled, reason: '',
+    final: c.final, stage1: c.stage1,
+    // 「합격했지만 등록 안 함」은 표가 이미 미등록이라 적어 두었다. 그건 그대로 둔다.
+    enrolled: c.enrolled || (asksEnrolled(label) && enrolled ? '등록' : ''),
+    reason: '',
     waitNo: c.wait ? waitNo : '',
   };
   state.busy = true; render();

@@ -166,9 +166,12 @@ function applyStage(next, jump) {
   document.body.dataset.stage = stage;
   document.getElementById('stage').textContent =
     stage === 'plan' ? '단계 · 지원 고민' : '단계 · 지원 확정';
+  /* 처음 열 때만 어느 화면으로 갈지 정한다. 단추를 눌러 단계를 바꿀 때는
+     보던 화면에 그대로 둔다 — 보드에서 결과를 보려고 눌렀는데 일정판으로
+     끌려가면 다시 돌아와야 한다. */
   if (jump) showView(stage === 'plan' ? 'board' : 'schedule');
 }
-document.getElementById('stage').onclick = () => applyStage(stage === 'plan' ? 'fixed' : 'plan', true);
+document.getElementById('stage').onclick = () => applyStage(stage === 'plan' ? 'fixed' : 'plan', false);
 
 start();
 startSchedule();
