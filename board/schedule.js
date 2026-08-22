@@ -252,7 +252,7 @@ function calendars(events) {
 
   const legend = el('div', 'legend');
   for (const [cls, text] of [['', '가는 날'], ['soft', '기간(미확정)'],
-    ['mock', '모의면접'], ['note', '발표']]) {
+    ['mock', '모의면접'], ['tell', '발표']]) {
     const item = el('span');
     item.appendChild(el('i', `sw ${cls}`));
     item.appendChild(el('span', null, text));
@@ -279,8 +279,14 @@ function month(ym, events) {
     const cell = el('div', 'day');
     cell.appendChild(el('span', 'dn num', String(d)));
     for (const e of events.filter((x) => x.from <= iso && iso <= x.to)) {
-      const kind = e.kind === MOCK ? 'mock'
-        : NOTICE.includes(e.kind) ? 'note'
+      /*
+       * **`isMock` 으로 봐야 한다.** 칸 이름이 `모의면접1`…`모의면접5` 라서
+       * `=== '모의면접'` 은 한 번도 안 맞았다. 그래서 모의면접이 달력에서
+       * 대학에 실제로 가는 날과 똑같이 칠해졌다 — 범례에 따로 두고도 구별이 안 됐다.
+       * 학생이 이걸 보고 학교에 있어야 할 날을 대학 가는 날로 읽으면 큰일이다.
+       */
+      const kind = isMock(e.kind) ? 'mock'
+        : NOTICE.includes(e.kind) ? 'tell'
           : (e.fixed ? '' : 'soft');
       const tag = el('span', `ev ${kind}`.trim(),
         `${shortUniv(e.app.univ)} ${e.kind}`);

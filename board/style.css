@@ -343,7 +343,7 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .cal .ev.soft { background: transparent; border: 1px dashed var(--amber); }
-.cal .ev.note { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.cal .ev.tell { background: transparent; color: var(--muted); border: 1px solid var(--line); }
 .cal .ev.mock { background: transparent; border: 1px solid var(--amber); }
 
 .legend {
@@ -353,7 +353,9 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 .legend > span { display: grid; grid-auto-flow: column; gap: var(--s1); align-items: center; }
 .sw { width: 12px; height: 12px; border-radius: 3px; background: var(--amber-face); display: block; }
 .sw.soft { background: transparent; border: 1px dashed var(--amber); }
-.sw.note { background: transparent; border: 1px solid var(--line); }
+/* `note` 라 부르면 안 된다 — 전역 `.note`(알림 상자)의 padding·margin 을 물려받아
+   범례에서 이 칸만 26px 로 부푼다. 이름이 겹치는 것만으로 조용히 어긋나는 자리다. */
+.sw.tell { background: transparent; border: 1px solid var(--line); }
 .sw.mock { background: transparent; border: 1px solid var(--amber); }
 
 /* 입력 한 줄 — 날짜·번호를 넣고 저장하는 자리 */
