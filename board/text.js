@@ -19,5 +19,24 @@ export function josa(word, withBatchim, without) {
   if (!last) return withBatchim;
   const code = last.charCodeAt(0);
   if (code >= 0xac00 && code <= 0xd7a3) return (code - 0xac00) % 28 ? withBatchim : without;
+
+  /*
+   * **숫자·로마숫자·알파벳은 소리 내어 읽은 뒤 받침을 본다.**
+   *
+   * 「종합(미래인재2)」는 「미래인재이」로 읽히니 받침이 없다 — 「2가 뒤를 잇습니다」다.
+   * 「1」은 「일」이라 받침이 있다. 여태 한글이 아니면 무조건 받침이 있는 쪽을 골라서
+   * 전형이 쪼개진 카드마다 「미래인재2이」가 찍혔다.
+   *
+   * 입결과 모집요강의 전형·학과 이름 6,716가지 가운데 한글이 아닌 글자로 끝나는 것이
+   * 130가지(1.9%)다 — 로마숫자 42 · 숫자 42 · 알파벳 46. 드물지만 하필 전형이
+   * 쪼개진 이름(`미래인재1` `교과우수Ⅱ`)에 몰려 있어서 이 카드들에서 늘 눈에 띈다.
+   *
+   * 받침이 있는 것만 적는다 — 일 삼 육 칠 팔 / F(에프) L(엘) M(엠) N(엔) R(아르)
+   * S(에스) X(엑스). 나머지는 받침이 없다.
+   */
+  const READ_BATCHIM = /[13678FLMNRSXflmnrsx]|[ⅠⅢⅰⅲ]/;
+  if (/[0-9A-Za-zⅠⅡⅢⅣⅤⅰⅱⅲ]/.test(last)) {
+    return READ_BATCHIM.test(last) ? withBatchim : without;
+  }
   return withBatchim;
 }

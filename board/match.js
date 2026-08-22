@@ -201,10 +201,31 @@ export function normDept(name) {
  */
 const TYPE_NOISE = /(학생부|전형|선발|우수자|생활|인재|학생|모집)/g;
 const ROMAN = { 'Ⅰ': '1', 'Ⅱ': '2', 'Ⅲ': '3', 'Ⅳ': '4', 'Ⅴ': '5', 'ⅰ': '1', 'ⅱ': '2', 'ⅲ': '3' };
+/*
+ * **붙임표도 지운다.** `normDept` 에서 가운뎃점 네 벌을 안 지워 학과가 둘로 갈렸던
+ * 것과 같은 종류의 구멍이다.
+ *
+ *     즐겨찾기  학생부종합(잠재능력우수자면접전형)  →  종합잠재능력면접
+ *     입결      종합(잠재능력-면접)                →  종합잠재능력-면접   ← 안 맞는다
+ *
+ * 못 맞추면 `near` 가 대신 「감싸는 이름」을 찾는데, 하필 2022~2023년의
+ * `종합(잠재능력)` 이 걸린다. 2024년에 면접·서류로 쪼개지기 **전** 전형이다.
+ * 가톨릭대(성심) 영어영문학부가 컷 4.2(2026 면접) 대신 3년 묵은 줄을 달고 있었다.
+ * **오연결이 미연결보다 나쁘다.**
+ *
+ * 지우고 재 봤다. 입결·모집요강 전형 이름 가운데 `normType` 을 거치고도 구두점이
+ * 남는 것은 붙임표 129가지 · `+` 6 · `'` `⋅` `_` 각 1 이다. 다 지워도 **같은 해
+ * 안에서 서로 다른 전형이 한 이름이 되는 일은 새로 생기지 않는다(72건 → 72건).**
+ * 남은 72건은 붙임표와 무관한, `인재` 를 군더더기로 지우면서 생긴 옛 부딪힘이다
+ * (`교과(지역인재)` 와 `교과(지역)` 이 한 해에 같이 있는 선문대·가톨릭관동대 꼴).
+ * 대신 모집요강 전형 7가지가 비로소 입결과 맞는다 — 잠재능력 면접·서류 둘을 비롯해
+ * `교과(지역인재(충북))` · `교과(일반[최저])` 따위다.
+ */
 export function normType(name) {
   return String(name || '')
     .replace(/[ⅠⅡⅢⅣⅤⅰⅱⅲ]/g, (c) => ROMAN[c])
     .replace(/[\s()[\]·・,／/]/g, '')
+    .replace(/[‐‑‒–—―\-ㆍ•∙‧，⋅+_']/g, '')
     .replace(TYPE_NOISE, '')
     .trim();
 }
@@ -649,6 +670,48 @@ function nearbyOf(rows, cat, picked, reason) {
 }
 
 /**
+ * **고른 전형이 학과 자료보다 일찍 끊겼나** — 끊겼으면 그렇다고 말한다.
+ * =====================================================================
+ * 카드는 고른 전형의 가장 최근 줄을 「작년 경쟁률」·「작년 70% 컷」이라 적어 왔다.
+ * 그런데 그 줄이 정말 작년 것이 아닐 때가 있다. 2027 모집요강의 전형·모집단위
+ * 16,714 가지 가운데 입결이 붙는 12,294 가지를 다 돌려 보면 **352건(2.9%)** 에서
+ * 고른 전형의 마지막 해가 그 학과 자료의 마지막 해보다 이르다. 3년 묵은 숫자가
+ * 「작년」이라는 이름표를 달고 있었다.
+ *
+ * 끊기는 까닭은 대개 **전형이 쪼개져서**다. 352건 중 170건이 그 꼴이다.
+ *
+ *     가톨릭대(성심)  종합(잠재능력) ~2023  →  2024부터 잠재능력-면접 · 잠재능력-서류
+ *     강원대(도계)    종합(미래인재) ~2023  →  2025까지 미래인재1 · 미래인재2
+ *
+ * **그래도 잇지 않는다.** 「미래인재면접」이 미래인재1인지 2인지 이름으로는 못
+ * 가린다. 골라 주면 그럴듯한 숫자가 뜨고 아무도 못 알아챈다.
+ * 대신 뒤를 잇는 전형이 무엇인지 적어 두고 선생님이 「연도별 추이」에서 직접
+ * 견주게 한다. **오연결이 미연결보다 나쁘다.**
+ *
+ * 뒤를 잇는 것으로 치는 조건은 좁게 잡았다 — 같은 카테고리이고, 정규화한 이름이
+ * 고른 전형의 이름을 **앞에 그대로 두고 더 붙인 것**이며, 더 나중 해까지 있는 것.
+ * 이름이 아주 달라진 경우는 여기서 안 잡힌다. 그건 `nearbyOf` 의 몫이다.
+ */
+function staleOf(rows, mineRows, latest) {
+  if (!latest || !mineRows.length) return null;
+  const hi = Math.max(...mineRows.map((r) => r.year));
+  const deptHi = Math.max(...rows.map((r) => r.year));
+  if (hi >= deptHi) return null;
+  const me = normType(mineRows[0].type);
+  const cat = mineRows[0].cat;
+  const heirs = [...typeGroups(rows).values()]
+    .filter((G) => G.cat === cat && G.hi > hi
+      && G.keys.some((k) => k !== me && me && k.startsWith(me)))
+    .map((G) => {
+      const cut = G.rows.filter((r) => r.g70 != null);
+      const last = cut[cut.length - 1] || G.rows[G.rows.length - 1];
+      return { name: G.name, hi: G.hi, year: last.year, g70: last.g70, rate: last.rate };
+    })
+    .sort((a, b) => (a.g70 == null) - (b.g70 == null) || (a.g70 ?? 0) - (b.g70 ?? 0));
+  return { year: latest.year, hi, deptHi, heirs };
+}
+
+/**
  * 지원한 전형의 입결 줄만 고른다.
  * =====================================================================
  * 입결은 (대학·학과) 로만 묶여 있어서 한 학과에 전형이 여럿 들어 있다.
@@ -937,6 +1000,7 @@ export function summarize(l, app) {
    */
   const withCut = mineRows.filter((r) => r.g70 != null);
   const latest = withCut[withCut.length - 1] || mineRows[mineRows.length - 1] || null;
+  const stale = staleOf(rows, mineRows, latest);
   // 줄은 붙었는데 어느 해에도 컷이 없는 경우. 「연결 실패」와는 다른 말이다.
   const cutMissing = mineRows.length > 0 && withCut.length === 0;
   const mo = l.mojip[0] || null;
@@ -951,6 +1015,7 @@ export function summarize(l, app) {
     type: picked.type,                 // 입결 쪽 전형 이름 (즐겨찾기와 다를 수 있다)
     typeFit: picked.fit,               // exact | near | cat | only | none
     among: picked.among || null,       // 못 골랐을 때 후보로 남은 전형 이름들
+    stale,                             // 고른 전형이 학과 자료보다 일찍 끊겼으면 {year, deptHi, heirs}
     before: l.before,                  // {type:'유형2', parts, line} | null
     year: latest ? latest.year : null,
     rate: latest ? latest.rate : null,

@@ -119,6 +119,39 @@ export function detailPanel(app, student, onClose) {
   }
 
   /*
+   * **고른 전형이 학과 자료보다 일찍 끊긴 경우.**
+   *
+   * 이 카드는 여태 3년 묵은 줄에 「작년 경쟁률」이라는 이름표를 달아 왔다.
+   * 2027 모집요강의 전형·모집단위 가운데 입결이 붙는 12,294 가지를 다 돌려 보면
+   * 352건(2.9%)이 그랬고, 그중 170건은 전형이 쪼개진 탓이다.
+   *
+   *     가톨릭대(성심) 영어영문  종합(잠재능력) ~2023  →  2026 면접 4.20 · 서류 4.91
+   *     강원대(도계) 유아교육    종합(미래인재) ~2023 컷 5.53  →  2025 미래인재1 4.84 · 2 4.86
+   *
+   * 뒤를 잇는 전형이 무엇인지는 적어 주되 **잇지는 않는다** — 「미래인재면접」이
+   * 1인지 2인지 이름으로는 못 가린다. 고르면 그럴듯하게 틀린다.
+   */
+  if (s && s.stale) {
+    const st = s.stale;
+    const note = el('p', 'note');
+    note.appendChild(document.createTextNode(`「${s.type}」${josa(s.type, '은', '는')} 입결에 `));
+    note.appendChild(el('b', null, `${st.hi}년까지만 있습니다`));
+    note.appendChild(document.createTextNode(
+      `. 이 학과 자료는 ${st.deptHi}년까지 있으니, 아래 숫자는 작년이 아니라`
+      + ` ${st.year}년 것입니다.`));
+    if (st.heirs.length) {
+      const list = st.heirs
+        .map((h) => `${h.name} (${h.year}년 ${h.g70 != null ? `70%컷 ${g2(h.g70)}` : '컷 없음'})`)
+        .join(' · ');
+      note.appendChild(document.createTextNode(
+        ` ${st.hi + 1}년부터는 ${list}${josa(st.heirs[st.heirs.length - 1].name, '이', '가')}`
+        + ' 뒤를 잇습니다 — 쪼개진 것으로 보이는데 이름만으로는 어느 쪽인지 가릴 수'
+        + ' 없어 잇지 않았습니다. 아래 「연도별 추이」에서 직접 견줘 주세요.'));
+    }
+    body.appendChild(note);
+  }
+
+  /*
    * **이 학과 입결에 그 유형이 아예 없는 경우.**
    * 「전형을 못 가렸다」와 다른 말이다 — 가려낼 것이 애초에 없다.
    * 특히 논술이 그렇다. 입결 75,200행 가운데 논술은 966행뿐이고 그중 70%컷이 있는
@@ -143,7 +176,13 @@ export function detailPanel(app, student, onClose) {
    * 「연결이 안 됐다」도 「자료가 없다」도 아니다 — 줄은 있고 그 칸만 비어 있다.
    * 대학이 그 전형의 결과를 안 낸 것이라 더 찾아봐도 안 나온다. 그렇게 적는다.
    */
-  if (s && s.cutMissing) {
+  /*
+   * 끊긴 전형의 뒤를 잇는 것까지 찾아 놨으면 컷 빈칸은 다시 안 말한다.
+   * 위 알림이 이미 「2023년까지만 있고 뒤는 이것들」이라 적었는데, 여기서
+   * 「대학이 안 공개해서 다른 데서도 안 나온다」고 덧붙이면 더 찾을 데가 없는 것처럼
+   * 읽힌다. 실제로는 뒤를 잇는 전형에 컷이 있다.
+   */
+  if (s && s.cutMissing && !(s.stale && s.stale.heirs.length)) {
     const note = el('p', 'note');
     note.appendChild(document.createTextNode(`「${s.type}」${josa(s.type, '은', '는')} 입결에 `));
     note.appendChild(el('b', null, '줄은 있는데 70%컷 칸이 비어 있습니다'));
@@ -217,6 +256,22 @@ export function detailPanel(app, student, onClose) {
    */
   const ipSrc = ipgyeolSource(s);
 
+  /*
+   * **「작년」이라는 이름표는 정말 작년일 때만 단다.**
+   *
+   * 머리 숫자는 「컷이 있는 가장 최근 줄」에서 통째로 온다. 그 줄이 작년이 아닐 때가
+   * 둘 있다 — 전형이 일찍 끊겼거나(`stale`, 352건), 전형은 이어지는데 그해 컷 칸만
+   * 비어 앞 해를 썼거나(543건). 입결이 붙는 카드 12,294장 가운데 **895장(7.3%)** 이
+   * 그런데, 여태 다 「작년 70% 컷」이라 적혀 있었다. 상담에서 3년 묵은 숫자를
+   * 작년 것으로 읽으면 안 된다. 어긋나면 이름표에 연도를 박는다.
+   *
+   * 모집요강에서 온 줄(작년 모집인원·실질경쟁률·추가합격)은 그대로 「작년」이다.
+   * 그쪽은 정말 2026년 값이다.
+   */
+  const dataHi = s && s.rows && s.rows.length ? Math.max(...s.rows.map((r) => r.year)) : null;
+  const yearOff = s && s.year != null && dataHi != null && s.year < dataHi;
+  const yr = (label) => (yearOff ? `${s.year}년 ${label}` : `작년 ${label}`);
+
   /* 2. 인원과 경쟁률 */
   const quotaNow = s.quotaNow;
   const quotaPrev = s.quotaPrev;
@@ -228,7 +283,7 @@ export function detailPanel(app, student, onClose) {
       ? `${quotaNow}명${diff ? ` (작년 ${quotaPrev}명, ${diff > 0 ? '+' : ''}${diff})` : ''}`
       : app.quotaText || null, '즐겨찾기 + 모집요강'],
     ['작년 모집 인원', !diff && quotaPrev != null ? `${quotaPrev}명` : null, '모집요강'],
-    ['작년 경쟁률', s && s.rate != null ? `${s.rate}:1` : null, isCollege ? '전문대 자료' : ipSrc],
+    [yr('경쟁률'), s && s.rate != null ? `${s.rate}:1` : null, isCollege ? '전문대 자료' : ipSrc],
     ['작년 실질 경쟁률', real.value != null ? `${one(real.value)}:1` : null,
       real.why || '명목 × 모집 ÷ (모집 + 추합)'],
     ['작년 추가 합격', mo && mo.filled26 != null ? `${mo.filled26}명` : null, '모집요강'],
@@ -279,10 +334,10 @@ export function detailPanel(app, student, onClose) {
     ['내 환산 점수', mine.score != null ? String(mine.score) : null, '즐겨찾기'],
     isCollege
       ? ['작년 평균 등급', g2(s.avg), '전문대 자료']
-      : ['작년 70% 컷', g2(s && s.cut), ipSrc],
+      : [yr('70% 컷'), g2(s && s.cut), ipSrc],
     isCollege
       ? ['작년 최저 등급', g2(s.cut), '전문대 자료']
-      : ['작년 50% 컷', g2(s && s.cut50), ipSrc],
+      : [yr('50% 컷'), g2(s && s.cut50), ipSrc],
   ]));
 
   /*
