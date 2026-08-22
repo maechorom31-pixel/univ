@@ -54,15 +54,26 @@ let notice = '';
  * 지난 3개년 숫자. 보드에는 올해 지원만 들어 있어서 예년 칸을 채울 수가 없다.
  * 작년 보고서에서 떠 온 정적 자료를 얹는다. 없으면 올해 칸만 나온다.
  */
-let history = null;
+let history = null;      // 지난해 지원 결과 보고서에서 뽑은 집계
+let outcome = null;      // 지난해 최종 결과 보고서에서 뽑은 대학별 지원·합격·등록
 const YEAR = () => (history && history.years && history.years.length
   ? history.years[0] + 1 : 2027);
 
-async function loadHistory() {
+async function loadJson(path) {
   try {
-    const res = await fetch('data/report_history.json');
-    if (res.ok) { history = await res.json(); _index = null; }
-  } catch { /* 없으면 올해 것만 그린다 */ }
+    const res = await fetch(path);
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;          // 없으면 올해 것만 그린다
+  }
+}
+
+async function loadHistory() {
+  [history, outcome] = await Promise.all([
+    loadJson('data/report_history.json'),
+    loadJson('data/result_history.json'),
+  ]);
+  _index = null;
 }
 
 export function start() {
@@ -83,12 +94,13 @@ function render() {
 
   main.appendChild(chooser());
   if (notice) main.appendChild(el('p', 'note', notice));
-  main.appendChild(view === 'ledger' ? ledger() : report());
+  main.appendChild(view === 'ledger' ? ledger() : view === 'final' ? finalReport() : report());
 }
 
 function chooser() {
   const box = el('div', 'tabs');
-  for (const [key, label] of [['ledger', '진학 대장'], ['report', '지원 결과 보고서']]) {
+  for (const [key, label] of [['ledger', '진학 대장'], ['report', '지원 결과 보고서'],
+    ['final', '최종 결과 보고서']]) {
     const b = el('button', 'btn', label);
     b.type = 'button';
     b.setAttribute('aria-pressed', String(view === key));
@@ -875,6 +887,351 @@ function analysisBlocks(r) {
       ]),
       [1],
     )));
+  }
+  return out;
+}
+
+/* ── 수시 최종 결과 보고서 ───────────────────────────────────────
+ *
+ * 지원 결과 보고서가 「어디에 넣었나」라면 이쪽은 「어떻게 됐나」다. 12월
+ * 발표가 끝난 뒤 결재로 올라간다. 예년 문서는 대학마다 지원·합격·등록을
+ * 나란히 놓고, 2부 명단에 1단계 결과와 최종 결과를 더 싣는다.
+ */
+
+const MED_DEPTS = ['의예과', '치의예과', '약학과', '한의예과', '수의예과'];
+const OUT_FIELDS = ['지원', '합격', '등록'];
+
+/** 이 지원의 결말. 화면과 종이가 같은 값을 보도록 stats 를 그대로 쓴다. */
+const vOf = (app) => stats.verdict({ ...app, result: store.resultOf(app) });
+
+function tally(rows) {
+  const t = { 지원: rows.length, 합격: 0, 등록: 0 };
+  for (const { app } of rows) {
+    const v = vOf(app);
+    if (v.passed) t['합격'] += 1;
+    if (v.enrolled) t['등록'] += 1;
+  }
+  return t;
+}
+
+/** 가. 의치약한수 — 학과별 합격 수와 합격한 대학. */
+function medTable(rows) {
+  const tw = el('div', 'tw');
+  const table = document.createElement('table');
+  table.className = 'gov';
+  const thead = document.createElement('thead');
+  const tr = document.createElement('tr');
+  ['연번', '학과', '지원', '합격', '합격 대학'].forEach((c) => tr.appendChild(el('th', null, c)));
+  thead.appendChild(tr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  let ap = 0;
+  let ps = 0;
+  MED_DEPTS.forEach((dept, i) => {
+    const list = rows.filter(({ app }) => String(app.dept || '').includes(dept.replace('과', '')));
+    const won = list.filter(({ app }) => vOf(app).passed);
+    ap += list.length;
+    ps += won.length;
+    const line = document.createElement('tr');
+    [['num', i + 1], [null, dept], ['num', list.length], ['num', won.length],
+      [null, [...new Set(won.map(({ app }) => shortUniv(app.univ)))].join(', ')],
+    ].forEach(([cl, v]) => line.appendChild(el('td', cl, v === '' ? '—' : String(v))));
+    tbody.appendChild(line);
+  });
+  const sum = document.createElement('tr');
+  sum.className = 'sum';
+  [['', ''], [null, '합계'], ['num', ap], ['num', ps], [null, '']]
+    .forEach(([cl, v]) => sum.appendChild(el('td', cl, String(v))));
+  tbody.appendChild(sum);
+  table.appendChild(tbody);
+  tw.appendChild(table);
+  return tw;
+}
+
+/** 대학 묶음 하나 — 대학마다 그해 지원·합격·등록, 예년은 지원·합격. */
+function outcomeTable(key, rows) {
+  const hist = (history && history.ranking && history.ranking[key]) || null;
+  const names = hist ? hist.rows.map((r) => r.name) : [];
+  const past = (outcome && outcome.years ? outcome.years : []).slice(0, 2);
+  const byName = new Map();
+  for (const r of rows) {
+    const k = stats.univKey(r.app.univ);
+    if (!byName.has(k)) byName.set(k, []);
+    byName.get(k).push(r);
+  }
+  const known = new Set(names.map((n) => stats.univKey(n)));
+  const extra = [...byName.keys()].filter((k) => !known.has(k)).sort((a, b) => a.localeCompare(b, 'ko'));
+  const list = [...names, ...extra];
+
+  const tw = el('div', 'tw');
+  const table = document.createElement('table');
+  table.className = 'gov';
+  const thead = document.createElement('thead');
+  const r1 = document.createElement('tr');
+  ['연번', '대학명'].forEach((c) => {
+    const th = el('th', null, c);
+    th.rowSpan = 2;
+    r1.appendChild(th);
+  });
+  const cur = el('th', 'num', String(YEAR()));
+  cur.colSpan = 3;
+  r1.appendChild(cur);
+  for (const y of past) {
+    const th = el('th', 'num', String(y));
+    th.colSpan = 2;
+    r1.appendChild(th);
+  }
+  const r2 = document.createElement('tr');
+  OUT_FIELDS.forEach((c) => r2.appendChild(el('th', 'num sub', c)));
+  past.forEach(() => ['지원', '합격'].forEach((c) => r2.appendChild(el('th', 'num sub', c))));
+  thead.appendChild(r1);
+  thead.appendChild(r2);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  const totals = { now: { 지원: 0, 합격: 0, 등록: 0 }, past: {} };
+  list.forEach((name, i) => {
+    const mine = tally(byName.get(stats.univKey(name)) || []);
+    const hist2 = (outcome && outcome.byUniv && outcome.byUniv[name]) || {};
+    const tr = document.createElement('tr');
+    tr.appendChild(el('td', 'num', String(i + 1)));
+    tr.appendChild(el('td', null, name));
+    OUT_FIELDS.forEach((f) => {
+      totals.now[f] += mine[f];
+      tr.appendChild(el('td', 'num', String(mine[f])));
+    });
+    for (const y of past) {
+      const cell = hist2[String(y)] || {};
+      for (const f of ['지원', '합격']) {
+        const v = cell[f];
+        totals.past[`${y}${f}`] = (totals.past[`${y}${f}`] || 0) + (v || 0);
+        tr.appendChild(el('td', 'num', v == null ? '' : String(v)));
+      }
+    }
+    tbody.appendChild(tr);
+  });
+  const sum = document.createElement('tr');
+  sum.className = 'sum';
+  sum.appendChild(el('td', null, ''));
+  sum.appendChild(el('td', null, '합계'));
+  OUT_FIELDS.forEach((f) => sum.appendChild(el('td', 'num', String(totals.now[f]))));
+  past.forEach((y) => ['지원', '합격'].forEach((f) =>
+    sum.appendChild(el('td', 'num', String(totals.past[`${y}${f}`] || 0)))));
+  tbody.appendChild(sum);
+  table.appendChild(tbody);
+  tw.appendChild(table);
+  return tw;
+}
+
+/** 2부 명단 — 지원 보고서의 명단에 1단계·최종 결과를 더한다. */
+function finalDetail(list) {
+  const sorted = list.slice().sort((a, b) =>
+    String(a.student.hak).localeCompare(String(b.student.hak)));
+  const tw = el('div', 'tw');
+  const table = document.createElement('table');
+  table.className = 'gov';
+
+  const thead = document.createElement('thead');
+  const r1 = document.createElement('tr');
+  ['연번', '학번', '이름', '대학 및 모집단위', '전형 유형', '모집 인원', '경쟁률',
+    '환산 성적', '1단계 결과', '최종 결과'].forEach((c) => {
+    const th = el('th', null, c);
+    th.rowSpan = 2;
+    r1.appendChild(th);
+  });
+  const prev = el('th', null, `${YEAR() - 1} 입시 결과`);
+  prev.colSpan = 3;
+  r1.appendChild(prev);
+  const r2 = document.createElement('tr');
+  ['모집 인원', '경쟁률', '70%컷'].forEach((c) => r2.appendChild(el('th', 'sub', c)));
+  thead.appendChild(r1);
+  thead.appendChild(r2);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  sorted.forEach(({ app, student }, i) => {
+    const sm = store.summary(app);
+    const mine = app.myScore || {};
+    const r = store.resultOf(app);
+    const v = vOf(app);
+    const tr = document.createElement('tr');
+    [
+      ['num', i + 1],
+      ['num', student.hak],
+      ['nm', tidy(student.name)],
+      [null, `${shortUniv(app.univ)} ${app.dept || ''}`.trim()],
+      [null, `${typeLabel(app)} ${app.typeSub || app.typeName || ''}`.trim()],
+      ['num', app.quota ?? ''],
+      ['num', sm.real && sm.real.rate != null ? Number(sm.real.rate).toFixed(2) : ''],
+      ['num', mine.grade != null ? Number(mine.grade).toFixed(2) : ''],
+      [null, (r && r.stage1) || ''],
+      [v.passed ? 'won' : null, resultText(r)],
+      ['num', sm.quotaPrev ?? ''],
+      ['num', sm.linked && sm.rate != null ? Number(sm.rate).toFixed(2) : ''],
+      ['num', sm.linked && sm.cut != null ? Number(sm.cut).toFixed(2) : ''],
+    ].forEach(([cl, val]) => tr.appendChild(el('td', cl, val === '' || val == null ? '—' : String(val))));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  tw.appendChild(table);
+  return tw;
+}
+
+/**
+ * 결과 요약 — 지원에서 등록까지 어디서 얼마나 줄었나.
+ *
+ * 합격률만 적으면 「왜 이만큼만 붙었나」가 안 보인다. 종합은 1단계에서
+ * 한 번 걸리고, 교과는 최저에서 걸린다. 관문을 나눠 세야 다음 해에 쓸 수 있다.
+ */
+function funnel(rows) {
+  const kinds = ['교과', '학종', '논술', '실기', '기타'];
+  const box = {};
+  for (const k of kinds) {
+    box[k] = { 지원: 0, 결과: 0, 단계1: 0, 단계1탈락: 0, 합격: 0, 충원: 0, 최저: 0, 등록: 0 };
+  }
+  for (const { app } of rows) {
+    const k = typeLabel(app);
+    const b = box[k] || box['기타'];
+    const v = vOf(app);
+    const r = store.resultOf(app) || {};
+    b['지원'] += 1;
+    if (v.decided) b['결과'] += 1;
+    if (r.stage1) {
+      b['단계1'] += 1;
+      if (/불합격|탈락/.test(String(r.stage1))) b['단계1탈락'] += 1;
+    }
+    if (v.passed) b['합격'] += 1;
+    if (v.extra) b['충원'] += 1;
+    if (v.minFail) b['최저'] += 1;
+    if (v.enrolled) b['등록'] += 1;
+  }
+  const list = kinds.filter((k) => box[k]['지원']);
+  const all = { 지원: 0, 결과: 0, 단계1: 0, 단계1탈락: 0, 합격: 0, 충원: 0, 최저: 0, 등록: 0 };
+  for (const k of list) for (const f of Object.keys(all)) all[f] += box[k][f];
+
+  const line = (label, b) => [
+    label, b['지원'], b['합격'], p1(pctOf(b['합격'], b['지원'])),
+    b['충원'] ? `${b['충원']}건 (합격의 ${p1(pctOf(b['충원'], b['합격']))})` : '—',
+    b['단계1'] ? `${b['단계1탈락']}/${b['단계1']} (${p1(pctOf(b['단계1탈락'], b['단계1']))})` : '—',
+    b['최저'] || '—',
+    b['등록'], p1(pctOf(b['등록'], b['합격'])),
+  ];
+  const tw = grid(
+    ['전형', '지원', '합격', '합격률', '충원 합격', '1단계 탈락', '최저 미충족', '등록', '등록률'],
+    [...list.map((k) => line(k, box[k])), line('전체', all)],
+    [1, 2, 3, 7],
+  );
+  // 결재 문서 안의 표라 다른 표와 같은 테두리를 써야 한다
+  tw.querySelector('table').className = 'gov';
+  const last = tw.querySelector('tbody tr:last-child');
+  if (last) last.className = 'sum';
+  return tw;
+}
+
+const pctOf = (a, b) => (b ? (a / b) * 100 : null);
+
+/** 예년 최종 결과 보고서의 묶음 차례. 지원 보고서와 같은 명단을 쓴다. */
+const FINAL_GROUPS = [['라', '수도권 주요 대학'], ['마', '지역 거점 국립대학'],
+  ['바', '과학기술특성화대학교'], ['사', '교육대학교'],
+  ['아', '호남권 대학'], ['자', '호남권 이외 대학']];
+
+const LETTERS = '가나다라마바사아자차';
+
+function finalReport() {
+  const box = el('div');
+  const rows = rowsForReport();
+
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '수시 최종 결과 보고서'));
+  head.appendChild(el('span', 'count num', `${rows.length}건`));
+  box.appendChild(head);
+
+  if (!rows.length) {
+    box.appendChild(el('p', 'empty-state', '아직 지원 내역이 없습니다.'));
+    return box;
+  }
+  const t = tally(rows);
+  const decided = rows.filter(({ app }) => vOf(app).decided).length;
+  if (decided < rows.length) {
+    box.appendChild(el('p', 'note',
+      `${rows.length}건 가운데 ${decided}건만 결과가 들어왔습니다.`
+      + ' 결과가 다 들어오기 전에 뽑으면 합격·등록 수가 실제보다 적게 나옵니다.'));
+  }
+  if (!outcome) {
+    box.appendChild(el('p', 'note',
+      '지난해 최종 결과 자료(data/result_history.json)를 찾지 못해 예년 칸은 비웁니다.'));
+  }
+
+  box.appendChild(tools('수시최종결과보고서', () => finalTable(rows)));
+
+  const sheet = el('section', 'sheet sheet-doc');
+  sheet.appendChild(el('h1', 'doc-title',
+    `${YEAR()}학년도 대입 수시전형 주요 대학 합격자 발표 결과`));
+  sheet.appendChild(el('p', 'doc-date', `${YEAR() - 1}. 12. 기준`));
+
+  sheet.appendChild(el('h2', 'doc-h1', '1. 주요 대학 통계'));
+  let n = 0;
+  sheet.appendChild(el('h3', 'doc-h2', `${LETTERS[n++]}. 결과 요약`));
+  sheet.appendChild(funnel(rows));
+  sheet.appendChild(el('p', 'hint',
+    `지원 ${t['지원']}건 → 합격 ${t['합격']}건 → 등록 ${t['등록']}명.`
+    + ' 등록률은 합격 대비이고, 한 사람이 여러 곳에 붙으면 한 곳만 등록합니다.'));
+
+  sheet.appendChild(el('h3', 'doc-h2', `${LETTERS[n++]}. 의치약한수`));
+  sheet.appendChild(medTable(rows));
+
+  for (const [key, title] of FINAL_GROUPS) {
+    if (!(history && history.ranking && history.ranking[key])) continue;
+    sheet.appendChild(el('h3', 'doc-h2', `${LETTERS[n++]}. ${title}`));
+    sheet.appendChild(outcomeTable(key, groupRows(key, rows)));
+  }
+  if (outcome && outcome.source) {
+    sheet.appendChild(el('p', 'hint',
+      `예년 지원·합격 수는 「${outcome.source}」에서 옮긴 값입니다.`
+      + ' 그 문서에 없는 해는 칸을 비웁니다.'));
+  }
+
+  sheet.appendChild(el('h2', 'doc-h1', '2. 대학별 세부 현황'));
+  let m = 0;
+  for (const [key, title] of FINAL_GROUPS) {
+    const list = groupRows(key, rows);
+    if (!list.length) continue;
+    sheet.appendChild(el('h3', 'doc-h2', `${LETTERS[m++]}. ${title}`));
+    sheet.appendChild(finalDetail(list));
+  }
+
+  box.appendChild(sheet);
+  return box;
+}
+
+/** 표 복사·CSV — 화면의 두 부를 줄로 편다. */
+function finalTable(rows) {
+  const out = [['구분', '대학', '지원', '합격', '등록']];
+  for (const [key, title] of FINAL_GROUPS) {
+    const list = groupRows(key, rows);
+    if (!list.length) continue;
+    const byName = new Map();
+    for (const r of list) {
+      const k = stats.univKey(r.app.univ);
+      if (!byName.has(k)) byName.set(k, []);
+      byName.get(k).push(r);
+    }
+    for (const [name, group] of byName) {
+      const t = tally(group);
+      out.push([title, name, t['지원'], t['합격'], t['등록']]);
+    }
+  }
+  out.push([]);
+  out.push(['학번', '이름', '대학 및 모집단위', '전형 유형', '모집 인원', '경쟁률',
+    '환산 성적', '1단계 결과', '최종 결과']);
+  for (const { app, student } of rows) {
+    const mine = app.myScore || {};
+    const r = store.resultOf(app);
+    out.push([student.hak, student.name, `${shortUniv(app.univ)} ${app.dept || ''}`.trim(),
+      `${typeLabel(app)} ${app.typeSub || app.typeName || ''}`.trim(),
+      app.quota ?? '', '', mine.grade != null ? Number(mine.grade).toFixed(2) : '',
+      (r && r.stage1) || '', resultText(r)]);
   }
   return out;
 }

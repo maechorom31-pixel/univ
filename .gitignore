@@ -6,6 +6,7 @@
 # 여기서 뽑아 쓰는 것은 1부의 집계 숫자뿐이고, 그 결과인
 # data/report_history.json 에는 개인정보가 없다.
 data/report_source.hwpx
+data/result_source.xls
 parsed*.json
 peer-local*.html
 peer_data*.json

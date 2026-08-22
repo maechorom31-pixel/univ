@@ -798,6 +798,8 @@ table.gov thead th, table.gov th.rowhead, table.gov th.sub {
 }
 table.gov th.rowhead { text-align: center; }
 table.gov td.nm { font-weight: 600; }
+/* 합격은 굵기로만 구분한다. 흑백 복합기에서 색은 사라진다 */
+table.gov td.won { font-weight: 700; }
 table.gov tr.sum > * { font-weight: 700; background: #F6F6F6;
   -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
