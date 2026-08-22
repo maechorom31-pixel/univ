@@ -449,6 +449,14 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
   padding: 1px 5px; margin-left: var(--s2); white-space: nowrap;
 }
 
+/* 접어 둔 묶음 — 「지원 확정」 때의 후보·보관. 지우지 않고 접기만 한다. */
+.folded > summary {
+  cursor: pointer; padding: var(--s3) var(--s4); color: var(--muted);
+  font-size: var(--t-sm); border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); margin-bottom: var(--s4);
+}
+.folded[open] > summary { margin-bottom: var(--s2); }
+
 /* ── 상세 ─────────────────────────────────────────────────────── */
 
 .overlay {
@@ -628,6 +636,17 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
 .sure-wobbly { border-color: var(--amber); background: var(--amber-face); }
 .sure-unknown { border-style: dashed; }
 .sure-unknown .lv { color: var(--muted); }
+
+/* 내 위치 — 「이 학생이 어디쯤인가」. 상담에서 제일 먼저 묻는 것이라 맨 위에 둔다.
+   색은 방향만 말한다. 「합격」·「위험」이라고 읽히면 안 되는 값이라 붉은색은 안 쓴다. */
+.spot {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+  padding: var(--s3); font-size: var(--t-sm); margin-bottom: var(--s2);
+  word-break: keep-all;
+}
+.spot .lv { font-weight: 600; }
+.spot-in { border-color: var(--amber); background: var(--amber-face); }
+.spot-out { border-style: dashed; color: var(--muted); }
 
 .sure-why {
   list-style: none; margin: var(--s2) 0 0; padding: 0;

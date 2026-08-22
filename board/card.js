@@ -543,8 +543,24 @@ function howSure(s, mine) {
   const c = confidence(s, mine, normType);
   if (!c) return wrap;
 
-  const h = el('h3', '', '이 컷을 얼마나 믿을 수 있나');
-  wrap.appendChild(h);
+  wrap.appendChild(el('h3', '', '이 컷을 어떻게 읽나'));
+
+  /*
+   * **내 위치를 맨 위에 둔다.** 상담에서 처음 묻는 것이 그것이다 — 「이 학생이
+   * 어디쯤인가」. 예전에는 표 맨 아랫줄에 있어서, 위의 흔들림 이야기를 다 읽고
+   * 나서야 나왔다.
+   *
+   * 다만 **「상향」·「적정」이라 적지 않는다.** 그 말은 합격 가능성을 숫자로 말하는
+   * 셈인데, 입결은 요약값(70%컷 하나, 50%컷 하나)이라 그걸 낼 자료가 없다.
+   * 두 컷 사이일 때만 「상위 몇 % 언저리」를 말하고, 밖이면 밖이라고만 적는다.
+   * 상향인지 적정인지는 이 값들을 보고 사람이 정한다.
+   */
+  if (c.spot) {
+    const where = c.spot.where === 'above' ? 'in' : c.spot.where === 'below' ? 'out' : 'mid';
+    const p = el('p', `spot spot-${where}`);
+    p.appendChild(el('span', 'lv', c.spot.text));
+    wrap.appendChild(p);
+  }
 
   const tone = c.evidence === 'one-year' && c.level !== 'thin' ? 'unknown' : c.level;
   const badge = el('p', `sure sure-${tone}`);
@@ -565,7 +581,10 @@ function howSure(s, mine) {
   if (c.thin && c.thin.quota != null) {
     rows2.push(['모집 인원', `${c.thin.quota}명`, `70%컷은 대략 ${c.thin.at}번째 사람`]);
   }
-  if (c.spot) rows2.push(['내 위치', c.spot.text, '50%컷과 70%컷 사이를 나눠 본 값']);
+  // 내 위치는 맨 위 띠에 이미 있다. 잣대만 여기 한 줄로 남긴다.
+  if (c.spot && c.spot.where === 'between') {
+    rows2.push(['위치를 잰 법', '50%컷과 70%컷 사이를 나눠 봤습니다', '두 컷 사이일 때만']);
+  }
   wrap.appendChild(rowsBare(rows2));
 
   if (c.why.length) {

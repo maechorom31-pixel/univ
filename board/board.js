@@ -17,7 +17,6 @@
  */
 import * as store from './store.js';
 import { detailPanel } from './card.js';
-import { confidence, worthFlagging } from './confidence.js';
 import { normType } from './match.js';
 
 const RANKS = [1, 2, 3, 4, 5, 6];
@@ -69,6 +68,12 @@ export function start() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && store.selection.appId) closeDetail();
   });
+  /*
+   * 단계(고민 ↔ 확정)가 바뀌면 카드를 다시 그린다. 예전에는 `body[data-stage]` 를
+   * 적어 두기만 하고 아무도 안 읽어서, 단추가 탭만 바꾸고 화면은 그대로였다.
+   */
+  new MutationObserver(() => { render(); renderDetail(); })
+    .observe(document.body, { attributes: true, attributeFilter: ['data-stage'] });
   render();
   renderDetail();
 }
@@ -217,18 +222,41 @@ function render() {
     return slot !== 'archive' && slot !== 'rank';
   });
 
-  main.appendChild(group('후보', pool,
-    '아직 순위를 정하지 않은 지원입니다. 6칸에서 끌어다 놓으면 여기로 옵니다.',
-    student, 'pool'));
+  /*
+   * **원서를 내고 나면 후보·보관은 지나간 이야기다.**
+   * 9월 전에는 여섯 칸을 정하려고 후보를 계속 오르내리지만, 원서를 낸 뒤에는 그 칸이
+   * 화면 절반을 차지한 채 아무 일도 안 한다. 12월에 봐야 하는 것은 여섯 칸의 결과다.
+   *
+   * 다만 **지우지는 않는다.** 접어 둘 뿐이라 눌러서 펼 수 있고, 접힌 채로도 끌어다
+   * 놓을 수 있어야 한다(전문대 추가 지원처럼 뒤늦게 움직이는 일이 있다).
+   */
+  const fold = document.body.dataset.stage === 'fixed';
+  const put = (title, apps, help, slot) => {
+    const panel = group(title, apps, help, student, slot);
+    if (!fold) { main.appendChild(panel); return; }
+    const d = document.createElement('details');
+    d.className = 'folded';
+    const sum = document.createElement('summary');
+    sum.textContent = `${title} ${apps.length}건`;
+    d.appendChild(sum);
+    d.appendChild(panel);
+    // 접힌 채로 끌어다 놓으면 펴 준다 — 안 그러면 놓을 자리가 안 보인다
+    d.addEventListener('dragover', () => { d.open = true; });
+    main.appendChild(d);
+  };
+
+  put('후보', pool,
+    '아직 순위를 정하지 않은 지원입니다. 6칸에서 끌어다 놓으면 여기로 옵니다.', 'pool');
   if (others.length) {
     const kept = others.filter((a) => store.placementOf(a.id).slot !== 'archive');
-    const put = others.filter((a) => store.placementOf(a.id).slot === 'archive');
+    const stored = others.filter((a) => store.placementOf(a.id).slot === 'archive');
+    // 전문대는 6회 제한 밖이라 12월에도 살아 있는 이야기다. 접지 않는다.
     main.appendChild(group('전문대 · 특수대', kept,
       '수시 6회 제한 밖이라 순위를 매기지 않습니다.', student, 'tray'));
-    if (put.length) main.appendChild(group('전문대 보관', put, '', student, 'archive'));
+    if (stored.length) put('전문대 보관', stored, '', 'archive');
   }
-  main.appendChild(group('보관', archive,
-    '올해 넣지 않기로 한 지원입니다. 끌어다 놓으면 여기로 옵니다.', student, 'archive'));
+  put('보관', archive,
+    '올해 넣지 않기로 한 지원입니다. 끌어다 놓으면 여기로 옵니다.', 'archive');
 }
 
 /**
@@ -539,11 +567,24 @@ function figures(app, student) {
  *
  * 지역·계열·모집시기·50%컷·취업률 같은 것은 여기 두지 않는다. 상세에서 본다.
  */
+/*
+ * 꼬리표 색이 뜻하는 것 — 네 가지뿐이다. 늘어나면 아무 뜻도 없어진다.
+ *
+ *   mark  노란 칠   **성적 말고 따로 걸리는 조건.** 놓치면 지원이 통째로 헛일이 된다
+ *                  수능최저 · 단계별전형 · 가야 하는 날(면접·실기·논술)
+ *   warn  붉은 글씨 진짜 문제. 모집 반토막 · 자료 없음 · 올해 신설 · 전형 못 가림
+ *   wait  점선     아직 확정이 아님. 기간만 나온 날짜 · 불러오는 중
+ *   (없음) 그냥     참고 사실. 모집인원 · 취업률 · 연계편입 · 결과
+ *
+ * 「연계편입」은 혜택이지 걸리는 조건이 아니라 노란 칠에서 뺐다.
+ */
 function pills(app) {
   const wrap = el('div', 'pills');
   const add = (text, kind) => wrap.appendChild(el('span', `pill${kind ? ' ' + kind : ''}`, text));
 
   const s = store.summary(app);
+  // 지금이 지원을 고민하는 때인가, 원서를 내고 난 뒤인가 (board.html 이 body 에 적어 둔다)
+  const planning = document.body.dataset.stage !== 'fixed';
 
   // 모집인원 — 줄었으면 그게 올해 이 전형의 가장 큰 변수다
   const now = s.quotaNow;
@@ -563,36 +604,53 @@ function pills(app) {
     add(app.quotaText);
   }
 
-  if (s.stages > 1) add(`${s.stages}단계`);
+  // 셋 다 **성적 말고 따로 걸리는 것**이다. 같은 무게로 칠한다.
+  if (s.stages > 1) add(`${s.stages}단계`, 'mark');
   if (app.minReqText) add('최저 있음', 'mark');
 
-  // 가야 하는 날. 기간으로만 나온 것은 점선으로 둔다 — 아직 확정이 아니다.
+  /*
+   * 가야 하는 날. 「최저 있음」과 같은 종류다 — 내신이 닿아도 그날 못 가면 끝난다.
+   * 게다가 여섯 칸을 고르는 동안 **겹치는지 눈으로 세는** 값이라 제일 눈에 띄어야 한다.
+   * 기간으로만 나온 것은 점선을 겹쳐 둔다 (노란 칠 + 점선 = 가야 하는데 아직 미정).
+   */
   const go = ['면접', '실기', '논술', '적성']
     .map((kind) => [kind, store.dateOf(app, kind)])
     .filter(([, d]) => d)[0];
   if (go) {
     const [kind, d] = go;
     const [, m, day] = d.from.split('-');
-    add(`${kind} ${+m}/${+day}${d.fixed ? '' : '~'}`, d.fixed ? '' : 'wait');
+    add(`${kind} ${+m}/${+day}${d.fixed ? '' : '~'}`, d.fixed ? 'mark' : 'mark wait');
   }
 
   if (s.kind === 'college' && s.linked) {
     if (s.employ != null) add(`취업 ${Math.round(s.employ)}%`);
-    if (s.transfer) add('연계편입', 'mark');
+    if (s.transfer) add('연계편입');
   }
 
-  // 학생이 결과를 적어 두면 담임이 바로 알아야 한다. 확인이 밀리면 대장이 빈다.
-  const res = store.resultOf(app);
-  if (res.pending) add(`${res.final || '결과'} · 확인 필요`, 'mark');
-  else if (res.final) add(res.final);
-
-  // 컷이 흔들리는 전형은 짚어 준다. 「작년 3.58」만 보고 판단하면 안 되는 자리다.
-  // 안정적인 것에는 아무 표시도 하지 않는다 — 다 칠하면 무엇이 급한지 안 보인다.
-  const sure = confidence(s, (app.myScore || {}).grade, normType);
-  if (worthFlagging(sure)) {
-    const p = add(sure.label, sure.level === 'thin' ? 'warn' : '');
-    p.title = sure.why.join('\n');
+  /*
+   * **결과는 「지원 확정」 때만 낸다.**
+   * 9월에 여섯 칸을 고르는 동안 합불이 카드에 떠 있을 까닭이 없다. 작년 값이 남아
+   * 있거나 1단계만 난 것이 섞여서, 고민해야 할 자리에 이미 끝난 것 같은 인상만 준다.
+   * 확인이 밀린 것은 명단 배지와 첫 화면 목록이 따로 챙기므로 여기서 빠져도 안 놓친다.
+   */
+  if (!planning) {
+    const res = store.resultOf(app);
+    if (res.pending) add(`${res.final || '결과'} · 확인 필요`, 'mark');
+    else if (res.final) add(res.final);
   }
+
+  /*
+   * **「많이 흔들림」은 여기 두지 않는다.**
+   *
+   * 판단을 한 낱말로 줄인 꼬리표라, 옆의 「30명」·「면접 9/4」 같은 사실과 나란히
+   * 붙으면 같은 무게로 읽힌다. 그런데 이건 사실이 아니라 **읽는 법**이다 —
+   * 「최근 5년 사이 2.99~4.50 으로 1.51등급 움직였습니다」를 줄인 말이고,
+   * 줄인 채로는 무엇 때문인지도 얼마나인지도 알 수 없다.
+   *
+   * 그래서 상세 카드의 「이 컷을 어떻게 읽나」로 옮겼다. 견준 해·범위·움직인 폭·
+   * 표준편차·모집인원·내 위치를 함께 놓고 그 옆에서 말한다. 근거와 붙어 있어야
+   * 「그래서 상향인가」를 선생님이 판단할 수 있다.
+   */
 
   // 값이 왜 비었는지 감추지 않는다
   if (!store.state.enriched) {
