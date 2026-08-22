@@ -32,6 +32,7 @@ const state = {
   apps: [],
   placement: new Map(),
   dates: new Map(),      // `${id}|${kind}` → { from, to, status }
+  fields: new Map(),     // `${id}|${field}` → { value, status }. 생년월일은 id 가 빈 문자열
   notes: [],
   src: null,
   busy: false,
@@ -76,6 +77,11 @@ function apply(data) {
   state.student = data.student || null;
   state.apps = data.apps || [];
   state.notes = data.notes || [];
+  // 원서를 낸 뒤에 채워지는 칸. 생년월일은 학생당 하나라 id 가 비어 있다.
+  state.fields = new Map((data.fields || []).map((r) => [
+    `${String(r.id || '')}|${String(r.field)}`,
+    { value: String(r.value || ''), status: String(r.status || 'confirmed') },
+  ]));
   state.results = new Map((data.results || []).map((r) => [String(r.id), {
     stage1: String(r.stage1 || ''), final: String(r.final || ''),
     reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
@@ -195,6 +201,53 @@ function render() {
 
   main.appendChild(upcoming());
   main.appendChild(clashPanel());
+  main.appendChild(birthPanel());
+}
+
+/**
+ * 생년월일 — **학생 한 명에 하나**라 지원마다 묻지 않는다.
+ *
+ * 합격 조회에 쓴다. 대학 홈페이지가 수험번호와 생년월일을 함께 묻는 일이 흔해서,
+ * 12월에 담임이 대신 확인해 줄 때 없으면 학생에게 전화를 걸어야 한다.
+ *
+ * 원서를 낸 뒤에만 묻는다 — 지원 하나라도 접수번호가 적혔을 때. 9월에는 안 나온다.
+ * 이미 적었으면 접힌 채로 둔다. 자주 고칠 값이 아니다.
+ */
+function birthPanel() {
+  const wrap = el('div');
+  if (!state.apps.some((a) => afterApply(a))) return wrap;
+
+  const saved = state.fields.get('|생년월일');
+  const box = el('section', 'panel');
+  const fold = document.createElement('details');
+  fold.open = !saved;
+  const sum = document.createElement('summary');
+  sum.textContent = saved
+    ? `생년월일 ${saved.value}${saved.status === 'student' ? ' — 확인 대기' : ''}`
+    : '생년월일 적기';
+  fold.appendChild(sum);
+
+  const field = el('div', 'field');
+  field.appendChild(el('p', 'hint',
+    '합격 조회에 씁니다. 대학 홈페이지가 수험번호와 함께 묻는 일이 많습니다.'
+    + ' 한 번만 적으면 됩니다.'));
+  const row = el('div', 'field-in');
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.setAttribute('aria-label', '생년월일');
+  input.value = saved ? saved.value : '';
+  input.disabled = state.busy;
+  row.appendChild(input);
+  const btn = el('button', 'btn', '저장');
+  btn.type = 'button';
+  btn.disabled = state.busy;
+  btn.onclick = () => saveField({ id: '' }, '생년월일', input.value);
+  row.appendChild(btn);
+  field.appendChild(row);
+  fold.appendChild(field);
+  box.appendChild(fold);
+  wrap.appendChild(box);
+  return wrap;
 }
 
 /** 오늘. 시험에서 흔들리지 않게 한곳에서 만든다. */
@@ -453,6 +506,16 @@ function card(app) {
     box.appendChild(dateRow(app, kind, d));
   }
   box.appendChild(applyNoRow(app));
+
+  /*
+   * 수험번호·최종경쟁률은 **원서를 내고 나서야** 알 수 있다.
+   * 학생 화면에는 단계 단추가 없으니 날짜로 저절로 갈린다 —
+   * 접수번호를 이미 적었거나, 원서 마감이 지났으면 나온다.
+   * 「곧 있습니다」와 같은 방식이다. 켜고 끄는 단추를 두지 않는 까닭이다.
+   */
+  if (afterApply(app)) {
+    for (const spec of CARD_FIELDS) box.appendChild(fieldRow(app, spec));
+  }
   box.appendChild(resultRow(app));
   return box;
 }
@@ -667,6 +730,69 @@ async function saveResult(app, label, waitNo, enrolled) {
   }
 }
 
+/*
+ * 원서를 내고 **나서야** 알게 되는 칸들.
+ * =====================================================================
+ * 즐겨찾기에도 모집요강에도 없다. 학생이 적고 선생님이 확인한다 —
+ * 면접 날짜와 같은 흐름이다.
+ *
+ *   수험번호     원서를 내면 대학이 준다. 면접장에서 부르는 번호다
+ *   최종경쟁률   마감 뒤 대학이 발표한다. 예비번호가 얼마나 돌지 가늠할 때 본다
+ *
+ * `생년월일` 은 지원마다 묻지 않는다 — 학생 한 명에 하나라 화면 맨 위에 한 번만 묻는다.
+ */
+const CARD_FIELDS = [
+  { name: '수험번호', hint: '원서를 내면 대학이 주는 번호입니다. 면접장에서 이 번호로 부릅니다.',
+    mode: 'numeric', ph: '예) 20260012' },
+  { name: '최종경쟁률', hint: '마감 뒤 대학이 발표합니다. 예비번호가 얼마나 돌지 가늠할 때 봅니다.',
+    mode: 'decimal', ph: '예) 12.4' },
+];
+
+/**
+ * 이 지원의 원서를 이미 냈나.
+ *
+ * **접수번호가 적혀 있으면 낸 것이다.** 원서를 내야 받는 번호라 순서가 어긋날 수 없다.
+ * 학생 화면은 전형일정표를 안 받아서 마감일로는 가릴 수 없고, 단계 단추도 없다.
+ * 그래서 학생이 이미 한 일로 가른다 — 9월에는 저절로 안 보이고, 원서를 내고
+ * 접수번호를 적는 순간 그 카드에만 나타난다.
+ */
+function afterApply(app) {
+  if (CARD_FIELDS.some((f) => state.fields.has(`${app.id}|${f.name}`))) return true;
+  return state.notes.some((n) => String(n.id) === String(app.id)
+    && String(n.text || '').startsWith('접수번호'));
+}
+
+function fieldRow(app, spec) {
+  const wrap = el('div', 'field');
+  const id = `f-${app.id}-${spec.name}`;
+  const lab = el('label', '', spec.name);
+  lab.htmlFor = id;
+  wrap.appendChild(lab);
+
+  const saved = state.fields.get(`${app.id}|${spec.name}`);
+  wrap.appendChild(el('p', 'hint', saved
+    ? `${saved.value}${saved.status === 'student' ? ' — 선생님 확인을 기다리는 중입니다.' : ' 로 저장되어 있습니다.'}`
+    : spec.hint));
+
+  const row = el('div', 'field-in');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = spec.mode;
+  input.id = id;
+  input.placeholder = spec.ph;
+  input.value = saved ? saved.value : '';
+  input.disabled = state.busy;
+  row.appendChild(input);
+
+  const btn = el('button', 'btn', '저장');
+  btn.type = 'button';
+  btn.disabled = state.busy;
+  btn.onclick = () => saveField(app, spec.name, input.value);
+  row.appendChild(btn);
+  wrap.appendChild(row);
+  return wrap;
+}
+
 /** 접수번호 안내를 이미 한 번 냈나. 일곱 장에 같은 문장이 일곱 번 나오면 소음이다. */
 let firstApplyNo = false;
 
@@ -711,6 +837,28 @@ async function saveDate(app, kind, value) {
     if (!offline) await api.call('studentDate', { token: state.token, id: app.id, kind, from: value, to: value });
     state.dates.set(`${app.id}|${kind}`, { from: value, to: value, status: 'pending' });
     state.notice = `${shortUniv(app.univ)} ${kind}일을 ${label(value)} 로 보냈습니다. 선생님이 확인하면 확정됩니다.`;
+  } catch (err) {
+    state.notice = `오류: ${err.message}`;
+  } finally {
+    state.busy = false; render();
+  }
+}
+
+async function saveField(app, field, value) {
+  state.busy = true; state.notice = ''; render();
+  const key = `${field === '생년월일' ? '' : app.id}|${field}`;
+  try {
+    if (!offline) {
+      await api.call('studentField', {
+        token: state.token, id: field === '생년월일' ? '' : app.id, field, value,
+      });
+    }
+    const text = String(value || '').trim();
+    if (text) state.fields.set(key, { value: text, status: 'student' });
+    else state.fields.delete(key);
+    state.notice = text
+      ? `${field}을(를) 보냈습니다. 선생님도 함께 봅니다.`
+      : `${field}을(를) 지웠습니다.`;
   } catch (err) {
     state.notice = `오류: ${err.message}`;
   } finally {

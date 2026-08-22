@@ -311,9 +311,53 @@ function waitingDates() {
   return wrap;
 }
 
+/** 학생이 적고 아직 확인 안 된 칸 — 수험번호·최종경쟁률·생년월일. */
+function waitingFields() {
+  const wrap = el('div');
+  const list = store.pendingFields(store.selection.cls);
+  if (!list.length) return wrap;
+
+  const box = el('section', 'panel todo-panel');
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '학생이 적은 칸'));
+  head.appendChild(el('span', 'count num', `${list.length}건`));
+  box.appendChild(head);
+  box.appendChild(el('p', 'section-label',
+    '원서를 내고 나서야 알 수 있는 값입니다. 맞으면 눌러 확인해 주세요.'));
+
+  const stack = el('div', 'stack');
+  for (const x of list) {
+    const row = el('div', 'row todo-row');
+    const txt = el('div', 'txt');
+    txt.appendChild(el('div', 'univ', `${x.student.hak} ${tidy(x.student.name)}`
+      + (x.app ? ` — ${shortName(x.app)}` : '')));
+    txt.appendChild(el('div', 'dept', `${x.field} ${x.value}`));
+    row.appendChild(txt);
+    const ok = el('button', 'btn', '맞습니다');
+    ok.type = 'button';
+    ok.onclick = async () => {
+      ok.disabled = true;
+      try {
+        await store.approveField(x.app || x.student.hak, x.field);
+        notice = `${x.student.hak} ${tidy(x.student.name)} ${x.field}을(를) 확인했습니다.`;
+      } catch (err) {
+        ok.disabled = false;
+        notice = `확인하지 못했습니다 — ${err.message}`;
+      }
+      render();
+    };
+    row.appendChild(ok);
+    stack.appendChild(row);
+  }
+  box.appendChild(stack);
+  wrap.appendChild(box);
+  return wrap;
+}
+
 function waitingPanel() {
   const wrap = el('div');
   wrap.appendChild(waitingDates());
+  wrap.appendChild(waitingFields());
   const list = store.pendingResults(store.selection.cls);
   if (!list.length) return wrap;
 

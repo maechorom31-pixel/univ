@@ -201,6 +201,18 @@ export const demo = {
     { id: at('건국대', '영어영문학과').id, hak: '3201', kind: '면접',
       from: inDays(13), to: inDays(13), status: 'pending' },
   ],
+  /*
+   * 원서를 낸 뒤에 채워지는 칸. 하나는 확인 대기, 하나는 확인된 상태로 둬서
+   * 담임의 「학생이 적은 칸」 목록과 카드의 「원서를 낸 뒤」 구역을 둘 다 볼 수 있게.
+   */
+  fields: [
+    { id: at('건국대', '영어영문학과').id, hak: '3201', field: '수험번호',
+      value: '20260012', status: 'student', by: '3201 학생', at: '2026-09-12T09:10:00Z' },
+    { id: at('건국대', '영어영문학과').id, hak: '3201', field: '최종경쟁률',
+      value: '14.9', status: 'confirmed', by: '보기용 계정', at: '2026-09-15T10:00:00Z' },
+    { id: '', hak: '3201', field: '생년월일',
+      value: '2008-03-14', status: 'confirmed', by: '보기용 계정', at: '2026-09-15T10:00:00Z' },
+  ],
   unknownCols: [],
   skipped: 0,
 };
@@ -227,5 +239,11 @@ export const studentDemo = {
       reason: '', waitNo: '7', enrolled: '', status: 'student' },
     { id: at('가톨릭대', '영어영문학과').id, hak: '3201', stage1: '합격', final: '',
       reason: '', waitNo: '', enrolled: '', status: 'confirmed' },
+  ],
+  // 접수번호가 적힌 건국대에만 「수험번호·최종경쟁률」 칸이 나온다 — 원서를 냈다는 뜻이다
+  fields: [
+    { id: at('건국대', '영어영문학과').id, hak: '3201', field: '수험번호',
+      value: '20260012', status: 'student' },
+    { id: '', hak: '3201', field: '생년월일', value: '2008-03-14', status: 'confirmed' },
   ],
 };

@@ -41,6 +41,7 @@ var SHEET = {
   date:    '일정',
   share:   '공유',      // 학생별 토큰
   alias:   '별칭',      // 못 붙인 학과를 손으로 이어 준 것
+  field:   '입력',      // 원서를 낸 뒤에 채워지는 칸 (수험번호·최종경쟁률·생년월일)
   log:     '기록'
 };
 
@@ -57,6 +58,17 @@ var HEADERS = {
   // 즐겨찾기 표기 → 자료 쪽 표기. 학생이 아니라 **학과**에 붙는 것이라
   // 엑셀을 갈아끼워도 그대로 남는다.
   별칭:  ['univ', 'dept', 'toUniv', 'toDept', 'note', 'by', 'at'],
+  /*
+   * 원서를 내고 **나서야** 알게 되는 칸들. 즐겨찾기에도 모집요강에도 없다.
+   *   수험번호     원서를 내면 대학이 준다. 면접장에서 부르는 번호다
+   *   최종경쟁률   마감 뒤 대학이 발표한다. 예비번호가 얼마나 돌지 가늠할 때 본다
+   *   생년월일     합격 조회에 쓴다. 학생 한 명에 하나라 id 는 비워 둔다
+   *
+   * 메모 탭에 밀어 넣지 않는다. 상담 메모가 묻히고, 나중에 칸을 더할 때마다
+   * 「접수번호 …」 같은 앞글자 규칙이 늘어난다.
+   * status: 'student' 학생이 적음 · 'confirmed' 선생님이 확인함 — 일정과 같다.
+   */
+  입력:  ['id', 'hak', 'field', 'value', 'status', 'by', 'at'],
   기록:  ['at', 'who', 'action', 'detail']
 };
 
@@ -144,6 +156,8 @@ function handle_(p) {
     case 'approveDate': return approveDate_(p, who);
     case 'issueToken': return issueToken_(p, who);
     case 'issueAll':   return issueAll_(p, who);
+    case 'setField':   return setField_(p, who, 'confirmed');
+    case 'approveField': return approveField_(p, who);
     case 'setAlias':   return setAlias_(p, who);
     case 'removeAlias': return removeAlias_(p, who);
     default:           return { ok: false, error: '알 수 없는 요청입니다: ' + action };
@@ -579,6 +593,7 @@ function loadAll_(me) {
     unknownCols: parsed.unknownCols, skipped: parsed.skipped,
     state: rows_(SHEET.state), notes: rows_(SHEET.note),
     results: rows_(SHEET.result), dates: rows_(SHEET.date),
+    fields: rows_(SHEET.field),
     aliases: rows_(SHEET.alias)
   };
 }
@@ -738,6 +753,7 @@ function studentAction_(action, p) {
     if (!String(p.text || '').trim()) return { ok: false, error: '내용을 적어 주세요.' };
     return addNote_({ hak: hak, id: p.id, text: p.text, visible: 'true' }, who);
   }
+  if (action === 'studentField') return setField_(p, who, 'student');
   if (action === 'studentResult') {
     return setResult_({ id: p.id, hak: hak, stage1: p.stage1, final: p.final,
       reason: p.reason, waitNo: p.waitNo, enrolled: p.enrolled }, who, 'student');
@@ -793,6 +809,62 @@ function approveDate_(p, who) {
     status: 'confirmed', by: who, at: now_()
   });
   log_(who, 'approveDate', hit.hak + ' ' + hit.kind + ' ' + hit.from);
+  return { ok: true };
+}
+
+/* ===== 원서를 낸 뒤에 채워지는 칸 =================================== */
+
+var FIELDS = ['수험번호', '최종경쟁률', '생년월일'];
+
+/**
+ * 수험번호·최종경쟁률·생년월일을 적는다.
+ *
+ * `생년월일` 은 학생 한 명에 하나라 `id` 를 비워 둔다. 나머지는 지원 한 건에 하나다.
+ * **빈 값으로 부르면 지운다** — 잘못 적었을 때 되돌릴 길이 있어야 한다.
+ */
+function setField_(p, who, status) {
+  var field = String(p.field || '').trim();
+  if (FIELDS.indexOf(field) < 0) return { ok: false, error: '모르는 칸입니다: ' + field };
+  if (!p.hak) return { ok: false, error: '학번이 필요합니다.' };
+  var id = field === '생년월일' ? '' : String(p.id || '');
+  if (field !== '생년월일' && !id) return { ok: false, error: 'id 가 필요합니다.' };
+
+  var value = String(p.value == null ? '' : p.value).trim();
+  if (!value) {
+    var all = rows_(SHEET.field);
+    for (var i = 0; i < all.length; i++) {
+      if (String(all[i].id) === id && String(all[i].hak) === String(p.hak)
+          && String(all[i].field) === field) {
+        tab_(SHEET.field).deleteRow(all[i]._row);
+        log_(who, 'setField', p.hak + ' ' + field + ' 지움');
+        return { ok: true };
+      }
+    }
+    return { ok: true };
+  }
+  upsert_(SHEET.field, ['id', 'hak', 'field'], {
+    id: id, hak: String(p.hak), field: field, value: value,
+    status: status, by: who, at: now_()
+  });
+  log_(who, 'setField', p.hak + ' ' + field + ' ' + value);
+  return { ok: true };
+}
+
+/** 학생이 적은 것을 그대로 확인한다. 일정·결과와 같은 흐름이다. */
+function approveField_(p, who) {
+  var field = String(p.field || '').trim();
+  var id = field === '생년월일' ? '' : String(p.id || '');
+  var all = rows_(SHEET.field), hit = null;
+  for (var i = 0; i < all.length; i++) {
+    if (String(all[i].id) === id && String(all[i].hak) === String(p.hak)
+        && String(all[i].field) === field) hit = all[i];
+  }
+  if (!hit) return { ok: false, error: '확인할 값이 없습니다.' };
+  upsert_(SHEET.field, ['id', 'hak', 'field'], {
+    id: hit.id, hak: hit.hak, field: hit.field, value: hit.value,
+    status: 'confirmed', by: who, at: now_()
+  });
+  log_(who, 'approveField', hit.hak + ' ' + hit.field);
   return { ok: true };
 }
 
@@ -878,6 +950,7 @@ function studentView_(token) {
     // 학생이 적어 둔 결과를 돌려주지 않으면, 저장하고 새로고침했을 때 **사라져 보인다.**
     // 시트에는 있는데 화면에서 없어지면 학생은 다시 적거나 도구를 안 믿게 된다.
     results: mine(rows_(SHEET.result)),
+    fields: mine(rows_(SHEET.field)),
     notes: mine(rows_(SHEET.note)).filter(function (n) { return String(n.visible) === 'Y'; })
   };
 }

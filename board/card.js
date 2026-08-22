@@ -251,6 +251,24 @@ export function detailPanel(app, student, onClose) {
       : ['작년 50% 컷', g2(s && s.cut50), ipSrc],
   ]));
 
+  /*
+   * 3.5 원서를 내고 **나서야** 채워지는 칸.
+   * 학생이 적고 담임이 확인한다. 값이 하나도 없으면 구역 자체를 만들지 않는다 —
+   * 9월에는 빈 줄 셋이 자리만 차지한다.
+   */
+  const paperwork = [
+    ['수험번호', store.fieldOf(app, '수험번호')],
+    ['최종 경쟁률', store.fieldOf(app, '최종경쟁률')],
+    ['생년월일', store.fieldOf(app.hak, '생년월일')],
+  ];
+  if (paperwork.some(([, v]) => v && v.value)) {
+    body.appendChild(rows('원서를 낸 뒤', paperwork.map(([k, v]) => [
+      k,
+      v && v.value ? (k === '최종 경쟁률' ? `${v.value}:1` : v.value) : null,
+      v && v.status === 'student' ? '학생 입력 · 확인 대기' : '학생 입력 · 확인됨',
+    ])));
+  }
+
   /* 4. 일정 — 없는 항목도 「모집요강 확인」으로 남긴다. 빠뜨리는 것이 더 위험하다. */
   const sched = [];
   for (const kind of DATE_KINDS) {

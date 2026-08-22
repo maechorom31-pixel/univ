@@ -32,6 +32,8 @@ export const state = {
   dates: new Map(),      // `${id}|${kind}` → { from, to, status }
   aliases: new Map(),    // `${univ}|${dept}` → { toUniv, toDept, note }
   results: new Map(),    // id → { stage1, final, reason, waitNo, enrolled }
+  // `${id}|${hak}|${field}` → { value, status }. 생년월일은 id 가 빈 문자열이다
+  fields: new Map(),
   source: { name: '', known: true },   // 어느 탭을 읽었나
   unknownCols: [],
   error: '',
@@ -102,6 +104,12 @@ function apply(data) {
     enrolled: String(r.enrolled || ''),
     status: String(r.status || 'confirmed'), by: r.by || '', at: r.at || '',
   }]));
+  // 원서를 낸 뒤에 채워지는 칸. 생년월일은 학생당 하나라 id 가 비어 있다.
+  state.fields = new Map((data.fields || []).map((r) => [
+    `${String(r.id || '')}|${String(r.hak)}|${String(r.field)}`,
+    { value: String(r.value || ''), status: String(r.status || 'confirmed'),
+      by: r.by || '', at: r.at || '' },
+  ]));
   state.aliases = new Map((data.aliases || [])
     .map((r) => [`${r.univ}|${r.dept}`, {
       toUniv: String(r.toUniv || ''), toDept: String(r.toDept || ''),
@@ -562,6 +570,77 @@ export async function approveResult(app) {
     emit('change', 'state');
     throw err;
   }
+}
+
+/* ── 원서를 낸 뒤에 채워지는 칸 ─────────────────────────────────── */
+
+/**
+ * 수험번호 · 최종경쟁률 · 생년월일.
+ *
+ * 즐겨찾기에도 모집요강에도 없는 값이다 — 원서를 내고 **나서야** 알게 된다.
+ * 학생이 적고 담임이 확인한다. 일정·결과와 같은 흐름이다.
+ *
+ * `생년월일` 은 학생 한 명에 하나라 지원과 상관없이 학번으로만 건다.
+ */
+export const FIELDS = ['수험번호', '최종경쟁률', '생년월일'];
+const perStudent = (field) => field === '생년월일';
+const fieldKey = (hak, id, field) => `${perStudent(field) ? '' : id}|${hak}|${field}`;
+
+export function fieldOf(app, field) {
+  const hak = app && app.hak ? app.hak : app;
+  const id = app && app.id ? app.id : '';
+  return state.fields.get(fieldKey(hak, id, field)) || null;
+}
+
+export async function setField(app, field, value) {
+  const hak = app && app.hak ? app.hak : app;
+  const id = perStudent(field) ? '' : (app && app.id) || '';
+  const key = fieldKey(hak, id, field);
+  const before = new Map(state.fields);
+  const text = String(value == null ? '' : value).trim();
+  if (text) state.fields.set(key, { value: text, status: 'confirmed', by: state.who || '' });
+  else state.fields.delete(key);
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.call('setField', { id, hak, field, value: text });
+  } catch (err) {
+    state.fields = before;
+    emit('change', 'state');
+    throw err;
+  }
+}
+
+export async function approveField(app, field) {
+  const hak = app && app.hak ? app.hak : app;
+  const id = perStudent(field) ? '' : (app && app.id) || '';
+  const key = fieldKey(hak, id, field);
+  const row = state.fields.get(key);
+  if (!row) return;
+  const before = new Map(state.fields);
+  state.fields.set(key, { ...row, status: 'confirmed', by: state.who || '' });
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.call('approveField', { id, hak, field });
+  } catch (err) {
+    state.fields = before;
+    emit('change', 'state');
+    throw err;
+  }
+}
+
+/** 학생이 적고 아직 확인 안 된 칸 — 담임의 「오늘 할 일」에 쓴다. */
+export function pendingFields(cls) {
+  const out = [];
+  for (const [key, v] of state.fields) {
+    if (!v || v.status !== 'student') continue;
+    const [id, hak, field] = key.split('|');
+    const student = state.students.get(hak);
+    if (!student || (cls && String(student.cls) !== String(cls))) continue;
+    out.push({ app: id ? state.apps.get(id) : null, student, field, value: v.value });
+  }
+  return out;
 }
 
 /* ── 메모 ───────────────────────────────────────────────────────── */
