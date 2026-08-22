@@ -223,7 +223,7 @@ export function detailPanel(app, student, onClose) {
   const diff = quotaNow != null && quotaPrev != null ? quotaNow - quotaPrev : null;
   const real = s.real;
 
-  body.appendChild(rows('인원과 경쟁률', [
+  const quotaBlock = rows('인원과 경쟁률', [
     ['올해 모집 인원', quotaNow != null
       ? `${quotaNow}명${diff ? ` (작년 ${quotaPrev}명, ${diff > 0 ? '+' : ''}${diff})` : ''}`
       : app.quotaText || null, '즐겨찾기 + 모집요강'],
@@ -234,7 +234,41 @@ export function detailPanel(app, student, onClose) {
     ['작년 추가 합격', mo && mo.filled26 != null ? `${mo.filled26}명` : null, '모집요강'],
     ['충원율', isCollege && s.linked && s.rows[0] && s.rows[0].fill != null
       ? `${Math.round(s.rows[0].fill)}%` : null, '전문대 자료'],
-  ]));
+  ]);
+
+  /*
+   * **미달은 말로 적어 준다.**
+   *
+   * 「0.54:1」은 훑으면 그냥 낮은 숫자로 읽히지만, 상담에서는 「뽑으려던 인원보다
+   * 지원자가 적었다」는 뜻이고 컷도 그만큼 못 믿을 값이 된다. 숫자 옆에 한 줄 적는다.
+   *
+   * 이 값들이 **진짜 미달인지** 먼저 확인했다. 입결 75,592줄 가운데 경쟁률이 1 미만인
+   * 줄이 487개인데(`data/review_comp_anomaly.csv`), 엑셀이 「13:1」을 시간으로 읽어
+   * 0.542 로 뭉갠 것 아니냐는 의심이 있었다. 모집인원 × 경쟁률을 반올림해 지원자 수를
+   * 되돌린 뒤 다시 나눠 보면 82.1% 가 원래 값과 자릿수까지 맞는다 — 경쟁률 1 초과인
+   * 대조군의 78.3% 와 같은 수준이고, 같은 모집인원에 무작위 값을 넣었을 때의 16.9%
+   * 와는 딴판이다. 시간 서식이었다면 이 정합이 나올 수 없다. 그대로 쓴다.
+   */
+  const rated = (s && s.mine ? s.mine : []).filter((r) => r.rate != null);
+  const under = rated.filter((r) => r.rate < 1);
+  if (under.length) {
+    /*
+     * 「작년」이라 안 쓰고 **연도를 적는다.** 전형에 따라 가장 최근 자료가 2024년인
+     * 곳도 있어서, 머리의 「작년 경쟁률」 줄이 실제로는 재작년 값일 때가 있다.
+     */
+    const last = rated[rated.length - 1];
+    const yrs = under.map((r) => r.year).join('·');
+    const lead = last.rate < 1
+      ? `${last.year}년 경쟁률이 1을 밑돕니다 — 뽑으려던 인원보다 지원자가 적었습니다(미달).`
+        + (under.length > 1
+          ? ` 자료에 있는 ${rated.length}해 가운데 ${under.length}해(${yrs})가 그렇습니다.`
+          : '')
+      : `${last.year}년은 아니지만 ${yrs}년에 미달이었습니다`
+        + ' — 뽑으려던 인원보다 지원자가 적었던 해입니다.';
+    quotaBlock.appendChild(el('p', 'hint', `${lead} 미달인 해는 컷이 지원자 몇 명에`
+      + ' 좌우되므로 그 해 값은 특히 흔들립니다.'));
+  }
+  body.appendChild(quotaBlock);
 
   /* 3. 성적 — 내 성적과 작년 결과를 나란히. 빼지 않고 그대로 둔다. */
   const naesin = (student && student.naesin) || {};
