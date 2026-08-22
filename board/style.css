@@ -769,7 +769,6 @@ table.ledger thead th small { font-size: 7pt; font-weight: 600; }
 table.ledger td.fix { text-align: center; padding-left: 0.4mm; padding-right: 0.4mm; }
 /* 이름은 끊지 않는다. 「가나 / 다」로 갈리면 대장에서 사람을 못 찾는다 */
 table.ledger td.fix.nm { font-weight: 700; white-space: nowrap; font-size: 8.5pt; }
-table.ledger td.sn { white-space: pre-line; font-size: 7.5pt; line-height: 1.25; }
 table.ledger td.slot { text-align: center; }
 table.ledger tr.band-top td.slot:not(.empty) {
   background: #F4F4F4; font-weight: 700;

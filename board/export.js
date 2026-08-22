@@ -229,16 +229,6 @@ function enrolledOf(hak) {
   return null;
 }
 
-/** 수능 등급을 예년 서식대로 — 한국사 / 국·수·영 / 탐구 둘, 줄을 나눠 적는다. */
-function suneungLines(student) {
-  const sn = student.suneung || {};
-  const g = (k) => (sn[k] && sn[k].grade != null ? String(sn[k].grade) : '–');
-  const has = ['한국사', '국어', '수학', '영어', '탐구1', '탐구2']
-    .some((k) => sn[k] && sn[k].grade != null);
-  if (!has) return [];
-  return [`${g('한국사')},`, `${g('국어')},${g('수학')},${g('영어')},`, `${g('탐구1')},${g('탐구2')}`];
-}
-
 const gradeOfClass = (list) => (list[0] && list[0].grade) || 3;
 
 function naesinOf(student) {
@@ -262,14 +252,13 @@ function ledger() {
     + ' 왼쪽에서 반을 고르면 그 반만 나옵니다.'));
 
   box.appendChild(tools(cls ? `${cls}반_진학대장` : '진학대장', () => {
-    const rows = [['반', '번호', '성명', '내신성적(전과목)', '등급(한,국,수,영,탐)',
+    const rows = [['반', '번호', '성명', '내신성적(전과목)',
       '대학', '학과(모집인원)', '전형', '결과', '등록 대학', '특이사항']];
     for (const s of students) {
       const enr = enrolledOf(s.hak);
-      const sn = suneungLines(s).join(' ');
       const memo = store.notesOf(s.hak).map((n) => n.text).join(' / ');
       for (const app of ordered(s.hak)) {
-        rows.push([s.cls, s.no, s.name, naesinOf(s), sn,
+        rows.push([s.cls, s.no, s.name, naesinOf(s),
           ledgerCell(app, 'univ'), ledgerCell(app, 'dept'),
           ledgerCell(app, 'type'), ledgerCell(app, 'result'),
           enr ? `${enr.univ} ${enr.dept}` : '', memo]);
@@ -308,11 +297,12 @@ function ledgerSheet(cls, students) {
   // 예년 대장의 칸 너비를 mm 로 실측해 옮겼다 (표 전체 286mm).
   // 이걸 안 정하면 대학 이름이 「건국대학 / 교(서울)」처럼 가운데서 끊긴다.
   const cg = document.createElement('colgroup');
-  // 예년 대장 실측 비율(반 2.1 · 번호 2.1 · 성명 3.8 · 내신 3.1 · 등급 3.1 ·
-  // 지원 9.6×6 · 등록 7.0 · 특이사항 21.3). 성명과 등급은 예년 문서의 글꼴보다
-  // 폭이 넓은 글꼴로 나올 때를 대비해 특이사항에서 조금 덜어 넓혔다.
-  const W = ['2.0%', '2.0%', '4.6%', '3.2%', '3.6%',
-    ...Array(LEDGER_SLOTS).fill('9.6%'), '7.0%', '16.4%'];
+  // 예년 대장 실측 비율(반 2.1 · 번호 2.1 · 성명 3.8 · 내신 3.1 · 지원 9.6×6 ·
+  // 등록 7.0 · 특이사항 21.3). 수능 등급 칸은 빼고 그 몫을 성명과 등록 대학에
+  // 돌렸다 — 성명은 예년 문서의 글꼴(경기천년바탕)보다 폭이 넓은 글꼴로 나올 때
+  // 이름이 잘렸고, 등록 대학은 대학과 학과를 두 줄로 적어 자리가 필요하다.
+  const W = ['2.2%', '2.2%', '5.0%', '3.6%',
+    ...Array(LEDGER_SLOTS).fill('9.6%'), '8.0%', '21.4%'];
   for (const w of W) {
     const col = document.createElement('col');
     col.style.width = w;
@@ -325,7 +315,6 @@ function ledgerSheet(cls, students) {
   // 칸이 좁아 머리글은 예년 문서처럼 여러 줄로 끊어 넣는다. 한 줄로 두면
   // 「내신성적」과 「등급」이 서로 겹쳐 읽히지 않는다.
   [['반', 1], ['번<br>호', 1], ['성명', 1], ['내신<br>성적<br><small>(전과목)</small>', 1],
-    ['등급<br><small>(한,국,수,<br>영,탐)</small>', 1],
     ['대학 지원 현황 및 합불 현황(지원대학 및 학과, 전형명, 합불)', LEDGER_SLOTS],
     ['등록 대학', 1], ['특이사항', 1],
   ].forEach(([label, span]) => {
@@ -367,7 +356,6 @@ function ledgerBlock(student) {
           ['num', student.no],
           ['nm', tidy(student.name)],
           ['num', naesinOf(student)],
-          ['num sn', suneungLines(student).join('\n')],
         ];
         for (const [cl, v] of left) {
           const td = el('td', `fix ${cl}`, v === '' ? '' : String(v));
