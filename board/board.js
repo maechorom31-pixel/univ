@@ -160,6 +160,14 @@ function render() {
   // 원본 탭 이름이 아는 것과 다르면 알린다. 조용히 첫 탭을 읽고 「0명」만 뜨면
   // 왜 비었는지 알 길이 없다.
   const src = store.state.source || {};
+  /*
+   * 딴 파일의 원본을 열지 못했으면 **이 시트의 옛 원본을 읽고 있는 것**이다.
+   * 그걸 안 알리면 지난주 자료를 이번 주 자료로 읽는다. 제일 조용히 틀리는 길이다.
+   */
+  if (src.warn) main.appendChild(banner(`${src.warn} 이 시트의 원본 탭을 대신 읽었습니다.`, true));
+  else if (src.book) {
+    main.appendChild(banner(`즐겨찾기 원본을 「${src.book}」에서 읽었습니다.`));
+  }
   if (src.name && !src.known) {
     main.appendChild(banner(
       `「${src.name}」 탭을 읽었습니다. 즐겨찾기 원본이 이 탭이 아니라면,`

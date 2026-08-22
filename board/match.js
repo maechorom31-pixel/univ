@@ -218,6 +218,26 @@ function looksLikeList(text) {
 }
 
 /** 즐겨찾기의 전형유형 → 입결의 카테고리. 못 가리면 null. */
+/**
+ * 학교유형을 셋 중 하나로 줄인다 — `일반대` · `전문대` · `특수대`.
+ *
+ * 즐겨찾기가 무슨 말을 적어 둘지 미리 알 수 없다. 「대학교」·「4년제」·「전문대학」·
+ * 「산업대학」… 해마다 다르고 시트마다 다르다. 그런데 코드 곳곳이 이 값을 **글자
+ * 그대로** 견주고 있어서, 표기가 한 글자만 달라도 그 학생의 여섯 칸이 통째로
+ * 미연결이 된다. 화면에는 「대학교는 입결 자료가 없습니다」라는 알 수 없는 말이 뜬다.
+ *
+ * 못 알아본 것은 `''` 로 돌려준다. **일반대로 단정하지 않는다** — 부르는 쪽이
+ * 두 자료를 다 뒤지게 하려는 것이다.
+ */
+export function univKind(raw) {
+  const t = String(raw || '').replace(/\s/g, '');
+  if (!t) return '';
+  if (/전문대|산업대|기능대|폴리텍/.test(t)) return '전문대';
+  if (/사관|경찰대|특수대|각종학교|기술대/.test(t)) return '특수대';
+  if (/일반대|4년제|사년제|대학교$/.test(t)) return '일반대';
+  return '';
+}
+
 export function catOf(typeCat) {
   const t = String(typeCat || '');
   if (/논술/.test(t)) return '논술';
@@ -334,13 +354,26 @@ export function link(app, src) {
     related: [], before: null, confidence: 'none', why,
   });
 
-  if (app.univType === '전문대') return linkCollege(app, src, none);
-  if (app.univType && app.univType !== '일반대') {
+  const kind = univKind(app.univType);
+  if (kind === '전문대') return linkCollege(app, src, none);
+  if (kind === '특수대') {
     return none(`${app.univType}는 입결 자료가 없어 직접 확인해야 합니다`);
   }
+  /*
+   * `kind === ''` 은 즐겨찾기가 모르는 말을 적어 둔 것이다. 그때는 **두 자료를 다 뒤진다.**
+   * 예전에는 「일반대가 아니면 자료 없음」으로 끊었는데, 어디가 export 의 학교유형
+   * 표기가 조금만 달라도(「대학교」·「전문대학」) 그 학생의 여섯 칸이 통째로 미연결이
+   * 되고, 화면에는 「대학교는 입결 자료가 없습니다」라는 알 수 없는 말만 떴다.
+   * 대학 이름으로 찾는 것이라 엉뚱한 자료가 붙을 일은 없다 — 없으면 그냥 못 찾는다.
+   */
 
   const univ = resolveUniv(app.univ, src.ipgyeol.index);
-  if (!univ) return none(`입결 자료에 「${app.univ}」를 찾지 못했습니다`);
+  if (!univ) {
+    if (kind === '' && src.college && resolveUniv(app.univ, src.college.index)) {
+      return linkCollege(app, src, none);
+    }
+    return none(`입결 자료에 「${app.univ}」를 찾지 못했습니다`);
+  }
 
   const k = key(univ, app.dept);
   const rows = (src.ipgyeol.byKey.get(k) || []).slice()
@@ -740,11 +773,16 @@ export function similarity(a, b) {
  * @return {Array<{dept, score, years, kind}>}
  */
 export function candidates(app, src, n = 6) {
-  const college = app.univType === '전문대';
-  const bank = college ? src.college : src.ipgyeol;
+  const college = univKind(app.univType) === '전문대';
+  let bank = college ? src.college : src.ipgyeol;
   if (!bank) return [];
 
-  const univ = resolveUniv(app.univ, bank.index);
+  let univ = resolveUniv(app.univ, bank.index);
+  // 학교유형을 못 알아봤으면 다른 쪽 자료도 본다 (link 와 같은 규칙)
+  if (!univ && !college && !app.univType && src.college) {
+    bank = src.college;
+    univ = resolveUniv(app.univ, bank.index);
+  }
   if (!univ) return [];
 
   // 이 대학의 학과 이름을 모은다

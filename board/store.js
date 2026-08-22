@@ -86,6 +86,8 @@ function apply(data) {
   state.source = {
     name: data.sourceSheet || '',
     known: data.sourceKnown !== false,
+    book: data.sourceBook || '',      // 딴 파일에서 읽었으면 그 파일 이름
+    warn: data.sourceWarn || '',      // 딴 파일을 열지 못했으면 그 사유
   };
   state.unknownCols = data.unknownCols || [];
   state.students = new Map((data.students || []).map((s) => [s.hak, s]));

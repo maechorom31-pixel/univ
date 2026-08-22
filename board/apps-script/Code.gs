@@ -45,7 +45,8 @@ var SHEET = {
 };
 
 var HEADERS = {
-  설정:  ['이메일', '메모'],
+  // B2 에 원본 시트 주소를 적으면 즐겨찾기를 딴 파일에서 읽는다 (sourceBook_ 참고)
+  설정:  ['이메일', '원본 즐겨찾기 시트 주소 — 아래 한 칸에만'],
   배치:  ['id', 'hak', 'slot', 'rank', 'by', 'at'],
   메모:  ['noteId', 'hak', 'id', 'text', 'visible', 'by', 'at'],
   // status: 'student' 학생이 적음 · 'confirmed' 선생님이 확인함
@@ -415,17 +416,57 @@ function isNaesinName_(name) {
  * 읽으면, 탭 이름이 달랐을 때 엉뚱한 것을 읽고도 화면에는 「학생 0명」만 뜬다.
  * 왜 0명인지 알 길이 없어진다.
  */
+/**
+ * 즐겨찾기 원본이 어느 탭인가.
+ * =====================================================================
+ * 기본은 **이 시트 안**이다. `다운로드 원본`·`원본`·`즐겨찾기` 중 하나를 찾는다.
+ *
+ * 그런데 즐겨찾기는 9월 내내 바뀐다. 학생이 지원을 더하고 빼고, 대교협에서 새로
+ * 내려받는다. 그때마다 이 시트의 탭을 지우고 붙여 넣는 것은 위험하다 — 옆에
+ * 상담 기록이 여덟 탭이나 같이 있는 파일이라, 붙여 넣다 한 번 어긋나면 그게 다
+ * 날아간다.
+ *
+ * 그래서 **원본을 딴 파일에 두는 길**을 연다. `설정` 탭 **B2** 에 그 파일 주소(또는
+ * ID)를 적으면 거기서 읽는다. 그러면 새 엑셀을 받았을 때 그 파일만 갈아끼우면 되고,
+ * 상담 기록이 든 이 시트는 건드릴 일이 없다.
+ *
+ * 순위·메모·결과는 **안정키**(학번+대학+전형+학과)로 붙어 있어서, 원본이 통째로
+ * 바뀌어도 같은 지원에는 그대로 다시 붙는다. 없어진 지원의 기록은 시트에 남아
+ * 있다가 그 지원이 돌아오면 되살아난다.
+ */
+function sourceBook_() {
+  var here = SpreadsheetApp.getActiveSpreadsheet();
+  var ref = '';
+  try {
+    var cell = here.getSheetByName(SHEET.config);
+    // B1 은 머리글 자리다. 값은 바로 아래 B2 에서 읽는다.
+    if (cell) ref = String(cell.getRange('B2').getValue() || '').trim();
+  } catch (err) { ref = ''; }
+  if (!ref) return { book: here, external: false, why: '' };
+
+  var m = ref.match(/[-\w]{25,}/);            // 주소를 통째로 붙여 넣어도 ID만 뽑는다
+  var id = m ? m[0] : ref;
+  try {
+    return { book: SpreadsheetApp.openById(id), external: true, why: '' };
+  } catch (err) {
+    // 못 열면 **조용히 이 시트로 돌아가지 않는다.** 그러면 옛 자료를 새 자료로 읽는다.
+    return { book: here, external: false, why: '설정 B1 의 원본 시트를 열지 못했습니다 — ' + String(err && err.message || err) };
+  }
+}
+
 function sourceSheet_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet(), sheets = ss.getSheets();
+  var found = sourceBook_();
+  var sheets = found.book.getSheets();
   for (var i = 0; i < sheets.length; i++) {
     var name = sheets[i].getName();
     for (var j = 0; j < SOURCE_SHEETS.length; j++) {
       if (name.indexOf(SOURCE_SHEETS[j]) >= 0) {
-        sheets[i].__matched = true;
+        sheets[i].__book = found;
         return sheets[i];
       }
     }
   }
+  sheets[0].__book = found;
   return sheets[0];
 }
 
@@ -503,10 +544,13 @@ function loadAll_(me) {
   for (var j = 0; j < SOURCE_SHEETS.length; j++) {
     if (srcName.indexOf(SOURCE_SHEETS[j]) >= 0) known = true;
   }
+  var book = src.__book || { external: false, why: '' };
   var parsed = parseFavorites_(src.getDataRange().getValues());
   return {
     ok: true, who: me.email || '이름 없는 접속', locked: me.locked, at: now_(),
     sourceSheet: srcName, sourceKnown: known,
+    sourceBook: book.external ? src.getParent().getName() : '',
+    sourceWarn: book.why || '',
     students: parsed.students, apps: parsed.apps,
     unknownCols: parsed.unknownCols, skipped: parsed.skipped,
     state: rows_(SHEET.state), notes: rows_(SHEET.note),

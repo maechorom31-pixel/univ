@@ -15,7 +15,7 @@ import {
   univStem, campusOf, resolveUniv, buildUnivIndex,
   normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
-  normType, pickIpgyeol, typeGroups,
+  normType, pickIpgyeol, typeGroups, univKind,
 } from './match.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -281,7 +281,7 @@ const pct = (n, d) => (d ? `${((n / d) * 100).toFixed(1)}%` : '—');
 
 for (const file of files) {
   const { apps } = gs.parseFavorites_(JSON.parse(readFileSync(file, 'utf8')), { year: 2025 });
-  const general = apps.filter((a) => a.univType === '일반대');
+  const general = apps.filter((a) => univKind(a.univType) !== '전문대' && univKind(a.univType) !== '특수대');
   const links = general.map((a) => ({ a, l: link(a, src) }));
   const okUniv = links.filter((x) => !x.l.why.includes('찾지 못했습니다'));
   const exact = links.filter((x) => x.l.confidence === 'exact');
@@ -313,7 +313,7 @@ for (const file of files) {
     + ` (그중 입결 직접 연결 ${umbrella.filter((a) => link(a, src).confidence === 'exact').length}건)`);
 
   if (co) {
-    const col = apps.filter((a) => a.univType === '전문대');
+    const col = apps.filter((a) => univKind(a.univType) === '전문대');
     const okCol = col.filter((a) => link(a, src).confidence !== 'none');
     console.log(`  전문대 ${okCol.length}/${col.length}  ${pct(okCol.length, col.length)}`);
     for (const a of col) {
