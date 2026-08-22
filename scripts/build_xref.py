@@ -82,7 +82,9 @@ def norm_dept(name):
         if m.strip() in DISCRIMINATORS
     })
     d = re.sub(r"\([^)]*\)", "", d)       # 괄호 안 설명 제거
-    d = re.sub(r"[\s·，,／/‧・]", "", d)
+    # 가운뎃점이 네 벌 섞여 있다 — · (U+00B7) · ・ (U+30FB) · ㆍ (U+318D) · ‧ (U+2027).
+    # 눈으로는 같은 글자다. board/match.js 의 normDept 와 **같아야 한다.**
+    d = re.sub(r"[\s·，,／/‧・ㆍ•∙‐‑‒–—]", "", d)
     d = re.sub(r"(전공|학과|학부|과|계열|학|부)$", "", d)
     return d + ("~" + "".join(discs) if discs else "")
 

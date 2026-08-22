@@ -165,7 +165,14 @@ export function normDept(name) {
       .filter(Boolean),
   )].sort();
   d = d.replace(/\([^)]*\)/g, '');
-  d = d.replace(/[\s·，,／/‧・]/g, '');
+  /*
+   * 가운뎃점이 네 벌 섞여 있다 — `·`(U+00B7) 1,740 · `・`(U+30FB) 1,733 ·
+   * `ㆍ`(U+318D) 356 · `‧`(U+2027) 147. 눈으로는 같은 글자다.
+   * 한 벌이라도 빠뜨리면 `강원대 원예ㆍ농업자원경제학부` 와 `원예·농업자원경제학부` 가
+   * 서로 다른 학과가 되어, 한 학과의 자료가 두 곳에 나뉜 채 각각 두 해씩만 남는다.
+   * 14 쌍이 그렇게 갈려 있었다.
+   */
+  d = d.replace(/[\s·，,／/‧・ㆍ•∙‐‑‒–—]/g, '');
   d = d.replace(/(전공|학과|학부|과|계열|학|부)$/, '');
   return d + (discs.length ? '~' + discs.join('') : '');
 }
@@ -957,6 +964,57 @@ export function summarize(l, app) {
     real: mo ? realRate(mo.rate26, mo.quotaPrev, mo.filled26) : NO_RATE,
     stages: mo ? mo.stages : null,
   };
+}
+
+/**
+ * 이름이 바뀐 앞선 학과를 찾는다 — **잇지는 않는다.**
+ * =====================================================================
+ * 학과는 자주 바뀐다. (대학·학과) 8,502 곳 가운데 30.4% 가 2026 에 없고 23.6% 가
+ * 2022 에 없다. 대학이 학부를 쪼개고 합치고 이름을 갈아 대기 때문이다.
+ *
+ * 그래서 올해 원서를 쓰는 학과가 입결에는 한두 해치밖에 없는 일이 흔하다 —
+ * 모집요강 학과의 833 곳이 그렇다. 그중 145 곳은 **바로 앞 해에 끝난 이름 닮은
+ * 학과**가 1:1 로 있다. 강원대 「일본학과」(2026) 앞에 「일본어학과」(~2025) 가 있는 식이다.
+ *
+ * **그런데 자동으로 이으면 안 된다.** 재 봤다 — 같은 학과 안에서 이웃한 해의 70%컷이
+ * 움직인 폭이 19,345쌍 기준 중앙 0.25 · 95% 1.13 인데, 이렇게 이어 붙인 경계에서
+ * 1.13 을 넘는 비율이 **14%** 다. 기대치 5% 의 세 배다. 문턱을 0.8 까지 올려도
+ * 오히려 나빠진다(17%).
+ *
+ * 전형 이름과는 다른 이야기다. 전형은 이름만 갈리는 일이 많지만, 학과는 이름이
+ * 바뀔 때 **가르치는 것과 뽑는 수도 같이 바뀐다.** 「수의예과 → 수의학과」는 같은
+ * 곳이지만 「기계공학과 → 기계융합공학부」는 다른 곳일 수 있고, 자료만 보고는 못 가린다.
+ *
+ * 그래서 찾아서 **보여 주기만 한다.** 이을지는 선생님이 정한다 — 점검 화면에서
+ * 여러 학과를 골라 참고선으로 잇는 길이 이미 있다.
+ *
+ * @return {?{dept, years, n, score}}  1:1 로 걸리는 앞선 학과. 없으면 null
+ */
+export function predecessor(app, src, linked) {
+  if (!src || !src.ipgyeol || !linked || !linked.ipgyeol || !linked.ipgyeol.length) return null;
+  const years = [...new Set(linked.ipgyeol.map((r) => r.year))].sort();
+  if (years.length > 2) return null;          // 연차가 넉넉하면 볼 것 없다
+  const lo = years[0];
+  const univ = linked.ipgyeol[0].univ;
+  const want = normDept(app.dept);
+
+  // 이 대학의 학과를 연차와 함께 모은다
+  const all = [];
+  for (const [k, rows] of src.ipgyeol.byKey) {
+    if (!k.startsWith(`${univ}|`) || !rows.length || rows[0].univ !== univ) continue;
+    const ys = [...new Set(rows.map((r) => r.year))].sort();
+    all.push({ dept: rows[0].dept, key: k, lo: ys[0], hi: ys[ys.length - 1], years: ys, n: rows.length });
+  }
+  const near = (a, b) => similarity(normDept(a), normDept(b));
+
+  const hits = all.filter((v) => v.hi === lo - 1 && near(v.dept, app.dept) >= 0.5);
+  if (hits.length !== 1) return null;         // 여럿이면 쪼개졌거나 합쳐진 것이다
+  const cand = hits[0];
+  // 그 앞선 학과가 올해 생긴 다른 학과에도 걸리면 쪼개진 것이다 — 잇지 않는다
+  const rivals = all.filter((v) => v.lo === lo && near(cand.dept, v.dept) >= 0.5);
+  if (rivals.length !== 1) return null;
+
+  return { dept: cand.dept, years: cand.years, n: cand.n, score: near(cand.dept, app.dept) };
 }
 
 /* ── 비슷한 학과 찾기 ─────────────────────────────────────────────── */

@@ -16,7 +16,7 @@ import {
   link as makeLink, summarize, examDate, examKindFits, paperDates,
   candidates as similarDepts,
   indexIpgyeol, indexMojip, indexCollege, indexSchedule,
-  splitDepts, referenceLine, resolveUniv, catOf,
+  splitDepts, referenceLine, resolveUniv, catOf, predecessor,
 } from './match.js';
 
 const listeners = new Map();
@@ -239,6 +239,19 @@ export function link(app) {
 }
 
 /* ── 학과 별칭 ─────────────────────────────────────────────────── */
+
+/**
+ * 이름이 바뀐 것 같은 앞선 학과. **찾아 주기만 하고 잇지는 않는다.**
+ * 자동으로 이으면 안 되는 까닭은 match.js `predecessor` 에 적어 두었다.
+ */
+export function renamedFrom(app) {
+  if (!state.enriched) return null;
+  // 이미 손으로 이어 두었으면 더 물을 것이 없다
+  if (state.aliases.has(`${app.univ}|${app.dept}`)) return null;
+  const l = link(app);
+  if (!l || l.confidence === 'none') return null;
+  return predecessor(app, { ipgyeol }, l);
+}
 
 /** 같은 대학에서 이름이 닮은 학과. 고르지는 않는다 — 사람이 고른다. */
 export function candidatesFor(app, n) {

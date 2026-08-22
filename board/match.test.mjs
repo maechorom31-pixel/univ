@@ -15,7 +15,7 @@ import {
   univStem, campusOf, resolveUniv, buildUnivIndex,
   normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
-  normType, pickIpgyeol, typeGroups, univKind, summarize,
+  normType, pickIpgyeol, typeGroups, univKind, summarize, predecessor,
 } from './match.js';
 import { josa } from './text.js';
 
@@ -266,6 +266,40 @@ console.log('이름이 바뀐 전형 잇기');
   eq(pick.type, '종합(바람개비)', '화면에는 올해 표기를 쓴다');
   eq(pick.rows.length, 2, '두 해를 다 준다');
   eq(merged.size, 2, '학과 안에 묶음은 둘');
+}
+
+console.log('이름이 바뀐 것 같은 앞선 학과 — 찾기만 하고 잇지 않는다');
+{
+  const doc = (list) => ({
+    columns: ['지역', '대학', '연도', '카테고리', '전형', '학과', '계열', '모집', '경쟁률', '등급50', '등급70', '지원'],
+    rows: list.map(([dept, year]) =>
+      ['강원', '가대', year, '교과', '교과(일반)', dept, '인문', 10, 5, 3.0, 3.2, 50]),
+  });
+  const app = { univType: '일반대', univ: '가대학교', dept: '일본학과',
+    typeSub: '교과(일반)', typeName: '교과(일반)', typeCat: '학생부위주(교과)' };
+  const run = (list, a = app) => {
+    const src = { ipgyeol: indexIpgyeol(doc(list)), mojip: { index: new Map(), byKey: new Map() },
+      college: null, related: new Map() };
+    return predecessor(a, src, link(a, src));
+  };
+
+  const hit = run([['일본어학과', 2023], ['일본어학과', 2024], ['일본어학과', 2025], ['일본학과', 2026]]);
+  eq(hit && hit.dept, '일본어학과', '바로 앞 해에 끝난 닮은 이름을 찾는다');
+  eq(hit && hit.years, [2023, 2024, 2025], '몇 해 있었는지도');
+
+  eq(run([['일본어학과', 2024], ['일본학과', 2026]]), null, '해가 이어지지 않으면 안 찾는다');
+  eq(run([['기계공학과', 2025], ['일본학과', 2026]]), null, '이름이 안 닮으면 안 찾는다');
+
+  // 쪼개진 것을 이름이 바뀐 것으로 읽으면 안 된다
+  eq(run([['산림과학부', 2025], ['산림경영학과', 2026], ['산림자원학과', 2026]]),
+    null, '하나가 여럿으로 쪼개졌으면 안 찾는다');
+  // 합쳐진 것도 마찬가지
+  eq(run([['일본어학과', 2025], ['일본문화학과', 2025], ['일본학과', 2026]]),
+    null, '여럿이 하나로 합쳐졌으면 안 찾는다');
+
+  // 연차가 넉넉하면 물을 것이 없다
+  eq(run([['일본어학과', 2022], ['일본학과', 2024], ['일본학과', 2025], ['일본학과', 2026]]),
+    null, '세 해 넘게 있으면 안 찾는다');
 }
 
 console.log('컷이 있는 가장 최근 해를 쓴다');

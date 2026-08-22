@@ -170,6 +170,26 @@ export function detailPanel(app, student, onClose) {
         + ' 직접 봐 주세요.' : ' 아래 「연도별 추이」에서 직접 봐 주세요.')));
   }
 
+  /*
+   * **이름이 바뀐 것 같은 앞선 학과.** 찾아 주기만 하고 잇지는 않는다.
+   * 학과는 이름이 바뀔 때 가르치는 것과 뽑는 수도 같이 바뀌어서, 자료만 보고
+   * 같은 곳인지 못 가린다(match.js predecessor 참고). 사람이 정할 일이다.
+   */
+  const older = store.renamedFrom(app);
+  if (older) {
+    const note = el('p', 'note');
+    note.appendChild(document.createTextNode(
+      `이 학과는 입결에 ${s && s.rows ? [...new Set(s.rows.map((r) => r.year))].length : 0}해치밖에`
+      + ' 없습니다. 같은 대학에 '));
+    note.appendChild(el('b', null, `「${older.dept}」`));
+    note.appendChild(document.createTextNode(
+      `가 ${older.years[older.years.length - 1]}까지 ${older.years.length}해 있었습니다 —`
+      + ' 이름이 바뀐 것일 수 있습니다. 같은 곳이 맞다면 「점검」 화면에서 이어 주세요.'
+      + ' 학과는 이름이 바뀔 때 가르치는 것과 뽑는 수도 같이 바뀌는 일이 있어'
+      + ' 자동으로 잇지는 않습니다.'));
+    body.appendChild(note);
+  }
+
   if (s && !s.linked && s.before) {
     // 묶이기 전 선이라도 있으면 「없다」가 아니라 「이것으로 본다」고 적는다
     body.appendChild(el('p', 'note', s.why));
