@@ -9,6 +9,7 @@
 > | | 모집요강 파싱 계획 [`PLAN_2027.md`](PLAN_2027.md) |
 > | | 또래비교 설계 [`tools/DESIGN.md`](tools/DESIGN.md) |
 > | | 쓰는 사람용 안내 [`README.md`](README.md) |
+> | | 다른 세션에 검토 시킬 때 [`REVIEW_REQUEST.md`](REVIEW_REQUEST.md) |
 >
 > **고칠 때는 이 문서와 실제 파일을 같이 고친다.** 구조가 바뀌었는데 여기가 옛말이면,
 > 다음 사람이 이 문서를 믿고 잘못된 곳을 뒤진다.
