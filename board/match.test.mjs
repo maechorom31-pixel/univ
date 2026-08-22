@@ -15,7 +15,7 @@ import {
   univStem, campusOf, resolveUniv, buildUnivIndex,
   normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
-  normType, pickIpgyeol,
+  normType, pickIpgyeol, typeGroups,
 } from './match.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -166,6 +166,51 @@ console.log('전형 이름 정규화');
   diff('종합(고교Ⅰ)', '종합(고교Ⅱ)', 'Ⅰ과 Ⅱ는 다른 전형이다');
   diff('교과(일반)', '종합(일반)', '교과와 종합은 절대 안 합친다');
   diff('교과(지역)', '교과(학교장추천)', '지역과 학교장추천도 다르다');
+}
+
+console.log('이름이 바뀐 전형 잇기');
+{
+  const r = (year, type, cat) => ({ year, type, cat, g70: 3.0 });
+  const names = (m) => [...m.values()].map((g) => `${g.name}${g.aliases.length ? `(${g.aliases.join(',')})` : ''}`).sort();
+
+  // 고려대 경제 꼴 — 해가 안 겹치고 이어지고 1:1 이고 이름이 닮았다
+  eq(names(typeGroups([
+    r(2024, '교과(추천)', '교과'), r(2025, '교과(추천)', '교과'), r(2026, '교과(학교장추천)', '교과'),
+  ])), ['교과(학교장추천)(교과(추천))'], '이름만 바뀐 것은 한 묶음');
+
+  // 같은 해에 둘 다 있으면 이름이 바뀐 게 아니라 둘 다 있는 것이다
+  eq(names(typeGroups([
+    r(2025, '교과(추천)', '교과'), r(2026, '교과(추천)', '교과'), r(2026, '교과(학교장추천)', '교과'),
+  ])).length, 2, '해가 겹치면 잇지 않는다');
+
+  // 강원대 미래인재 꼴 — **쪼개진** 것을 이름이 바뀐 것으로 읽으면 안 된다
+  eq(names(typeGroups([
+    r(2025, '미래인재', '종합'), r(2026, '미래인재1', '종합'), r(2026, '미래인재2', '종합'),
+  ])).length, 3, '1:2 로 쪼개진 것은 잇지 않는다');
+
+  // 교과와 종합은 절대 안 잇는다
+  eq(names(typeGroups([r(2025, '교과(일반)', '교과'), r(2026, '종합(일반)', '종합')])).length, 2,
+    '카테고리가 다르면 잇지 않는다');
+
+  // 해가 비었으면(2024 없음) 이름이 바뀐 것으로 보지 않는다
+  eq(names(typeGroups([r(2023, '교과(추천)', '교과'), r(2026, '교과(학교장추천)', '교과')])).length, 2,
+    '해가 이어지지 않으면 잇지 않는다');
+
+  // 안 닮은 이름은 안 잇는다 — 문턱 0.5
+  eq(names(typeGroups([r(2025, '교과(지역)', '교과'), r(2026, '교과(일반)', '교과')])).length, 2,
+    '「지역」과 「일반」은 닮지 않았다');
+
+  // 즐겨찾기가 작년 이름을 갖고 있어도 붙어야 한다
+  const merged = typeGroups([
+    r(2025, '바람개비', '종합'), r(2026, '종합(바람개비)', '종합'), r(2026, '교과(학생부)', '교과'),
+  ]);
+  const pick = pickIpgyeol([
+    r(2025, '바람개비', '종합'), r(2026, '종합(바람개비)', '종합'), r(2026, '교과(학생부)', '교과'),
+  ], { typeSub: '바람개비', typeCat: '학생부위주(종합)' });
+  eq(pick.fit, 'exact', '작년 표기로 적혀 있어도 맞은 것으로 본다');
+  eq(pick.type, '종합(바람개비)', '화면에는 올해 표기를 쓴다');
+  eq(pick.rows.length, 2, '두 해를 다 준다');
+  eq(merged.size, 2, '학과 안에 묶음은 둘');
 }
 
 console.log('지원한 전형의 입결 줄 고르기');

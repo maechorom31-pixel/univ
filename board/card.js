@@ -13,7 +13,7 @@
  * 계산하지 않고 「자료 불일치」로 둔다.
  */
 import * as store from './store.js';
-import { realRate, normType } from './match.js';
+import { realRate, normType, typeGroups } from './match.js';
 import { confidence } from './confidence.js';
 
 export { realRate };
@@ -429,24 +429,19 @@ function trend(s) {
     th(['연도', '모집', '경쟁률', '70%컷', '50%컷']);
 
     /*
-     * 이름이 조금 달라도 같은 전형이면 한 묶음이다.
-     * `종합(고교생활Ⅰ)` 과 `종합(고교Ⅰ)` 이 갈려 있으면 추이가 한 해씩 토막 난다.
-     * 전형이 둘 이상인 학과의 25.8% 가 이 꼴이었다. (match.js normType 참고)
+     * 묶는 일은 **match.js `typeGroups` 한 곳에서만** 한다. 카드 머리의 숫자를 고른
+     * 것과 같은 함수다. 화면에서 따로 묶으면 표와 머리가 어긋나고, 어긋나도 아무 데도
+     * 「어긋났다」고 안 적힌다.
      *
      * 화면에 적는 이름은 **가장 최근 해의 표기**를 쓴다. 올해 원서를 쓰는 사람에게는
      * 그게 지금 쓰이는 이름이다.
      */
-    const groups = new Map();
-    for (const row of s.rows) {
-      const key = normType(row.type) || '전형 미상';
-      if (!groups.has(key)) groups.set(key, { rows: [], name: row.type || '전형 미상', year: -1 });
-      const g = groups.get(key);
-      g.rows.push(row);
-      if ((row.year || 0) > g.year) { g.year = row.year || 0; g.name = row.type || g.name; }
-    }
-    // 「내가 넣은 전형」은 match.js pickIpgyeol 이 가려 둔 것을 그대로 쓴다.
-    // 화면에서 다시 짐작하면 카드 머리의 숫자와 표가 어긋난다.
-    const mine = s.typeFit && s.typeFit !== 'none' ? (normType(s.type) || null) : null;
+    const groups = typeGroups(s.rows);
+    // 「내가 넣은 전형」도 pickIpgyeol 이 가려 둔 것을 그대로 쓴다.
+    const want = s.typeFit && s.typeFit !== 'none' ? (normType(s.type) || null) : null;
+    const mine = want
+      ? [...groups.keys()].find((k) => groups.get(k).keys.includes(want)) || null
+      : null;
     const order = [...groups.keys()].sort((a, b) => {
       if (a === mine) return -1;
       if (b === mine) return 1;
@@ -462,12 +457,13 @@ function trend(s) {
       cell.colSpan = 5;
       if (type === mine) cell.appendChild(el('span', 'tag', '내가 넣은 전형'));
       // 해마다 이름이 달랐으면 그것도 적는다. 감추면 왜 묶였는지 알 수 없다.
-      const alias = [...new Set(g.rows.map((r) => r.type).filter((t) => t && t !== g.name))];
-      if (alias.length) cell.appendChild(el('span', 'alias', `예전 이름 ${alias.join(' · ')}`));
+      if (g.aliases.length) {
+        cell.appendChild(el('span', 'alias', `예전 이름 ${g.aliases.join(' · ')}`));
+      }
       head.appendChild(cell);
       tbody.appendChild(head);
 
-      const rows = g.rows.slice().sort((a, b) => b.year - a.year);
+      const rows = g.rows.slice().reverse();      // typeGroups 가 연도 오름차순으로 준다
       for (const row of rows) {
         const tr = document.createElement('tr');
         tr.appendChild(el('td', 'num', String(row.year)));

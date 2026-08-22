@@ -399,6 +399,102 @@ export function link(app, src) {
 }
 
 /**
+ * 한 학과의 입결 행을 **전형 묶음**으로 가른다.
+ * =====================================================================
+ * `normType` 으로 한 번 묶고, 그 다음 **이름이 바뀐 것끼리 잇는다.**
+ *
+ *     고려대 경제  교과(추천) 2022~2025  →  교과(학교장추천) 2026
+ *     가천대 경영  바람개비  2023~2025  →  종합(바람개비)   2026
+ *     경상국립대   교과(일반) …          →  교괴(일반전형)   (원본 오타)
+ *
+ * 잇는 조건 넷을 다 만족해야 한다.
+ *
+ *   1. 카테고리가 같다        교과와 종합은 애초에 견주지 않는다
+ *   2. 해가 안 겹치고 이어진다  한쪽 마지막 해 + 1 = 다른 쪽 첫 해.
+ *                            같은 해에 둘 다 있으면 이름만 바뀐 게 아니라 둘 다 있는 것이다
+ *   3. 1:1 이다               앞도 뒤도 후보가 하나뿐일 때만. 이게 없으면
+ *                            강원대 `미래인재` → `미래인재1`·`미래인재2` 처럼
+ *                            **쪼개진** 것을 이름이 바뀐 것으로 잘못 읽는다
+ *   4. 이름이 0.5 이상 닮았다  `similarity` 로 잰다
+ *
+ * **문턱 0.5 는 재서 잡았다.** 후보의 닮은 정도 분포에 0.48 과 0.50 사이가 비어 있다.
+ * 0.50 위쪽은 `교과(일반)→교괴(일반전형)`(오타) · `종합(일반)→종합(학생부종합)` ·
+ * `교과(추천)→교과(학교장추천)` 처럼 눈으로 봐도 같은 전형이고,
+ * 0.40~0.48 은 `교과(지역)→교과(일반)` · `종합(지역)→종합(일반)` 처럼 섞여 있다.
+ * 애매한 구간은 **잇지 않는다.**
+ *
+ * 이어 놓은 것이 맞는지도 쟀다. 같은 이름 한 전형 안에서 이웃한 해끼리 70%컷이
+ * 움직인 폭이 31,149 쌍 기준 중앙 0.28 · 95% 1.37 이다. 이어 붙인 경계에서의
+ * 컷 차이는 중앙 0.26, 1.37 을 넘는 것이 6% — **같은 전형의 다음 해와 구별되지 않는다.**
+ * (컷은 확인에만 썼다. 숫자가 이어진다고 이어 붙이면 추이가 실제보다 매끈해진다.)
+ *
+ * @return {Map<string, {rows, keys, name, aliases, cat, lo, hi}>}
+ *         rows 는 연도 오름차순, name 은 **가장 최근 해의 표기**
+ */
+const RENAME_SIM = 0.5;
+
+export function typeGroups(rows) {
+  const g = new Map();
+  for (const r of rows || []) {
+    const k = normType(r.type) || '전형 미상';
+    if (!g.has(k)) g.set(k, []);
+    g.get(k).push(r);
+  }
+  const keys = [...g.keys()];
+  if (keys.length > 1) {
+    const info = new Map(keys.map((k) => {
+      const v = g.get(k);
+      return [k, {
+        cat: v[0].cat,
+        lo: Math.min(...v.map((r) => r.year)),
+        hi: Math.max(...v.map((r) => r.year)),
+      }];
+    }));
+    // 이어질 수 있는 짝을 모은 뒤, 앞뒤로 하나씩인 것만 남긴다
+    const pairs = [];
+    for (const a of keys) {
+      for (const b of keys) {
+        if (a === b) continue;
+        const A = info.get(a);
+        const B = info.get(b);
+        if (A.cat !== B.cat || A.hi + 1 !== B.lo) continue;
+        if (similarity(a, b) < RENAME_SIM) continue;
+        pairs.push([a, b]);
+      }
+    }
+    const parent = new Map(keys.map((k) => [k, k]));
+    const find = (x) => (parent.get(x) === x ? x : find(parent.get(x)));
+    for (const [a, b] of pairs) {
+      if (pairs.filter(([x]) => x === a).length !== 1) continue;
+      if (pairs.filter(([, y]) => y === b).length !== 1) continue;
+      parent.set(find(a), find(b));
+    }
+    for (const k of keys) {
+      const root = find(k);
+      if (root === k) continue;
+      g.get(root).push(...g.get(k));
+      g.delete(k);
+    }
+  }
+
+  const out = new Map();
+  for (const [k, v] of g) {
+    const sorted = v.slice().sort((a, b) => a.year - b.year);
+    const last = sorted[sorted.length - 1];
+    out.set(k, {
+      rows: sorted,
+      keys: [...new Set(sorted.map((r) => normType(r.type) || '전형 미상'))],
+      name: last.type || '전형 미상',
+      aliases: [...new Set(sorted.map((r) => r.type).filter((t) => t && t !== last.type))],
+      cat: last.cat,
+      lo: sorted[0].year,
+      hi: last.year,
+    });
+  }
+  return out;
+}
+
+/**
  * 지원한 전형의 입결 줄만 고른다.
  * =====================================================================
  * 입결은 (대학·학과) 로만 묶여 있어서 한 학과에 전형이 여럿 들어 있다.
@@ -425,37 +521,38 @@ export function link(app, src) {
  * 나머지 전형도 버리지 않는다 — 연도별 추이는 여전히 전부 보여 준다.
  */
 export function pickIpgyeol(rows, app) {
-  const groups = new Map();
-  for (const r of rows) {
-    const k = normType(r.type) || '전형 미상';
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(r);
-  }
+  const groups = typeGroups(rows);
   const keys = [...groups.keys()];
   if (!keys.length) return { rows: [], fit: 'none', type: null };
-  const take = (k, fit) => ({
-    rows: groups.get(k).slice().sort((a, b) => a.year - b.year),
-    fit,
-    type: groups.get(k)[groups.get(k).length - 1].type,
-  });
+  const take = (k, fit) => ({ rows: groups.get(k).rows, fit, type: groups.get(k).name });
 
   const want = normType(app.typeSub) || normType(app.typeName);
   if (want) {
-    if (groups.has(want)) return take(want, 'exact');
+    /*
+     * 묶음 안의 **어느 해 이름과 맞아도** 맞은 것으로 본다.
+     * 즐겨찾기가 작년 표기를 그대로 갖고 있는 경우가 있어서다 —
+     * `교과(추천)` 으로 적혀 있는데 올해 입결은 `교과(학교장추천)` 이다.
+     */
+    const hitExact = keys.filter((k) => groups.get(k).keys.includes(want));
+    if (hitExact.length === 1) return take(hitExact[0], 'exact');
+
     // 겹치는 글자가 가장 긴 묶음. 비기면 고르지 않는다.
     let best = 0;
     let hit = [];
     for (const k of keys) {
-      if (k.length < 2 || !(k.includes(want) || want.includes(k))) continue;
-      const len = Math.min(k.length, want.length);
-      if (len > best) { best = len; hit = [k]; } else if (len === best) hit.push(k);
+      for (const alt of groups.get(k).keys) {
+        if (alt.length < 2 || !(alt.includes(want) || want.includes(alt))) continue;
+        const len = Math.min(alt.length, want.length);
+        if (len > best) { best = len; hit = [k]; } else if (len === best && !hit.includes(k)) hit.push(k);
+      }
     }
     if (hit.length === 1) return take(hit[0], 'near');
   }
 
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
   if (cat) {
-    const hit = keys.filter((k) => groups.get(k).some((r) => r.cat === cat || String(r.type).includes(cat)));
+    const hit = keys.filter((k) => groups.get(k).rows
+      .some((r) => r.cat === cat || String(r.type).includes(cat)));
     if (hit.length === 1) return take(hit[0], 'cat');
   }
 
@@ -466,14 +563,16 @@ export function pickIpgyeol(rows, app) {
    * 「가려내지 못했습니다」만 적으면 선생님은 표를 처음부터 훑어야 한다.
    * 같은 유형(교과/종합)의 이름만 추리면 대개 둘이라 눈으로 바로 고를 수 있다.
    */
-  const near = cat ? keys.filter((k) => groups.get(k).some((r) => r.cat === cat)) : [];
+  const near = cat ? keys.filter((k) => groups.get(k).rows.some((r) => r.cat === cat)) : [];
   // 이름이 가장 많이 겹치는 것부터. 화면에서 잘리더라도 앞에 남는 것이 진짜 후보여야 한다.
-  const overlap = (k) => (want && (k.includes(want) || want.includes(k))
-    ? Math.min(k.length, want.length) : 0);
+  const overlap = (k) => (want
+    ? Math.max(...groups.get(k).keys.map((alt) => (alt.includes(want) || want.includes(alt)
+      ? Math.min(alt.length, want.length) : 0)))
+    : 0);
   const among = (near.length ? near : keys)
     .slice()
     .sort((a, b) => overlap(b) - overlap(a))
-    .map((k) => groups.get(k)[groups.get(k).length - 1].type);
+    .map((k) => groups.get(k).name);
   return { rows: [], fit: 'none', type: null, among };
 }
 
