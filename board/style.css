@@ -516,6 +516,37 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
   table.ledger col { width: auto !important; }
 }
 
+/* ── 점검 (못 붙인 학과 잇기) ─────────────────────────────────── */
+
+.miss + .miss { margin-top: var(--s4); }
+.miss-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s3); align-items: baseline; margin-bottom: var(--s2);
+}
+.miss-head .univ { font-weight: 700; }
+.miss-head .dept { font-size: var(--t-xs); color: var(--muted); margin-top: 2px; }
+.miss .hint + .hint { margin-top: 2px; }
+.miss .field { margin-top: var(--s4); }
+.miss > .btn { margin-top: var(--s2); }
+
+/* 후보 단추 — 이름과 근거를 함께 둔다. 점수만 있으면 왜 그 순서인지 모른다. */
+.cands { display: grid; gap: var(--s2); margin-top: var(--s2); }
+@media (min-width: 560px) {
+  .cands { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+}
+.cand {
+  display: grid; gap: 2px; text-align: left;
+  padding: var(--s2) var(--s3); min-height: 44px;
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  background: var(--surface); cursor: pointer;
+}
+.cand:disabled { opacity: 0.5; cursor: default; }
+@media (hover: hover) {
+  .cand:not(:disabled):hover { border-color: var(--amber); background: var(--amber-face); }
+}
+.cand .nm { font-weight: 600; font-size: var(--t-xs); line-height: 1.4; word-break: keep-all; }
+.cand .mt { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
 /* ── 설정 ─────────────────────────────────────────────────────── */
 
 .setup { display: grid; gap: var(--s3); max-width: 640px; }

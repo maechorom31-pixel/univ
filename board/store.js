@@ -14,6 +14,7 @@
 import * as api from './api.js';
 import {
   link as makeLink, summarize, examDate, examKindFits, paperDates,
+  candidates as similarDepts,
   indexIpgyeol, indexMojip, indexCollege, indexSchedule,
 } from './match.js';
 
@@ -28,6 +29,8 @@ export const state = {
   placement: new Map(),  // id → { slot, rank }
   notes: [],
   dates: new Map(),      // `${id}|${kind}` → { from, to, status }
+  aliases: new Map(),    // `${univ}|${dept}` → { toUniv, toDept, note }
+  source: { name: '', known: true },   // 어느 탭을 읽었나
   unknownCols: [],
   error: '',
 };
@@ -79,10 +82,19 @@ export function loadLocal(data) {
 
 function apply(data) {
   state.who = data.who || '';
+  state.source = {
+    name: data.sourceSheet || '',
+    known: data.sourceKnown !== false,
+  };
   state.unknownCols = data.unknownCols || [];
   state.students = new Map((data.students || []).map((s) => [s.hak, s]));
   state.apps = new Map((data.apps || []).map((a) => [a.id, a]));
   state.notes = data.notes || [];
+  state.aliases = new Map((data.aliases || [])
+    .map((r) => [`${r.univ}|${r.dept}`, {
+      toUniv: String(r.toUniv || ''), toDept: String(r.toDept || ''),
+      note: String(r.note || ''), by: r.by || '', at: r.at || '',
+    }]));
   state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
     from: String(r.from || ''), to: String(r.to || r.from || ''),
     status: r.status || 'pending',
@@ -171,12 +183,91 @@ export function placementOf(id) {
 }
 
 /** 지원 한 건의 입결·모집요강 연결. 공개 자료가 아직이면 null. */
+/**
+ * 이 지원에 자료를 붙인다.
+ *
+ * 선생님이 손으로 이어 준 별칭이 있으면 **그 이름으로 바꿔서** 붙인다.
+ * 원래 이름은 그대로 두고 찾을 때만 바꾼다 — 화면에는 학생이 넣은 이름이 나와야 한다.
+ */
 export function link(app) {
   if (!state.enriched) return null;
   if (linkCache.has(app.id)) return linkCache.get(app.id);
-  const result = makeLink(app, { ipgyeol, mojip, college, related: new Map() });
+
+  const alias = state.aliases.get(`${app.univ}|${app.dept}`);
+  const target = alias && (alias.toUniv || alias.toDept)
+    ? { ...app, univ: alias.toUniv || app.univ, dept: alias.toDept || app.dept }
+    : app;
+
+  const result = makeLink(target, { ipgyeol, mojip, college, related: new Map() });
+  if (alias) result.alias = alias;
   linkCache.set(app.id, result);
   return result;
+}
+
+/* ── 학과 별칭 ─────────────────────────────────────────────────── */
+
+/** 이 지원에 걸린 별칭. 없으면 null. */
+export function aliasOf(app) {
+  return state.aliases.get(`${app.univ}|${app.dept}`) || null;
+}
+
+/** 같은 대학에서 이름이 닮은 학과. 고르지는 않는다 — 사람이 고른다. */
+export function candidatesFor(app, n) {
+  if (!state.enriched) return [];
+  return similarDepts(app, { ipgyeol, college }, n);
+}
+
+/** 못 붙인 지원. 같은 (대학·학과)끼리 묶어서 돌려준다 — 한 번 이으면 다 붙는다. */
+export function unmatched(cls) {
+  if (!state.enriched) return [];
+  const groups = new Map();
+  for (const student of studentsOf(cls || '')) {
+    for (const app of appsOf(student.hak)) {
+      const l = link(app);
+      if (!l || l.confidence !== 'none') continue;
+      const key = `${app.univ}|${app.dept}`;
+      if (!groups.has(key)) {
+        groups.set(key, { key, univ: app.univ, dept: app.dept, why: l.why, apps: [], who: [] });
+      }
+      groups.get(key).apps.push(app);
+      groups.get(key).who.push(`${student.hak} ${student.name}`);
+    }
+  }
+  return [...groups.values()].sort((a, b) => b.apps.length - a.apps.length
+    || a.univ.localeCompare(b.univ, 'ko'));
+}
+
+export async function setAlias(univ, dept, toUniv, toDept, note) {
+  const key = `${univ}|${dept}`;
+  const before = new Map(state.aliases);
+  state.aliases.set(key, { toUniv: toUniv || '', toDept: toDept || '', note: note || '' });
+  linkCache.clear();
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.call('setAlias', { univ, dept, toUniv, toDept, note });
+  } catch (err) {
+    state.aliases = before;
+    linkCache.clear();
+    emit('change', 'state');
+    throw err;
+  }
+}
+
+export async function removeAlias(univ, dept) {
+  const before = new Map(state.aliases);
+  state.aliases.delete(`${univ}|${dept}`);
+  linkCache.clear();
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.call('removeAlias', { univ, dept });
+  } catch (err) {
+    state.aliases = before;
+    linkCache.clear();
+    emit('change', 'state');
+    throw err;
+  }
 }
 
 /** 카드에 얹을 요약. 모양은 match.js 의 summarize() 가 정한다. */

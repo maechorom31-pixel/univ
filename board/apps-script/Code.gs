@@ -40,6 +40,7 @@ var SHEET = {
   result:  '결과',
   date:    '일정',
   share:   '공유',      // 학생별 토큰
+  alias:   '별칭',      // 못 붙인 학과를 손으로 이어 준 것
   log:     '기록'
 };
 
@@ -50,6 +51,9 @@ var HEADERS = {
   결과:  ['id', 'hak', 'stage1', 'final', 'reason', 'waitNo', 'enrolled', 'by', 'at'],
   일정:  ['id', 'hak', 'kind', 'from', 'to', 'status', 'by', 'at'],
   공유:  ['hak', 'token', 'issuedAt', 'expiresAt'],
+  // 즐겨찾기 표기 → 자료 쪽 표기. 학생이 아니라 **학과**에 붙는 것이라
+  // 엑셀을 갈아끼워도 그대로 남는다.
+  별칭:  ['univ', 'dept', 'toUniv', 'toDept', 'note', 'by', 'at'],
   기록:  ['at', 'who', 'action', 'detail']
 };
 
@@ -129,6 +133,8 @@ function handle_(p) {
     case 'approveDate': return approveDate_(p, who);
     case 'issueToken': return issueToken_(p, who);
     case 'issueAll':   return issueAll_(p, who);
+    case 'setAlias':   return setAlias_(p, who);
+    case 'removeAlias': return removeAlias_(p, who);
     default:           return { ok: false, error: '알 수 없는 요청입니다: ' + action };
   }
 }
@@ -399,12 +405,22 @@ function isNaesinName_(name) {
 
 /* ===== 시트 읽기·쓰기 ================================================ */
 
+/**
+ * 즐겨찾기 원본이 든 탭.
+ *
+ * 못 찾으면 첫 탭을 읽되 **찾은 것인지 아닌지를 함께 돌려준다.** 조용히 첫 탭을
+ * 읽으면, 탭 이름이 달랐을 때 엉뚱한 것을 읽고도 화면에는 「학생 0명」만 뜬다.
+ * 왜 0명인지 알 길이 없어진다.
+ */
 function sourceSheet_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet(), sheets = ss.getSheets();
   for (var i = 0; i < sheets.length; i++) {
     var name = sheets[i].getName();
     for (var j = 0; j < SOURCE_SHEETS.length; j++) {
-      if (name.indexOf(SOURCE_SHEETS[j]) >= 0) return sheets[i];
+      if (name.indexOf(SOURCE_SHEETS[j]) >= 0) {
+        sheets[i].__matched = true;
+        return sheets[i];
+      }
     }
   }
   return sheets[0];
@@ -478,13 +494,21 @@ function log_(who, action, detail) {
  * 다른 반이나 학년 전체로는 화면에서 바꾼다.
  */
 function loadAll_(me) {
-  var parsed = parseFavorites_(sourceSheet_().getDataRange().getValues());
+  var src = sourceSheet_();
+  var known = false;
+  var srcName = src.getName();
+  for (var j = 0; j < SOURCE_SHEETS.length; j++) {
+    if (srcName.indexOf(SOURCE_SHEETS[j]) >= 0) known = true;
+  }
+  var parsed = parseFavorites_(src.getDataRange().getValues());
   return {
     ok: true, who: me.email || '이름 없는 접속', locked: me.locked, at: now_(),
+    sourceSheet: srcName, sourceKnown: known,
     students: parsed.students, apps: parsed.apps,
     unknownCols: parsed.unknownCols, skipped: parsed.skipped,
     state: rows_(SHEET.state), notes: rows_(SHEET.note),
-    results: rows_(SHEET.result), dates: rows_(SHEET.date)
+    results: rows_(SHEET.result), dates: rows_(SHEET.date),
+    aliases: rows_(SHEET.alias)
   };
 }
 
@@ -605,6 +629,41 @@ function studentAction_(action, p) {
     return addNote_({ hak: hak, id: p.id, text: p.text, visible: 'true' }, who);
   }
   return { ok: false, error: '알 수 없는 요청입니다: ' + action };
+}
+
+/* ===== 학과 별칭 =====================================================
+ * 즐겨찾기가 부르는 이름과 입결·전문대 자료가 부르는 이름이 다를 때, 선생님이
+ * 손으로 이어 준 것을 여기 쌓는다.
+ *
+ * 학생이 아니라 **학과**에 붙는다. 그래서 엑셀 원본을 갈아끼워도, 다음 해가 와도
+ * 그대로 남는다. 같은 학과를 해마다 다시 이어 주지 않아도 된다.
+ */
+
+function setAlias_(p, who) {
+  var univ = String(p.univ || '').trim();
+  var dept = String(p.dept || '').trim();
+  if (!univ || !dept) return { ok: false, error: '대학과 학과가 필요합니다.' };
+  upsert_(SHEET.alias, ['univ', 'dept'], {
+    univ: univ, dept: dept,
+    toUniv: String(p.toUniv || '').trim(),
+    toDept: String(p.toDept || '').trim(),
+    note: String(p.note || '').trim(),
+    by: who, at: now_()
+  });
+  log_(who, 'setAlias', univ + ' ' + dept + ' → ' + (p.toDept || '(없음)'));
+  return { ok: true };
+}
+
+function removeAlias_(p, who) {
+  var sh = tab_(SHEET.alias), all = rows_(SHEET.alias);
+  for (var i = 0; i < all.length; i++) {
+    if (String(all[i].univ) === String(p.univ) && String(all[i].dept) === String(p.dept)) {
+      sh.deleteRow(all[i]._row);
+      log_(who, 'removeAlias', p.univ + ' ' + p.dept);
+      return { ok: true, removed: true };
+    }
+  }
+  return { ok: true, removed: false };
 }
 
 /** 담임이 학생이 넣은 날짜를 확인해 확정으로 올린다. */

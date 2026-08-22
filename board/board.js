@@ -141,6 +141,17 @@ function render() {
     return;
   }
   if (store.state.error) main.appendChild(banner(store.state.error, true));
+
+  // 원본 탭 이름이 아는 것과 다르면 알린다. 조용히 첫 탭을 읽고 「0명」만 뜨면
+  // 왜 비었는지 알 길이 없다.
+  const src = store.state.source || {};
+  if (src.name && !src.known) {
+    main.appendChild(banner(
+      `「${src.name}」 탭을 읽었습니다. 즐겨찾기 원본이 이 탭이 아니라면,`
+      + ' 원본 탭 이름을 「다운로드 원본」·「원본」·「즐겨찾기」 중 하나로 바꿔 주세요.',
+      true,
+    ));
+  }
   if (store.state.unknownCols.length) {
     main.appendChild(banner(
       `엑셀에서 알아보지 못한 칸이 ${store.state.unknownCols.length}개 있습니다 — `

@@ -56,11 +56,13 @@
         <button class="btn" id="view-board" type="button" aria-pressed="true">보드</button>
         <button class="btn" id="view-schedule" type="button" aria-pressed="false">일정</button>
         <button class="btn" id="view-links" type="button" aria-pressed="false">학생 링크</button>
+        <button class="btn" id="view-verify" type="button" aria-pressed="false">점검</button>
         <button class="btn" id="view-export" type="button" aria-pressed="false">내보내기</button>
       </div>
       <div id="board"></div>
       <div id="schedule" hidden></div>
       <div id="links" hidden></div>
+      <div id="verify" hidden></div>
       <div id="export" hidden></div>
     </div>
   </div>
@@ -75,6 +77,7 @@ import * as store from './board/store.js';
 import { start } from './board/board.js';
 import { start as startSchedule } from './board/schedule.js';
 import { start as startLinks } from './board/links.js';
+import { start as startVerify } from './board/verify.js';
 import { start as startExport } from './board/export.js';
 
 // iOS 사파리는 터치 리스너가 없으면 :active 가 발화하지 않는다
@@ -137,7 +140,7 @@ async function connect() {
 }
 
 // 화면 셋은 같은 선택(반·학생)을 보고 서로 다른 칸에 그린다
-const VIEWS = ['board', 'schedule', 'links', 'export'];
+const VIEWS = ['board', 'schedule', 'links', 'verify', 'export'];
 const panes = Object.fromEntries(VIEWS.map((v) => [v, document.getElementById(v)]));
 function showView(name) {
   for (const v of VIEWS) {
@@ -167,6 +170,7 @@ document.getElementById('stage').onclick = () => applyStage(stage === 'plan' ? '
 start();
 startSchedule();
 startLinks();
+startVerify();
 startExport();
 applyStage(stage, true);
 input.value = api.url();

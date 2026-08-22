@@ -14,7 +14,7 @@ import { dirname, resolve } from 'node:path';
 import {
   univStem, campusOf, resolveUniv, buildUnivIndex,
   normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
-  splitDepts, catOf, realRate, referenceLine,
+  splitDepts, catOf, realRate, referenceLine, similarity, candidates,
 } from './match.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -90,6 +90,36 @@ console.log('묶이기 전 선');
   eq(referenceLine('A', ['국어국문학과'], fake, '논술'), null,
     '그 카테고리가 없으면 빈손 — 잣대가 다른 값을 보여 주느니 낫다');
   eq(referenceLine('A', [], fake, '교과'), null, '목록이 비면 null');
+}
+
+console.log('닮은 학과 고르기 — 순서가 뒤집히면 안 된다');
+{
+  // 글자 차례가 바뀐 같은 학과가, 글자만 겹치는 다른 학과보다 위로 와야 한다
+  const a = similarity('화공생명공학과', '생명화학공학과');
+  const b = similarity('화공생명공학과', '생명과학과');
+  eq(a > b, true, `생명화학공학과(${a.toFixed(2)}) > 생명과학과(${b.toFixed(2)})`);
+  eq(similarity('간호학과', '간호학부'), 1, '접미만 다르면 같은 것');
+  eq(similarity('간호학과', '기계공학과'), 0, '전혀 다르면 0');
+  eq(similarity('', '간호학과'), 0, '빈 값');
+}
+
+console.log('후보 내놓기 — 고르지는 않는다');
+{
+  const fake = {
+    index: buildUnivIndex(['가대']),
+    byKey: new Map([
+      [key('가대', '생명화학공학과'), [{ dept: '생명화학공학과', year: 2026 }]],
+      [key('가대', '생명과학과'), [{ dept: '생명과학과', year: 2026 }, { dept: '생명과학과', year: 2025 }]],
+      [key('가대', '기계공학과'), [{ dept: '기계공학과', year: 2026 }]],
+    ]),
+  };
+  const app = { univType: '일반대', univ: '가대학교', dept: '화공생명공학과' };
+  const got = candidates(app, { ipgyeol: fake, college: null }, 5);
+  eq(got[0].dept, '생명화학공학과', '가장 닮은 것이 앞');
+  eq(got.some((c) => c.dept === '기계공학과'), false, '안 닮은 것은 아예 내지 않는다');
+  eq(got.find((c) => c.dept === '생명과학과').years, [2025, 2026], '자료가 있는 해를 함께');
+  eq(candidates({ univType: '일반대', univ: '없는대학교', dept: 'x' },
+    { ipgyeol: fake, college: null }), [], '대학을 못 찾으면 빈손');
 }
 
 console.log('캠퍼스 분기');

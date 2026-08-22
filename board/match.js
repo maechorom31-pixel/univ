@@ -480,6 +480,84 @@ export function unlinked(apps, src) {
     .filter((x) => x.link.confidence === 'none');
 }
 
+/* ── 비슷한 학과 찾기 ─────────────────────────────────────────────── */
+
+/**
+ * 두 학과 이름이 얼마나 닮았나. 0(안 닮음) ~ 1(같음).
+ *
+ * 글자를 두 개씩 끊어(bigram) 견준다. 「전자컴퓨터공학부」와 「전자공학과」처럼
+ * 앞뒤가 겹치는 이름을 잡기 위해서다. 편집거리는 짧은 한글 이름에서 잘 안 듣는다.
+ */
+export function similarity(a, b) {
+  const x = normDept(a);
+  const y = normDept(b);
+  if (!x || !y) return 0;
+  if (x === y) return 1;
+
+  const overlap = (A, B) => {
+    let hit = 0;
+    for (const g of A) if (B.has(g)) hit += 1;
+    return (2 * hit) / (A.size + B.size);
+  };
+
+  const grams = (s) => {
+    const out = new Set();
+    for (let i = 0; i < s.length - 1; i += 1) out.add(s.slice(i, i + 2));
+    if (!out.size) out.add(s);
+    return out;
+  };
+  const dice = overlap(grams(x), grams(y));
+
+  // 글자만 모아 견주는 값도 섞는다.
+  // 「화공생명공학과」와 「생명화학공학과」는 같은 학과인데 글자 **차례**가 달라
+  // 두 글자씩 끊어 보면 거의 안 겹친다. 낱글자로 보면 넷 중 넷이 겹친다.
+  const chars = overlap(new Set(x), new Set(y));
+
+  // 한쪽이 다른 쪽을 통째로 품으면(「간호」 ⊂ 「간호학」) 조금 올려 준다
+  const nested = x.includes(y) || y.includes(x) ? 0.15 : 0;
+  return Math.min(1, 0.6 * dice + 0.4 * chars + nested);
+}
+
+/**
+ * 같은 대학 안에서 닮은 학과를 골라 온다. **고르지는 않는다** — 사람이 고른다.
+ *
+ * @param {Object} app  Application
+ * @param {Object} src  { ipgyeol, college }
+ * @param {number} n    몇 개까지
+ * @return {Array<{dept, score, years, kind}>}
+ */
+export function candidates(app, src, n = 6) {
+  const college = app.univType === '전문대';
+  const bank = college ? src.college : src.ipgyeol;
+  if (!bank) return [];
+
+  const univ = resolveUniv(app.univ, bank.index);
+  if (!univ) return [];
+
+  // 이 대학의 학과 이름을 모은다
+  const seen = new Map();
+  for (const [k, rows] of bank.byKey) {
+    if (!k.startsWith(`${univ}|`)) continue;
+    for (const r of rows) {
+      const name = r.dept;
+      if (!name) continue;
+      if (!seen.has(name)) seen.set(name, new Set());
+      if (r.year) seen.get(name).add(r.year);
+    }
+  }
+
+  const out = [];
+  for (const [dept, years] of seen) {
+    const score = similarity(app.dept, dept);
+    // 문턱을 낮게 둔다. 「화학공학과」와 「화공생명공학과」는 글자가 거의 안 겹치지만
+    // 같은 학과일 수 있다. 후보를 감추느니 점수를 함께 보여 주고 사람이 고르게 한다.
+    if (score < 0.15) continue;
+    out.push({ dept, score, years: [...years].sort(), kind: college ? 'college' : 'univ' });
+  }
+  out.sort((a, b) => b.score - a.score || a.dept.localeCompare(b.dept, 'ko'));
+  return out.slice(0, n);
+}
+
 /* ── 전형일정 (PDF 에서 뽑은 것) ─────────────────────────────────── */
 
 /**
