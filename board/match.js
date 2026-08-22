@@ -17,10 +17,17 @@
 
 /* ── 대학 ─────────────────────────────────────────────────────────── */
 
-/** 즐겨찾기의 정식 명칭을 입결·모집요강 쪽 축약형으로 줄인다. */
+/**
+ * 즐겨찾기의 정식 명칭을 입결·모집요강 쪽 축약형으로 줄인다.
+ *
+ * 꼬리를 **`…대` 꼴로 적어 둔다.** 먼저 `대학교→대` 를 하고 나서 재기 때문이다.
+ * 그래야 자료 쪽이 이미 줄여 적어 둔 이름(`서울과학기술대`)도 같은 자리로 온다.
+ * 예전에는 `…대학교` 로만 재서, 모집요강의 `서울과학기술대` 가 즐겨찾기의
+ * `서울과학기술대학교 → 서울과기대` 와 안 만났다.
+ */
 const ABBR = [
-  ['교육대학교', '교대'], ['여자대학교', '여대'], ['외국어대학교', '외대'],
-  ['과학기술대학교', '과기대'], ['공과대학교', '공대'], ['해양대학교', '해양대'],
+  ['교육대', '교대'], ['여자대', '여대'], ['외국어대', '외대'],
+  ['과학기술대', '과기대'], ['공과대', '공대'], ['공학대', '공대'],
 ];
 
 /**
@@ -34,10 +41,11 @@ export function univStem(name) {
   let n = String(name || '').trim();
   n = n.replace(/\s*[-–—]\s*.*$/, '');     // "한국외국어대학교(용인) - 글로벌캠퍼스"
   n = n.replace(/\(.*$/, '').trim();       // 캠퍼스 괄호
+  n = n.replace(/대학교$/, '대').replace(/\s/g, '');
   for (const [long, short] of ABBR) {
-    if (n.endsWith(long)) return (n.slice(0, -long.length) + short).replace(/\s/g, '');
+    if (n.endsWith(long)) return n.slice(0, -long.length) + short;
   }
-  return n.replace(/대학교$/, '대').replace(/\s/g, '');
+  return n;
 }
 
 /**
@@ -95,13 +103,39 @@ export function resolveUniv(name, index) {
   return null;
 }
 
-/** 자료 쪽 대학명 배열 → univStem 색인 */
+/**
+ * 자료 쪽 대학명 배열 → `univStem` 색인.
+ *
+ * **키를 만들 때도 `univStem` 을 태운다.** 조회 쪽(`resolveUniv`)이 `univStem` 결과로
+ * 찾기 때문이다. 예전에는 괄호만 떼어 원문을 키로 썼는데, 그러면 자료 쪽 표기가
+ * 이미 축약형일 때만 맞아떨어졌다.
+ *
+ *     입결      `서울과기대`        ← univStem('서울과학기술대학교') 와 같다  → 붙음
+ *     모집요강  `서울과학기술대`     ← 축약이 안 되어 있다                    → 안 붙음
+ *
+ * 그래서 컷은 붙어 있는데 실질경쟁률·모집인원 증감·지원자격만 조용히 빠졌다.
+ * 카드가 멀쩡해 보여서 더 위험했다. 입결에 있는 198개 대학 가운데 26곳이 이랬다.
+ *
+ * 원문 키도 함께 남긴다 — 자료 쪽이 이미 축약형이면 두 키가 같아 한 벌이고,
+ * 다르면 어느 쪽으로 찾아도 붙는다. **버리는 것이 없다.**
+ */
 export function buildUnivIndex(names) {
   const index = new Map();
+  const put = (k, n) => {
+    if (!k) return;
+    if (!index.has(k)) index.set(k, []);
+    if (!index.get(k).includes(n)) index.get(k).push(n);
+  };
   for (const n of names) {
-    const stem = String(n).replace(/\(.*$/, '');
-    if (!index.has(stem)) index.set(stem, []);
-    index.get(stem).push(n);
+    put(String(n).replace(/\(.*$/, ''), n);   // 원문(괄호만 뗀 것)
+    put(univStem(n), n);                       // 축약형
+    /*
+     * `KAIST(한국과학기술원)` 처럼 **약칭이 밖에, 정식 이름이 괄호 안에** 있는 넷
+     * (KAIST·GIST·DGIST·UNIST). 즐겨찾기는 정식 이름으로 적는다.
+     * 밖이 로마자일 때만 본다 — `건국대(글)` 의 `글` 을 대학 이름으로 삼으면 안 된다.
+     */
+    const m = String(n).match(/^([A-Za-z]+)\(([^)]+)\)$/);
+    if (m) put(univStem(m[2]), n);
   }
   return index;
 }
@@ -349,15 +383,32 @@ export function referenceLine(univ, depts, ipgyeol, cat) {
  * @return {Object} Link (CONTRACT.md §2.3)
  */
 export function link(app, src) {
-  const none = (why) => ({
-    key: '', kind: 'univ', ipgyeol: [], college: [], mojip: [],
+  /*
+   * **「입결이 없다」와 「모집요강도 없다」는 다른 사실이다.**
+   *
+   * 예전에는 입결을 못 붙이면 그 자리에서 끊어서, 이미 찾아 둔 모집요강까지 같이
+   * 버렸다. 그래서 신설학과(모집요강에만 있는 학과키가 867개다) 카드에서
+   * 수능최저·지원자격·모집인원·전형단계가 통째로 사라지고, 수능최저 칸은
+   * 「적혀 있지 않습니다」라고 **잘못** 말했다. 모집요강에는 적혀 있는데도.
+   *
+   * 자료가 제일 필요한 카드가 제일 빈 카드가 됐다. 그래서 none 도 모집요강은 들고 온다.
+   */
+  const none = (why, mojip) => ({
+    key: '', kind: 'univ', ipgyeol: [], college: [], mojip: mojip || [],
     related: [], before: null, confidence: 'none', why,
   });
+
+  /** 입결과 무관하게 모집요강만 따로 찾는다. */
+  const mojipOf = () => {
+    const u = src.mojip && resolveUniv(app.univ, src.mojip.index);
+    if (!u) return [];
+    return pickMojip(src.mojip.byKey.get(key(u, app.dept)) || [], app);
+  };
 
   const kind = univKind(app.univType);
   if (kind === '전문대') return linkCollege(app, src, none);
   if (kind === '특수대') {
-    return none(`${app.univType}는 입결 자료가 없어 직접 확인해야 합니다`);
+    return none(`${app.univType}는 입결 자료가 없어 직접 확인해야 합니다`, mojipOf());
   }
   /*
    * `kind === ''` 은 즐겨찾기가 모르는 말을 적어 둔 것이다. 그때는 **두 자료를 다 뒤진다.**
@@ -372,7 +423,7 @@ export function link(app, src) {
     if (kind === '' && src.college && resolveUniv(app.univ, src.college.index)) {
       return linkCollege(app, src, none);
     }
-    return none(`입결 자료에 「${app.univ}」를 찾지 못했습니다`);
+    return none(`입결 자료에 「${app.univ}」를 찾지 못했습니다`, mojipOf());
   }
 
   const k = key(univ, app.dept);
@@ -428,7 +479,7 @@ export function link(app, src) {
       };
     }
   }
-  return none(`${univ}에 「${app.dept}」 입결이 없습니다`);
+  return none(`${univ}에 「${app.dept}」 입결이 없습니다`, mojip);
 }
 
 /**
@@ -679,7 +730,20 @@ const NO_RATE = { value: null, why: '' };
 export function summarize(l, app) {
   if (!l) return { linked: false, kind: 'univ', rows: [], before: null, real: NO_RATE, why: '자료를 받는 중입니다' };
   if (l.confidence === 'none') {
-    return { linked: false, kind: l.kind, rows: [], before: null, real: NO_RATE, why: l.why };
+    /*
+     * 입결은 못 붙었어도 **모집요강은 붙었을 수 있다.** 신설학과가 늘 그렇다.
+     * `linked:false` 로 두어 컷은 안 내되, 모집요강이 주는 것(수능최저·지원자격·
+     * 모집인원·전형단계·대학별고사)은 그대로 쓴다. 둘은 독립된 사실이다.
+     */
+    const mo = (l.mojip && l.mojip[0]) || null;
+    return {
+      linked: false, kind: l.kind, rows: [], mine: [], before: null, why: l.why,
+      mojip: mo,
+      quotaNow: app && app.quota != null ? app.quota : (mo ? mo.quota : null),
+      quotaPrev: mo ? mo.quotaPrev : null,
+      real: mo ? realRate(mo.rate26, mo.quotaPrev, mo.filled26) : NO_RATE,
+      stages: mo ? mo.stages : null,
+    };
   }
 
   if (l.kind === 'college') {

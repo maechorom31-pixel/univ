@@ -19,8 +19,17 @@ try {
   apiUrl = '';        // 사생활 보호 모드 등에서 막히면 그냥 빈 값으로 둔다
 }
 
-export function configure(url) {
+/**
+ * 서버 주소를 정한다.
+ *
+ * `persist` 를 끄면 **이번 화면에서만** 쓰고 브라우저에 남기지 않는다.
+ * 학생 화면이 그렇게 쓴다 — 링크의 `?api=` 를 그대로 저장하면, 선생님이 학생 링크
+ * 하나를 자기 브라우저에서 열어 보는 것만으로 **교사 보드의 서버 주소가 바뀐다.**
+ * 둘이 같은 열쇠(`board.apiUrl`)를 쓰기 때문이다. 링크는 남이 만들어 보낼 수도 있다.
+ */
+export function configure(url, opts) {
   apiUrl = String(url || '').trim();
+  if (opts && opts.persist === false) return;
   try {
     if (apiUrl) localStorage.setItem(CONFIG_KEY, apiUrl);
     else localStorage.removeItem(CONFIG_KEY);
@@ -55,7 +64,12 @@ function once(action, params, timeoutMs) {
     let timer = 0;
     const cleanup = () => {
       clearTimeout(timer);
-      delete window[cb];
+      /*
+       * 지우지 않고 **빈 함수로 바꾼다.** 시간이 지나 포기한 뒤에도 스크립트가 늦게
+       * 도착해 `cb(...)` 를 부르는 일이 있는데, 지워 버리면 그때 콘솔에 오류가 남는다.
+       * 콘솔이 지저분하면 진짜 오류를 못 알아본다.
+       */
+      window[cb] = () => {};
       if (tag.parentNode) tag.parentNode.removeChild(tag);
     };
 
@@ -66,7 +80,19 @@ function once(action, params, timeoutMs) {
       reject(new Error('서버가 응답하지 않습니다. 잠시 뒤 다시 시도해 주세요.'));
     }, timeoutMs);
 
-    tag.src = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}${query}`;
+    const src = `${apiUrl}${apiUrl.includes('?') ? '&' : '?'}${query}`;
+    /*
+     * JSONP 는 GET 이라 주소 길이에 한계가 있다. 한글은 URL 인코딩으로 글자당 9바이트가
+     * 되어서, 긴 상담 메모는 800자쯤부터 위험하다. 잘려서 절반만 저장되면 아무 데도
+     * 「잘렸다」고 안 적힌다 — **보내기 전에 막고, 왜 못 보내는지 말한다.**
+     */
+    if (src.length > 7500) {
+      cleanup();
+      reject(new Error('내용이 너무 깁니다. 메모를 나눠서 저장해 주세요.'
+        + ' (한글은 한 글자가 주소에서 아홉 자리를 차지합니다)'));
+      return;
+    }
+    tag.src = src;
     document.head.appendChild(tag);
   });
 }

@@ -52,7 +52,8 @@ if (params.has('demo')) {
 } else {
   // 학생 링크에는 Apps Script 주소가 함께 들어온다. 없으면 이 브라우저에 저장된 것을 쓴다.
   const url = params.get('api');
-  if (url) api.configure(url);
+  // 링크가 준 주소는 이 화면에서만 쓴다. 브라우저에 남기면 교사 보드가 이 주소로 바뀐다.
+  if (url) api.configure(url, { persist: false });
   start(token);
 }
 </script>

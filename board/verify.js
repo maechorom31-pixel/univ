@@ -53,7 +53,8 @@ function render() {
 
   const head = el('div', 'panel-head');
   head.appendChild(el('h2', '', cls ? `${cls}반 점검` : '학년 전체 점검'));
-  head.appendChild(el('span', 'count num', `못 붙인 학과 ${groups.length}종`));
+  const left = groups.filter((g) => !g.skipped).length;
+  head.appendChild(el('span', 'count num', `못 붙인 학과 ${left}종`));
   main.appendChild(head);
 
   if (notice) main.appendChild(el('p', 'note', notice));
@@ -66,15 +67,36 @@ function render() {
     return;
   }
 
+  const todo = groups.filter((g) => !g.skipped);
+  const done = groups.filter((g) => g.skipped);
+
   main.appendChild(el('p', 'section-html section-label',
     '이름이 달라 작년 자료가 안 붙은 지원입니다.'
     + ' 같은 학과끼리 묶여 있어서 한 번 이으면 그 학과의 모든 학생에게 붙습니다.'));
 
-  main.appendChild(tools(groups));
+  main.appendChild(tools(todo));
 
   const list = el('div', 'stack');
-  for (const g of groups) list.appendChild(groupRow(g));
+  if (!todo.length) {
+    list.appendChild(el('p', 'empty-state', '남은 것이 없습니다.'));
+  }
+  for (const g of todo) list.appendChild(groupRow(g));
   main.appendChild(list);
+
+  /*
+   * 「없음으로 표시」한 것은 접어 둔다. 지우면 잘못 눌렀을 때 되돌릴 길이 없고,
+   * 목록에 그대로 두면 121명 규모에서 목록이 영영 안 줄어든다.
+   */
+  if (done.length) {
+    const fold = document.createElement('details');
+    const sum = document.createElement('summary');
+    sum.textContent = `작년 자료 없음으로 표시한 것 ${done.length}종`;
+    fold.appendChild(sum);
+    const inner = el('div', 'stack');
+    for (const g of done) inner.appendChild(groupRow(g));
+    fold.appendChild(inner);
+    main.appendChild(fold);
+  }
 
   if (linked) main.appendChild(aliasList());
 }
@@ -144,11 +166,29 @@ function groupRow(g) {
     '이 학과에는 붙일 자료가 없다고 표시하려면 빈 채로 두고 「없음으로 표시」를 누르세요.'));
   box.appendChild(field);
 
-  const skip = el('button', 'btn', '없음으로 표시');
-  skip.type = 'button';
-  skip.disabled = busy === g.key;
-  skip.onclick = () => join(g, '', '작년 자료 없음');
-  box.appendChild(skip);
+  if (g.skipped) {
+    // 되돌리는 길. 잘못 누른 것을 되살릴 데가 없으면 「없음으로 표시」를 못 누른다.
+    const undo = el('button', 'btn', '다시 목록으로');
+    undo.type = 'button';
+    undo.disabled = busy === g.key;
+    undo.onclick = async () => {
+      busy = g.key; notice = ''; render();
+      try {
+        await store.removeAlias(g.univ, g.dept);
+        notice = `${tidy(shortUniv(g.univ))} ${tidy(g.dept)} 를 다시 목록에 올렸습니다.`;
+      } catch (err) {
+        notice = `되돌리지 못했습니다 — ${err.message}`;
+      }
+      busy = ''; render();
+    };
+    box.appendChild(undo);
+  } else {
+    const skip = el('button', 'btn', '없음으로 표시');
+    skip.type = 'button';
+    skip.disabled = busy === g.key;
+    skip.onclick = () => join(g, '', '작년 자료 없음');
+    box.appendChild(skip);
+  }
 
   return box;
 }

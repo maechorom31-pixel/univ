@@ -219,16 +219,24 @@ export와 모집요강 모두 **기간 표기가 흔하다**(면접일정의 41%
 ### 5.1 `board/api.js` — 백엔드 통신 (P0)
 
 ```js
-api.configure({ url })                  // Apps Script 배포 URL
-await api.call(action, params)          // JSONP. 실패 시 2회까지 재시도
-await api.students()                    // → { students: Student[], apps: Application[] }
-await api.state(hak?)                   // → BoardState[]
-await api.setState(BoardState)          // → { ok }
-await api.notes(hak?)                   // → Note[]
-await api.addNote({ hak, id?, text, visible })
-await api.setResult(id, result)
-await api.setDate(id, kind, from, to)   // 학생이 넣은 확정일. 교사 확인 전엔 pending
+api.configure(url, { persist })   // Apps Script 배포 URL. persist:false 면 이 화면에서만
+api.configured() · api.url()
+await api.call(action, params)    // JSONP. 실패 시 2회까지 재시도
+await api.students()              // → { students, apps, state, notes, results, dates, aliases }
+await api.setState(BoardState) · api.addNote(...) · api.setResult(...) · api.setDate(...)
 ```
+
+**한 번에 다 받는다.** `students` 하나가 학생·지원·배치·메모·결과·일정·별칭을 함께
+돌려준다. 칸마다 따로 부르면 JSONP 왕복이 늘고, 무엇보다 **화면이 반쯤 채워진 상태**가
+생긴다. 배치는 왔는데 결과는 안 온 순간에 담임이 판단을 내리면 안 된다.
+
+`persist: false` 는 학생 화면이 쓴다. 링크의 `?api=` 를 브라우저에 남기면, 선생님이
+학생 링크 하나를 자기 브라우저에서 열어 보는 것만으로 **교사 보드의 서버 주소가
+바뀐다** — 둘이 같은 열쇠를 쓰기 때문이다. 링크는 남이 만들어 보낼 수도 있다.
+
+JSONP 는 GET 이라 주소 길이에 한계가 있다. 한글은 URL 인코딩으로 글자당 아홉 자리가
+되어서, 긴 메모는 800자쯤부터 위험하다. **보내기 전에 막고 왜 못 보내는지 말한다** —
+잘려서 절반만 저장되면 아무 데도 「잘렸다」고 안 적힌다.
 
 모든 응답은 `{ ok: true, ... }` 또는 `{ ok: false, error: "사람이 읽을 문장" }`.
 `ok: false` 를 조용히 삼키지 않는다 — 화면에 그대로 띄운다.
@@ -239,12 +247,19 @@ await api.setDate(id, kind, from, to)   // 학생이 넣은 확정일. 교사 �
 await store.ready()          // 공개 JSON 3종을 받아 색인까지 끝낸 뒤 resolve
 store.ipgyeol                // { columns, rows }  data/ipgyeol.json
 store.mojip                  // { columns, rows }  data/mojip2027.json  (문자열 사전 방식)
-store.xref                   // data/xref.json
 store.students               // Map<hak, Student>
 store.apps                   // Map<id, Application>
-store.stateOf(hak)           // → BoardState[]
 store.link(app)              // → Link  (match.js 결과를 캐시)
+store.summary(app)           // → Summary (위 §2.3)
+store.resultOf(app) · store.dateOf(app, kind)
+store.pendingResults(cls) · store.pendingDates(cls)   // 담임의 「오늘 할 일」
+store.approveResult(app) · store.approveDate(app, kind)
+store.unmatched(cls)         // 못 붙인 학과 묶음 (「없음으로 표시」한 것은 skipped:true)
 ```
+
+보드가 받는 공개 자료는 **넷**이다 — 입결 · 모집요강 · 전문대(College 저장소) ·
+전형일정. `xref.json` 은 여기 안 들어온다. 그건 `planner.html` 이 내장해 쓰는 것이고,
+보드는 `match.js` 가 그때그때 이름을 맞춘다.
 
 `store` 는 상태를 들고 있을 뿐 화면을 그리지 않는다. 화면 갱신은 이벤트로 알린다.
 
@@ -265,8 +280,12 @@ start()                     // 반 단위로 토큰을 만들고 표·CSV·문�
 - 학생 경로는 **토큰으로만** 연다. 서버가 토큰 → 학번을 풀고, 그 학번의 것만 내준다.
   쓰기도 `ownsApp_()` 로 본인 지원인지 확인한 뒤에만 받는다.
 - 학생이 넣은 값은 `status: "pending"`(확인 대기)으로 들어간다.
-  담임이 `approveDate` 를 눌러야 `confirmed` 가 된다. 잘못 적은 날짜로 겹침 판정이
-  틀어지면 안 되기 때문이다.
+  담임이 「맞습니다」를 눌러야 `confirmed` 가 된다. 잘못 적은 날짜로 여섯 칸 판단이
+  흔들리면 안 되기 때문이다.
+  **확인 전에는 겹침을 「겹칠 수 있음」까지만 말한다** (`clashes` 가 `status` 를 본다).
+  그러지 않으면 pending 이 확정과 똑같이 「겹침」 경고를 만들어, 이 칸을 둔 까닭이
+  없어진다. 확인하는 자리는 두 곳 — 보드 첫 화면의 「학생이 넣은 날짜」와 일정판의
+  그 줄. 결과 쪽 「맞습니다」와 같은 흐름이다.
 - **모의면접은 학교가 정한다.** 자동으로 D-3을 잡아 두지 않는다 — 다른 학생과 겹치고
   교실 사정도 있다. 선생님이 넣은 날짜가 학생 화면에도 그대로 간다.
   여러 번 잡히면 「1차 · 2차」로 함께 적는다.
@@ -494,12 +513,37 @@ pendingResults(cls)      // 확인을 기다리는 것 전부
 
 그래서 **학생이 적고 선생님은 확인만 한다.** 선생님 화면의 주된 단추는 「맞습니다」다.
 
+**고르는 말을 그대로 `final` 에 넣지 않는다.** 어느 칸에 무엇이 들어갈지는
+`student.js` 의 `CHOICE` 표가 정한다.
+
+| 학생이 고르는 말 | `final` | `stage1` | `enrolled` |
+|---|---|---|---|
+| 1단계 합격 | *(빈칸)* | 합격 | |
+| 1단계 불합격 | *(빈칸)* | 불합격 | |
+| 최초합격 | 최초합격 | | |
+| 충원합격 | 충원합격 | | *(예비번호도 묻는다)* |
+| 불합격 | 불합격 | | |
+| 합격했지만 등록 안 함 | 최초합격 | | 미등록 |
+
+「1단계 합격」을 `final` 에 넣으면 `stats.js` 가 **「합격」이라는 글자를 보고 최종
+합격으로 센다.** 11월에 1단계만 난 건들이 지원 결과 보고서와 진학 대장에 부풀려
+들어가고, 아무 데도 「틀렸다」고 안 적힌다. 「미등록」은 반대로 합격도 불합격도 아닌
+값이 되어 통계에서 통째로 빠지고 「알아보지 못한 표기」 경고까지 뜬다 — 자기 화면이
+준 선택지인데도.
+
+`verdict()` 도 같은 것을 한 번 더 막는다. 화면이 안 그렇게 보내도 즐겨찾기가 최종 칸에
+「1단계 합격」이라 적어 두거나 예전 값이 남아 있을 수 있다. 그리고 **「미등록」은
+「등록」을 품고 있어서**, 글자로만 보면 안 간 학생이 등록한 것으로 세어진다.
+
 - 학생 화면의 칸은 **셋뿐이다** — 결과 고르기 · 예비번호 · 저장.
   예비번호는 충원합격을 골랐을 때만 나온다. 늘 띄우면 여섯 칸이 다 예비번호 칸이 된다.
   「불합격 사유」는 학생이 모르고, 알아도 적기 괴로운 칸이라 선생님 쪽에만 둔다.
 - 학생이 적은 것은 **바로** 선생님 화면에 뜨되 「학생이 적음」으로 표시된다.
   확인을 기다리다 대장이 비는 것보다 낫다.
 - 칸별로 덮어쓴다 — 시트에 최종만 적었으면 1단계는 즐겨찾기 값이 그대로 남는다.
+  **다만 최종 결과에 딸린 값(예비번호·불합격 사유·등록)은 따라 움직인다.** 칸마다
+  「비었으면 즐겨찾기 것」을 하면, 최초합격으로 고친 뒤에도 옛 예비번호가 새어 나와
+  「최초합격 · 예비 7번」이 되고 불합격이었던 건은 「최초합격 · 수능최저 미충족」이 된다.
 - 즐겨찾기가 준 표기가 고르는 목록에 없으면 **그 표기도 목록에 넣는다.** 버리면 안 된다.
 
 **담임이 무엇을 확인해야 하는지가 첫 화면에 있어야 한다.** 12월 아침에 보드를 여는

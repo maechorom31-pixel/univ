@@ -107,7 +107,16 @@ export function clashes(events) {
       const b = attend[j];
       if (a.hak !== b.hak || a.app.id === b.app.id) continue;
       if (!overlaps(a, b)) continue;
-      out.push({ a, b, sure: a.fixed && b.fixed && a.from === b.from });
+      /*
+       * **학생이 넣고 아직 확인 안 된 날짜로 「겹침」을 확정하지 않는다.**
+       * pending 을 두는 까닭이 애초에 그것이다 — 잘못 적은 날짜 하나로 여섯 칸 판단이
+       * 흔들리면 안 된다. 확인 전까지는 「겹칠 수 있음」까지만 말한다.
+       */
+      const settled = (e) => e.status !== 'pending';
+      out.push({
+        a, b,
+        sure: a.fixed && b.fixed && a.from === b.from && settled(a) && settled(b),
+      });
     }
   }
   // 확실히 겹치는 것을 위로. 「겹칠 수 있음」이 앞을 막으면 정작 급한 걸 놓친다.
@@ -387,6 +396,27 @@ function fixedRow(app, kind, d) {
     : d.status === 'confirmed' ? '확정'
       : d.fixed ? '공지' : '기간';
   row.appendChild(el('span', `pill${d.fixed ? '' : ' wait'}`, tag));
+
+  /*
+   * 확인할 길을 화면에 둔다. 예전에는 `approveDate` 가 서버와 계약서에만 있고
+   * 부르는 데가 없어서, 학생이 넣은 날짜는 **영영 확인 대기**로 남았다.
+   * 결과 쪽의 「맞습니다」와 같은 흐름이다 — 대개 맞으니 한 번에 되게 둔다.
+   */
+  if (d.status === 'pending') {
+    const ok = el('button', 'btn', '맞습니다');
+    ok.type = 'button';
+    ok.title = '학생이 넣은 날짜를 확정합니다. 확정해야 겹침 판정에 쓰입니다.';
+    ok.onclick = async () => {
+      ok.disabled = true;
+      try {
+        await store.approveDate(app, kind);
+      } catch (err) {
+        ok.disabled = false;
+        window.alert(`확정하지 못했습니다 — ${err.message}`);
+      }
+    };
+    row.appendChild(ok);
+  }
   return row;
 }
 

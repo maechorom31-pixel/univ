@@ -233,13 +233,27 @@ export function unmatched(cls) {
       if (!l || l.confidence !== 'none') continue;
       const key = `${app.univ}|${app.dept}`;
       if (!groups.has(key)) {
-        groups.set(key, { key, univ: app.univ, dept: app.dept, why: l.why, apps: [], who: [] });
+        /*
+         * **「없음으로 표시」한 것은 목록에서 내린다.**
+         * 그 별칭은 `toDept` 가 비어 있어서 `link()` 가 원래 이름으로 다시 찾고,
+         * 그래서 다시 `none` 이 되어 그대로 목록에 남았다. 눌러도 아무 일이
+         * 안 일어나고 다음 화면에 또 나왔다 — 121명이면 목록이 안 줄어든다.
+         *
+         * 지우지는 않는다. 접힌 자리로 내려서, 잘못 눌렀으면 되돌릴 수 있게 둔다.
+         */
+        const alias = state.aliases.get(key);
+        const skipped = Boolean(alias) && !alias.toUniv && !alias.toDept;
+        groups.set(key, {
+          key, univ: app.univ, dept: app.dept, why: l.why, apps: [], who: [],
+          skipped, note: (alias && alias.note) || '',
+        });
       }
       groups.get(key).apps.push(app);
       groups.get(key).who.push(`${student.hak} ${student.name}`);
     }
   }
-  return [...groups.values()].sort((a, b) => b.apps.length - a.apps.length
+  return [...groups.values()].sort((a, b) => (a.skipped - b.skipped)
+    || b.apps.length - a.apps.length
     || a.univ.localeCompare(b.univ, 'ko'));
 }
 
@@ -382,6 +396,44 @@ export async function setDate(app, kind, from, to) {
   }
 }
 
+/**
+ * 학생이 넣은 날짜를 그대로 확정한다.
+ *
+ * 확인 전(`pending`)에는 겹침을 「겹칠 수 있음」까지만 말한다(schedule.js clashes).
+ * 확정해야 「겹침」이 된다 — 잘못 적은 날짜 하나로 여섯 칸 판단이 흔들리면 안 되기 때문이다.
+ */
+export async function approveDate(app, kind) {
+  const key = `${app.id}|${kind}`;
+  const before = state.dates.get(key);
+  if (!before) return;
+  state.dates.set(key, { ...before, status: 'confirmed' });
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.call('approveDate', { id: app.id, hak: app.hak, kind });
+  } catch (err) {
+    state.dates.set(key, before);
+    emit('change', 'state');
+    throw err;
+  }
+}
+
+/** 학생이 넣고 아직 확인 안 된 날짜 전부 — 담임의 「오늘 할 일」에 쓴다. */
+export function pendingDates(cls) {
+  const out = [];
+  for (const [key, d] of state.dates) {
+    if (!d || d.status !== 'pending') continue;
+    const id = key.slice(0, key.lastIndexOf('|'));
+    const kind = key.slice(key.lastIndexOf('|') + 1);
+    const app = state.apps.get(id);
+    if (!app) continue;
+    const student = state.students.get(app.hak);
+    if (!student || (cls && String(student.cls) !== String(cls))) continue;
+    out.push({ app, student, kind, date: d });
+  }
+  return out;
+}
+
 /* ── 결과 ───────────────────────────────────────────────────────── */
 
 /**
@@ -398,9 +450,24 @@ export function resultOf(app) {
   const mine = state.results.get(String(app && app.id)) || {};
   const pick = (k) => (mine[k] ? mine[k] : (base[k] || null));
   const written = Boolean(mine.final || mine.stage1 || mine.waitNo || mine.enrolled);
+
+  /*
+   * **칸마다 따로 메우면 안 되는 것이 있다.**
+   *
+   * 예비번호와 불합격 사유는 최종 결과에 딸린 값이다. 칸마다 「비었으면 즐겨찾기 것」을
+   * 하면, 최초합격으로 고쳐 저장한 뒤에도 즐겨찾기의 옛 예비번호가 그대로 새어 나와
+   * 「최초합격 · 예비 7번」이 되고, 불합격이었던 건은 「최초합격 · 수능최저 미충족」이
+   * 된다. 둘 다 말이 안 되는데 화면에는 그럴듯하게 찍힌다.
+   *
+   * 그래서 **최종 결과를 새로 적었으면 거기 딸린 값도 그 사람이 적은 것만 쓴다.**
+   * 같은 결과를 다시 적은 것이면(고친 게 아니라 확인한 것이면) 즐겨찾기 값을 그대로 둔다.
+   */
+  const changedFinal = Boolean(mine.final) && mine.final !== base.final;
+  const attached = (k) => (changedFinal ? (mine[k] || null) : pick(k));
+
   return {
-    stage1: pick('stage1'), final: pick('final'), reason: pick('reason'),
-    waitNo: pick('waitNo'), enrolled: pick('enrolled'),
+    stage1: pick('stage1'), final: pick('final'), reason: attached('reason'),
+    waitNo: attached('waitNo'), enrolled: attached('enrolled'),
     edited: written,
     // 학생이 적고 아직 선생님이 확인하지 않은 것
     pending: written && mine.status === 'student',

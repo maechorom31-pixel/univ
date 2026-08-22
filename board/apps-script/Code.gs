@@ -120,6 +120,13 @@ function handle_(p) {
   if (action.indexOf('student') === 0) return studentAction_(action, p);
 
   var me = access_();
+  if (me && me.blind) {
+    return { ok: false, error:
+      '설정 탭에 계정 명단이 적혀 있는데, 이 배포 방식에서는 누가 들어왔는지 알 수 없어'
+      + ' 아무도 못 들어옵니다. 「액세스: 모든 사용자」로 배포하면 구글이 접속자 계정을'
+      + ' 알려 주지 않기 때문입니다(학생 링크 때문에 그렇게 배포해야 합니다).'
+      + ' 시트의 설정 탭 A열을 비워 주세요. 잠금은 배포 주소를 안 알리는 것으로 합니다.' };
+  }
   if (!me) {
     return { ok: false, error: '이 보드를 쓸 수 있는 계정이 아닙니다. 3학년실에 문의하세요.' };
   }
@@ -157,6 +164,20 @@ function handle_(p) {
  *
  * @return {?{email:string, locked:boolean}}
  */
+/**
+ * 이 사람이 보드를 쓸 수 있나.
+ * =====================================================================
+ * `설정` 탭 A열에 계정을 적으면 그 명단만 들어온다. **한 줄이라도 적히면** 잠긴다.
+ *
+ * 다만 **이 배포 방식에서는 대개 못 잠근다.** 학생 링크 때문에 「액세스: 모든 사용자」
+ * 로 배포해야 하는데, 그러면 `Session.getActiveUser().getEmail()` 이 빈 문자열이다.
+ * 그 상태에서 명단을 적으면 ''는 어떤 줄과도 안 맞아 **선생님 전원이 잠긴다.**
+ *
+ * 조용히 「쓸 수 있는 계정이 아닙니다」만 뜨면 왜 그런지 알 길이 없다. 그래서
+ * 누구인지 아예 못 알아본 경우와, 알아봤는데 명단에 없는 경우를 **갈라서 말한다.**
+ * 잠그는 것 자체는 그대로 둔다 — 열어 주는 쪽으로 봐주면 그건 잠금이 아니다.
+ * 되돌리는 길은 시트 주인에게 늘 있다(설정 탭 A열을 비우면 된다).
+ */
 function access_() {
   var email = '';
   try { email = Session.getActiveUser().getEmail() || ''; } catch (err) { email = ''; }
@@ -170,6 +191,9 @@ function access_() {
     if (String(list[i]['이메일']).trim().toLowerCase() === email.toLowerCase()) {
       return { email: email, locked: true };
     }
+  }
+  if (!email) {
+    return { blind: true };      // 누구인지 못 알아봤다 — handle_ 이 사유를 적어 준다
   }
   return null;
 }
@@ -779,18 +803,34 @@ function issueAll_(p, who) {
   var have = {};
   rows_(SHEET.share).forEach(function (r) { have[String(r.hak)] = String(r.token); });
 
-  var out = [];
+  /*
+   * **한 번에 쓴다.** 예전에는 새 학생마다 upsert_ 를 불렀는데, upsert_ 는 한 번마다
+   * 공유 시트를 통째로 다시 읽고 잠금을 잡는다. 학년 전체 121명 첫 발급이면 시트
+   * 왕복이 240회쯤 되어 1~3분이 걸리고, 화면은 45초에 포기한 뒤 같은 일을 다시 건다.
+   * 토큰 발급이 멱등이라 자료가 깨지지는 않지만, 첫 사용 경험이 「서버가 응답하지
+   * 않습니다」가 된다. 데모 4명으로는 안 드러나는 자리다.
+   */
+  var out = [], fresh = [], at = now_();
   for (var i = 0; i < parsed.students.length; i++) {
     var s = parsed.students[i];
     if (only && String(s.cls) !== only) continue;
     if (!have[s.hak]) {
       var token = Utilities.getUuid().replace(/-/g, '').slice(0, 24);
-      upsert_(SHEET.share, ['hak'], {
-        hak: s.hak, token: token, issuedAt: now_(), expiresAt: ''
-      });
       have[s.hak] = token;
+      fresh.push([s.hak, token, at, '']);        // HEADERS.공유 차례와 같아야 한다
     }
     out.push({ hak: s.hak, name: s.name, token: have[s.hak] });
+  }
+  if (fresh.length) {
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var sh = tab_(SHEET.share);
+      sh.getRange(sh.getLastRow() + 1, 1, fresh.length, HEADERS[SHEET.share].length)
+        .setValues(fresh);
+    } finally {
+      lock.releaseLock();
+    }
   }
   log_(who, 'issueAll', (only ? only + '반 ' : '전체 ') + out.length + '명');
   return { ok: true, items: out };
@@ -835,6 +875,9 @@ function studentView_(token) {
     apps: parsed.apps.filter(function (a) { return a.hak === hak; }),
     state: mine(rows_(SHEET.state)),
     dates: mine(rows_(SHEET.date)),
+    // 학생이 적어 둔 결과를 돌려주지 않으면, 저장하고 새로고침했을 때 **사라져 보인다.**
+    // 시트에는 있는데 화면에서 없어지면 학생은 다시 적거나 도구를 안 믿게 된다.
+    results: mine(rows_(SHEET.result)),
     notes: mine(rows_(SHEET.note)).filter(function (n) { return String(n.visible) === 'Y'; })
   };
 }

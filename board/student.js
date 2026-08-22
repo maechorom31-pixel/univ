@@ -484,7 +484,50 @@ function dateRow(app, kind, d) {
 
 /* ── 결과 ───────────────────────────────────────────────────────── */
 
-const FINAL = ['', '1단계 합격', '최초합격', '충원합격', '불합격', '미등록'];
+/*
+ * 학생이 고르는 말 → 시트에 적히는 칸.
+ * =====================================================================
+ * **고르는 말을 그대로 `final` 에 넣으면 안 된다.**
+ *
+ * 「1단계 합격」을 final 에 넣으면 stats.js 의 `verdict()` 가 「합격」이라는 글자를 보고
+ * 최종 합격으로 센다. 11월에 1단계 발표만 난 건들이 지원 결과 보고서와 진학 대장에
+ * 최종 합격으로 부풀려 들어간다. 아무 데도 「틀렸다」고 안 적히는 자리다.
+ *
+ * 「미등록」은 반대다. final 에 넣으면 `passed=null` 이 되어 합격 통계에서 아예 빠지고,
+ * 보고서에는 「알아보지 못한 표기 — 미등록」이라는 오경고까지 뜬다. 자기 화면이 준
+ * 선택지인데도.
+ *
+ * 그래서 고르는 말마다 **어느 칸에 무엇을 넣을지**를 여기 한 곳에 적어 둔다.
+ * `wait` 는 예비번호를 묻는가, `ask` 는 한 가지를 더 묻는가.
+ */
+const CHOICE = [
+  { label: '', final: '', stage1: '', enrolled: '' },
+  // 1단계는 최종이 아니다. final 은 비워 둔다 — 최종 발표가 나면 그때 다시 고른다.
+  { label: '1단계 합격', final: '', stage1: '합격', enrolled: '' },
+  { label: '1단계 불합격', final: '', stage1: '불합격', enrolled: '' },
+  { label: '최초합격', final: '최초합격', stage1: '', enrolled: '' },
+  { label: '충원합격', final: '충원합격', stage1: '', enrolled: '', wait: true },
+  { label: '불합격', final: '불합격', stage1: '', enrolled: '' },
+  // 붙고 나서 안 간 것이다. **합격은 합격으로 세고**, 등록 여부만 따로 적는다.
+  { label: '합격했지만 등록 안 함', final: '최초합격', stage1: '', enrolled: '미등록' },
+];
+const FINAL = CHOICE.map((c) => c.label);
+const choiceOf = (label) => CHOICE.find((c) => c.label === label) || null;
+
+/** 시트에 적힌 것 → 학생이 고른 말. 되돌려 화면에 표시한다. */
+function labelOf(r) {
+  if (!r) return '';
+  const final = String(r.final || '');
+  const enrolled = String(r.enrolled || '');
+  if (final && /합격/.test(final) && !/불합격/.test(final) && /미등록/.test(enrolled)) {
+    return '합격했지만 등록 안 함';
+  }
+  if (final) return CHOICE.some((c) => c.final === final) ? final : final;
+  const st = String(r.stage1 || '');
+  if (/불합격|탈락/.test(st)) return '1단계 불합격';
+  if (/합격|통과/.test(st)) return '1단계 합격';
+  return '';
+}
 
 /**
  * 합격·불합격을 **학생이 적는다.**
@@ -503,7 +546,8 @@ function resultRow(app) {
   const wrap = el('div', 'field');
   const saved = state.results.get(String(app.id)) || {};
   const base = app.result || {};
-  const now = saved.final || base.final || '';
+  // 시트에 적힌 칸들(final·stage1·enrolled)을 학생이 고른 말로 되돌린다
+  const now = labelOf(state.results.has(String(app.id)) ? saved : base);
 
   const lab = el('label', '', '결과');
   wrap.appendChild(lab);
@@ -545,8 +589,9 @@ function resultRow(app) {
   wait.placeholder = '예비번호';
   wait.setAttribute('aria-label', `${app.univ} 예비번호`);
   wait.value = saved.waitNo || base.waitNo || '';
-  wait.hidden = !/충원|예비/.test(now);
-  sel.onchange = () => { wait.hidden = !/충원|예비/.test(sel.value); };
+  const asksWait = (label) => Boolean((choiceOf(label) || {}).wait);
+  wait.hidden = !asksWait(now);
+  sel.onchange = () => { wait.hidden = !asksWait(sel.value); };
   row.appendChild(wait);
 
   const btn = el('button', 'btn btn-primary', '저장');
@@ -558,23 +603,20 @@ function resultRow(app) {
   return wrap;
 }
 
-async function saveResult(app, final, waitNo) {
+async function saveResult(app, label, waitNo) {
+  // 고른 말을 어느 칸에 넣을지는 CHOICE 표가 정한다. 여기서 다시 짐작하지 않는다.
+  const c = choiceOf(label) || { final: label, stage1: '', enrolled: '' };
+  const row = {
+    final: c.final, stage1: c.stage1, enrolled: c.enrolled, reason: '',
+    waitNo: c.wait ? waitNo : '',
+  };
   state.busy = true; render();
   try {
     if (!offline) {
-      await api.call('studentResult', {
-        token: state.token, id: app.id,
-        final, waitNo: /충원|예비/.test(final) ? waitNo : '',
-        stage1: final === '1단계 합격' ? '합격' : '',
-        enrolled: final === '미등록' ? '미등록' : '',
-      });
+      await api.call('studentResult', { token: state.token, id: app.id, ...row });
     }
-    state.results.set(String(app.id), {
-      final, waitNo: /충원|예비/.test(final) ? waitNo : '',
-      stage1: final === '1단계 합격' ? '합격' : '', reason: '',
-      enrolled: final === '미등록' ? '미등록' : '', status: 'student',
-    });
-    state.notice = `${shortUniv(app.univ)} 결과를 ${final || '지움'} 으로 보냈습니다.`
+    state.results.set(String(app.id), { ...row, status: 'student' });
+    state.notice = `${shortUniv(app.univ)} 결과를 ${label || '지움'} 으로 보냈습니다.`
       + ' 선생님도 함께 봅니다.';
   } catch (err) {
     state.notice = `오류: ${err.message}`;

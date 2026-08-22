@@ -343,6 +343,17 @@ function report() {
       `결과 칸에서 알아보지 못한 표기가 있습니다 — ${o.unknown.join(', ')}.`
       + ' 이 건들은 합격으로도 불합격으로도 세지 않았습니다.'));
   }
+  /*
+   * 결재에 올라가는 문서다. **학생이 적고 아직 담임이 확인 안 한 건이 섞여 있으면**
+   * 그렇다고 적어 둔다. 빼지는 않는다 — 확인을 기다리다 대장이 비는 것보다 낫다는
+   * 것이 이 도구의 결정이다(CONTRACT §5.6b). 다만 말없이 섞는 것과는 다르다.
+   */
+  const waiting = rows.filter((x) => x.app.result && x.app.result.pending).length;
+  if (waiting) {
+    box.appendChild(el('p', 'note',
+      `학생이 적고 아직 확인하지 않은 결과 ${waiting}건이 포함되어 있습니다.`
+      + ' 보드 첫 화면에서 확인하실 수 있습니다.'));
+  }
 
   box.appendChild(tools('지원결과보고서', () => reportTable(r)));
 

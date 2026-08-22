@@ -238,8 +238,59 @@ function render() {
  * 결과를 적어 두면, 아침에 열었을 때 **누구를 봐야 하는지가 첫 화면에 있어야** 한다.
  * 명단의 배지만으로는 반 전체를 훑어야 하고, 다른 반 것은 아예 안 보인다.
  */
+/**
+ * 학생이 넣고 아직 확인 안 된 **날짜**.
+ *
+ * 확인 전에는 겹침을 「겹칠 수 있음」까지만 말한다. 그래서 확인이 밀리면 진짜 겹침이
+ * 눈에 안 띈다. 결과와 같은 자리에 같은 꼴로 둔다 — 담임이 아침에 보는 곳이 여기다.
+ */
+function waitingDates() {
+  const wrap = el('div');
+  const list = store.pendingDates(store.selection.cls);
+  if (!list.length) return wrap;
+
+  const box = el('section', 'panel todo-panel');
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '학생이 넣은 날짜'));
+  head.appendChild(el('span', 'count num', `${list.length}건`));
+  box.appendChild(head);
+  box.appendChild(el('p', 'section-label',
+    '확인해야 겹침 판정에 쓰입니다. 확인 전에는 「겹칠 수 있음」까지만 봅니다.'));
+
+  const stack = el('div', 'stack');
+  for (const x of list) {
+    const row = el('div', 'row todo-row');
+    const txt = el('div', 'txt');
+    txt.appendChild(el('div', 'univ',
+      `${x.student.hak} ${tidy(x.student.name)} — ${shortName(x.app)}`));
+    txt.appendChild(el('div', 'dept', `${x.kind} ${x.date.from}`
+      + (x.date.to && x.date.to !== x.date.from ? `~${x.date.to}` : '')));
+    row.appendChild(txt);
+
+    const ok = el('button', 'btn', '맞습니다');
+    ok.type = 'button';
+    ok.onclick = async () => {
+      ok.disabled = true;
+      try {
+        await store.approveDate(x.app, x.kind);
+        notice = `${x.student.hak} ${tidy(x.student.name)} ${x.kind}일을 확정했습니다.`;
+      } catch (err) {
+        ok.disabled = false;
+        notice = `확정하지 못했습니다 — ${err.message}`;
+      }
+      render();
+    };
+    row.appendChild(ok);
+    stack.appendChild(row);
+  }
+  box.appendChild(stack);
+  wrap.appendChild(box);
+  return wrap;
+}
+
 function waitingPanel() {
   const wrap = el('div');
+  wrap.appendChild(waitingDates());
   const list = store.pendingResults(store.selection.cls);
   if (!list.length) return wrap;
 
@@ -257,8 +308,15 @@ function waitingPanel() {
     const txt = el('div', 'txt');
     txt.appendChild(el('div', 'univ',
       `${x.student.hak} ${tidy(x.student.name)} — ${shortName(x.app)}`));
+    /*
+     * 최종이 비어 있고 1단계만 적힌 건이 있다(1단계 발표만 난 자리).
+     * `final` 만 찍으면 그 줄이 빈칸으로 보여서 무엇을 확인하라는 건지 알 수 없다.
+     */
+    const said = x.result.final
+      || (x.result.stage1 ? `1단계 ${x.result.stage1}` : '')
+      || '결과 지움';
     txt.appendChild(el('div', 'dept', [
-      x.result.final,
+      said,
       x.result.waitNo ? `예비 ${x.result.waitNo}번` : '',
       String(x.result.at || '').slice(0, 10),
     ].filter(Boolean).join(' · ')));
@@ -711,12 +769,26 @@ async function move(app, value) {
 
   busy = true;
   render();
+  let movedPushed = null;                 // 밀어낸 것을 어디서 옮겼는지 (되돌리려고)
   try {
     if (pushed) {
       const to = before.slot === 'rank' ? before.rank : null;
+      movedPushed = store.placementOf(pushed.id);
       await store.place(pushed.id, to ? 'rank' : 'pool', to);
     }
-    await store.place(app.id, slot, rank);
+    /*
+     * 맞바꾸기는 쓰기가 **둘**이다. 앞은 되고 뒤가 실패하면 같은 순위에 두 건이 남아
+     * 한 카드가 새로고침 전까지 화면에서 사라진다. 그래서 뒤가 실패하면 앞을 되돌린다.
+     * 반쯤 옮겨진 채로 두느니 아무것도 안 옮긴 편이 낫다.
+     */
+    try {
+      await store.place(app.id, slot, rank);
+    } catch (err) {
+      if (movedPushed) {
+        await store.place(pushed.id, movedPushed.slot, movedPushed.rank).catch(() => {});
+      }
+      throw err;
+    }
     if (pushed) {
       const name = shortName(pushed);
       const eul = josa(pushed.dept, '을', '를');

@@ -46,8 +46,25 @@ export function verdict(app) {
   // 1단계는 최종과 따로 본다. 종합에서 서류로 떨어지는 것이 별개의 관문이라서다.
   if (has(stage1, '불합격', '탈락')) out.stage1Out = true;
 
-  out.enrolled = has(r.enrolled, '등록', 'Y', '예');
+  /*
+   * **「미등록」은 「등록」을 품고 있다.** 글자로만 보면 안 간 학생이 등록한 것으로 센다.
+   * 아닌 것을 먼저 걸러 낸 뒤에 맞는 것을 본다.
+   */
+  out.enrolled = !has(r.enrolled, '미등록', '포기', '취소', '안 함', '안함', 'N')
+    && has(r.enrolled, '등록', 'Y', '예');
   out.minFail = has(reason, '최저');
+
+  /*
+   * 최종 칸에 **1단계 이야기가 적혀 있으면 최종이 아니다.**
+   * 「1단계 합격」이 그대로 들어오면 아래에서 「합격」이라는 글자를 보고 최종 합격으로
+   * 센다. 11월에 1단계 발표만 난 건들이 보고서에 최종 합격으로 부풀려 들어간다.
+   * 화면(student.js CHOICE)이 이제 안 그렇게 보내지만, 즐겨찾기가 직접 이렇게 적어
+   * 두거나 예전에 저장된 값이 남아 있을 수 있어 여기서도 막는다.
+   */
+  if (/1\s*단계|일단계/.test(final)) {
+    if (has(final, '불합격', '탈락', '미선발')) { out.stage1Out = true; out.decided = true; out.passed = false; }
+    return out;
+  }
 
   if (!final) {
     // 최종이 비어도 1단계 탈락은 이미 결정된 결과다

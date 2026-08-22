@@ -141,6 +141,28 @@ eq(b.find((x) => x.lo === 3).univs, [{ univ: '가대', n: 2 }], '3~4등급대');
 eq(b.find((x) => x.lo === 5).univs, [{ univ: '나대', n: 1 }], '5~6등급대');
 eq(b.some((x) => x.lo === 6), false, '합격이 없는 구간은 내지 않는다');
 
+console.log('1단계는 최종이 아니다');
+{
+  const V = (result) => verdict({ result });
+  eq(V({ final: '1단계 합격' }).passed, null, '「1단계 합격」을 최종 합격으로 세지 않는다');
+  eq(V({ final: '1단계 합격' }).decided, false, '아직 결정된 것이 아니다');
+  eq(V({ final: '1단계 불합격' }).passed, false, '1단계 탈락은 결정된 결과다');
+  eq(V({ final: '1단계 불합격' }).stage1Out, true, '1단계에서 떨어진 것으로 표시');
+  eq(V({ stage1: '합격', final: '' }).passed, null, '1단계만 붙었으면 아직 모른다');
+  eq(V({ stage1: '합격', final: '최초합격' }).passed, true, '최종이 나오면 그것으로');
+}
+
+console.log('「미등록」은 「등록」이 아니다');
+{
+  const V = (result) => verdict({ result });
+  eq(V({ final: '최초합격', enrolled: '미등록' }).passed, true, '붙은 것은 붙은 것이다');
+  eq(V({ final: '최초합격', enrolled: '미등록' }).enrolled, false, '다만 등록하지는 않았다');
+  eq(V({ final: '최초합격', enrolled: '미등록' }).raw, '', '아는 값이라 경고하지 않는다');
+  eq(V({ final: '최초합격', enrolled: '등록' }).enrolled, true, '등록');
+  eq(V({ final: '최초합격', enrolled: '포기' }).enrolled, false, '포기');
+  eq(V({ final: '최초합격', enrolled: '' }).enrolled, false, '비었으면 아니다');
+}
+
 console.log('모르는 표기를 감추지 않는다');
 const odd = R([S('3105', 3.0)], [A('3105', '다대', 'x', '학생부위주(교과)', { final: '???' })]);
 eq(overall(odd).unknown, ['???'], '원문 그대로 돌려준다');

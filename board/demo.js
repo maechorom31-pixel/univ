@@ -156,6 +156,15 @@ export const demo = {
     { id: at('동신대', '간호학과').id, hak: '3204', stage1: '', final: '최초합격',
       reason: '', waitNo: '', enrolled: '등록',
       status: 'confirmed', by: '보기용 계정', at: '2026-12-16T09:00:00Z' },
+    // 1단계만 났다. **최종 칸은 비어 있어야 한다** — 여기 「1단계 합격」이 들어가면
+    // 보고서가 최종 합격으로 센다. 그 자리를 데모로 지켜 둔다.
+    { id: at('가톨릭대', '영어영문학과').id, hak: '3201', stage1: '합격', final: '',
+      reason: '', waitNo: '', enrolled: '',
+      status: 'student', by: '3201 학생', at: '2026-11-20T19:40:00Z' },
+    // 붙었지만 안 갔다. 합격으로 세되 등록은 아니어야 한다.
+    { id: at('원광대', '치위생학과').id, hak: '3204', stage1: '', final: '최초합격',
+      reason: '', waitNo: '', enrolled: '미등록',
+      status: 'confirmed', by: '보기용 계정', at: '2026-12-20T10:00:00Z' },
   ],
   // 모의면접을 두 번 잡아 둔 자리 — 대학별로 묶여 보이는지 확인하려고
   dates: [
@@ -163,6 +172,12 @@ export const demo = {
       from: inDays(4), to: inDays(4), status: 'confirmed' },
     { id: at('숭실대', '영어영문학과').id, hak: '3201', kind: '모의면접2',
       from: inDays(9), to: inDays(9), status: 'confirmed' },
+    /*
+     * 학생이 넣고 아직 확인 안 된 날짜. **가톨릭대 면접일과 같은 날로 둔다** —
+     * 확인 전에는 「겹칠 수 있음」, 확인하면 「겹침」이 되는 것을 데모로 볼 수 있게.
+     */
+    { id: at('건국대', '영어영문학과').id, hak: '3201', kind: '면접',
+      from: inDays(13), to: inDays(13), status: 'pending' },
   ],
   unknownCols: [],
   skipped: 0,
@@ -180,5 +195,15 @@ export const studentDemo = {
     { id: at('건국대', '영어영문학과').id, hak: '3201', kind: '면접', from: inDays(14), to: inDays(14), status: 'pending' },
   ],
   notes: [{ noteId: 'n1', hak: '3201', id: at('건국대', '영어영문학과').id, text: '접수번호 0021170267', visible: 'Y' }],
-  results: [],
+  /*
+   * **학생 화면에도 결과를 넣어 둔다.** 예전에는 빈 배열이라, 서버가 결과를 안
+   * 돌려주는 것을 데모로는 영영 알 수 없었다. 저장하면 그 자리에서는 보이는데
+   * 새로고침하면 사라지는 꼴이었다.
+   */
+  results: [
+    { id: at('건국대', '영어영문학과').id, hak: '3201', stage1: '합격', final: '충원합격',
+      reason: '', waitNo: '7', enrolled: '', status: 'student' },
+    { id: at('가톨릭대', '영어영문학과').id, hak: '3201', stage1: '합격', final: '',
+      reason: '', waitNo: '', enrolled: '', status: 'confirmed' },
+  ],
 };
