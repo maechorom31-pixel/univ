@@ -669,7 +669,13 @@ export function pickIpgyeol(rows, app) {
  * 골라낸 줄을 앞으로 옮길 뿐 버리지는 않는다. 상세에서 나머지도 볼 수 있어야 한다.
  */
 function pickMojip(rows, app) {
-  if (rows.length < 2) return rows;
+  const want0 = norm(app.typeSub) || norm(app.typeName);
+  if (rows.length < 2) {
+    const out = rows.slice();
+    const t = rows[0] ? norm(rows[0].type) : '';
+    out.byName = Boolean(want0 && t && (t === want0 || t.includes(want0) || want0.includes(t)));
+    return out;
+  }
   const want = norm(app.typeSub) || norm(app.typeName);
   const cat = catOf(app.typeCat);
   const score = (r) => {
@@ -678,9 +684,14 @@ function pickMojip(rows, app) {
     if (cat && r.type && String(r.type).includes(cat)) return 1;
     return 2;
   };
-  return rows.map((r, i) => [score(r), i, r])
-    .sort((a, b) => a[0] - b[0] || a[1] - b[1])
-    .map((x) => x[2]);
+  const sorted = rows.map((r, i) => [score(r), i, r])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const out = sorted.map((x) => x[2]);
+  // 맨 앞 줄이 **이름으로** 맞은 것인지 표시해 둔다.
+  // 「올해 신설」은 이 줄의 작년 모집인원을 보고 말하는데, 이름도 못 맞춘 줄로
+  // 그런 말을 하면 옆 전형이 작년에 없었다는 이야기가 된다.
+  out.byName = sorted.length > 0 && sorted[0][0] === 0;
+  return out;
 }
 
 const norm = (s) => String(s || '').replace(/[\s()·]/g, '');
@@ -727,6 +738,23 @@ function linkCollege(app, src, none) {
  */
 const NO_RATE = { value: null, why: '' };
 
+/**
+ * **올해 신설인가.**
+ *
+ * 「입결에 없다」로 짐작하면 안 된다. 모집요강 줄의 23.8% 가 입결에 그 전형 이름이
+ * 없는데, 그건 대개 이름이 달라진 것이지 신설이 아니다(`가천대 종합(가천바람개비)` ↔
+ * 입결 `종합(바람개비)`). 짐작으로 「신설」이라 적으면 넷 중 하나꼴로 거짓말이 된다.
+ *
+ * **모집요강이 직접 말해 준다.** 작년 모집인원과 작년 경쟁률이 둘 다 비어 있으면
+ * 올해 처음 뽑는 것이다. 전체의 12.2% 다. 다만 그 줄이 **지원한 전형의 줄일 때만**
+ * 그렇게 말한다 — 이름도 못 맞춘 줄로 신설을 말하면 옆 전형 이야기를 하는 셈이다.
+ */
+function isNewThisYear(mojipRows) {
+  if (!mojipRows || !mojipRows.length || !mojipRows.byName) return false;
+  const r = mojipRows[0];
+  return r.quotaPrev == null && r.rate26 == null;
+}
+
 export function summarize(l, app) {
   if (!l) return { linked: false, kind: 'univ', rows: [], before: null, real: NO_RATE, why: '자료를 받는 중입니다' };
   if (l.confidence === 'none') {
@@ -738,6 +766,7 @@ export function summarize(l, app) {
     const mo = (l.mojip && l.mojip[0]) || null;
     return {
       linked: false, kind: l.kind, rows: [], mine: [], before: null, why: l.why,
+      isNew: isNewThisYear(l.mojip), alias: l.alias || null,
       mojip: mo,
       quotaNow: app && app.quota != null ? app.quota : (mo ? mo.quota : null),
       quotaPrev: mo ? mo.quotaPrev : null,
@@ -750,6 +779,7 @@ export function summarize(l, app) {
     const d = l.college[0];
     return {
       linked: true, kind: 'college', why: l.why, rows: l.college, before: null, real: NO_RATE,
+      alias: l.alias || null, isNew: false,
       year: 2026,                      // College 자료는 앞이 최신 (2026·25·24)
       rate: d.comp[0] ?? null,
       avg: d.avg[0] ?? null,           // 최종등록자 평균등급
@@ -772,6 +802,8 @@ export function summarize(l, app) {
   return {
     linked: rows.length > 0, kind: 'univ', why: l.why, rows,
     mine: mineRows,                    // 지원한 전형의 줄만
+    isNew: isNewThisYear(l.mojip),     // 올해 처음 뽑는 전형인가 (모집요강이 말한다)
+    alias: l.alias || null,            // 선생님이 손으로 이어 둔 학과가 있으면 그것
     type: picked.type,                 // 입결 쪽 전형 이름 (즐겨찾기와 다를 수 있다)
     typeFit: picked.fit,               // exact | near | cat | only | none
     among: picked.among || null,       // 못 골랐을 때 후보로 남은 전형 이름들

@@ -414,6 +414,7 @@ id = sha1( 학번 + "" + 대학 + "" + 세부전형 + "" + 모집단위 ).sli
 ## 8. 시험
 
 ```
+sh scripts/check_syntax.sh     # 구문 (board/*.js 는 ESM 이라 .mjs 로 복사해 잰다)
 node board/parse.test.mjs      # 엑셀 파서 (Code.gs 를 node 에서 그대로 돌린다)
 node board/match.test.mjs      # 이름 맞추기
 node board/stats.test.mjs      # 결과 통계
@@ -422,6 +423,10 @@ node board/confidence.test.mjs # 얼마나 믿을 수 있나
 
 `parse.test.mjs` 는 `Code.gs` 를 `new Function` 으로 불러 **실제로 배포되는 코드**를
 돌린다. 파서를 두 벌 두면 반드시 갈라지기 때문이다.
+
+`check_syntax.sh` 는 `.mjs` 로 복사해서 잰다. `node --check board/board.js` 로는
+확장자가 `.js` 라 node 가 CommonJS 로 읽고 조용히 넘어가는 일이 있다 — 실제로
+중괄호가 하나 빠진 채 통과하고 브라우저에서야 드러났다.
 
 `parse` 와 `match` 는 실제 즐겨찾기 파일을 넘기면 훨씬 많은 것을 본다.
 **그 파일은 저장소에 넣지 않는다.**

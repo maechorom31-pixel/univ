@@ -85,6 +85,38 @@ export function detailPanel(app, student, onClose) {
   const body = el('div', 'detail-body');
   box.appendChild(body);
 
+  /*
+   * **올해 신설이면 맨 먼저 말한다.**
+   * 아래 숫자가 비어 있는 까닭이 「자료를 못 찾았다」가 아니라 「작년에 없었다」라는
+   * 것은 상담에서 전혀 다른 이야기다. 앞은 더 찾아보면 되고, 뒤는 아무도 모른다.
+   */
+  if (s && s.isNew) {
+    const p = el('p', 'note');
+    p.appendChild(el('b', null, '올해 새로 생긴 전형입니다. '));
+    p.appendChild(document.createTextNode(
+      '작년 모집인원도 경쟁률도 모집요강에 없습니다. 작년 컷으로 가늠할 수 없는'
+      + ' 자리라, 아래 숫자가 있더라도 이 전형의 작년 값은 아닙니다.'
+      + ' 대학 홈페이지와 입시설명회 자료를 함께 봐 주세요.'));
+    body.appendChild(p);
+  }
+
+  /*
+   * **손으로 이어 둔 학과면 그것도 말한다.**
+   * 점검 화면에서 선생님이 「영어영문학과 → 영어학부」로 이어 두면 그때부터 카드에
+   * 다른 학과의 숫자가 뜬다. 어느 학과 것인지 안 적으면 이 학과의 작년 값으로 읽는다.
+   */
+  if (s && s.alias && (s.alias.toUniv || s.alias.toDept)) {
+    const to = [s.alias.toUniv || app.univ, s.alias.toDept || app.dept].join(' ');
+    const p = el('p', 'note');
+    p.appendChild(document.createTextNode('아래 작년 숫자는 '));
+    p.appendChild(el('b', null, `「${to}」의 것입니다.`));
+    p.appendChild(document.createTextNode(
+      ' 이름이 달라 안 붙던 것을 점검 화면에서 손으로 이어 둔 것입니다'
+      + `${s.alias.note ? ` (${s.alias.note})` : ''}.`
+      + ' 같은 학과가 맞는지 한 번 봐 주세요.'));
+    body.appendChild(p);
+  }
+
   if (s && s.linked && s.kind === 'univ' && s.typeFit === 'none') {
     /*
      * 학과 입결은 있는데 지원한 전형이 어느 줄인지 못 가렸다.

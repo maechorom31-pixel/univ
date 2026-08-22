@@ -534,6 +534,8 @@ function figures(app, student) {
  *   수능최저        내신이 닿아도 최저에서 떨어진다
  *   가야 하는 날    면접·실기·논술은 겹치면 하나를 버려야 한다
  *   연결 상태       값이 왜 비었는지 감추지 않는다
+ *   올해 신설       작년 컷이 아예 없는 자리다. 「자료 못 찾음」과는 전혀 다른 말이다
+ *   손으로 이음     다른 학과의 숫자를 보고 있다는 뜻이다
  *
  * 지역·계열·모집시기·50%컷·취업률 같은 것은 여기 두지 않는다. 상세에서 본다.
  */
@@ -601,7 +603,24 @@ function pills(app) {
   } else if (!s.linked) {
     const p = add('작년 자료 없음', 'warn');
     if (s.why) p.title = s.why;
-  } else if (s.typeFit === 'none') {
+  }
+
+  /*
+   * **「올해 신설」을 상세에만 두면 안 된다.** 여섯 칸을 훑는 동안 이 카드만 숫자가
+   * 비어 있는데, 그게 자료를 못 찾은 것인지 작년에 없던 전형인지가 안 보인다.
+   * 상담에서 완전히 다른 말이 나오는 자리다.
+   */
+  if (s.isNew) {
+    const p = add('올해 신설', 'warn');
+    p.title = '작년 모집인원도 경쟁률도 모집요강에 없습니다. 작년 컷으로 가늠할 수 없습니다.';
+  }
+  if (s.alias && (s.alias.toUniv || s.alias.toDept)) {
+    const to = [s.alias.toUniv || app.univ, s.alias.toDept || app.dept].join(' ');
+    const p = add('손으로 이음');
+    p.title = `작년 숫자는 「${to}」의 것입니다. 점검 화면에서 이어 둔 것입니다.`;
+  }
+
+  if (s.typeFit === 'none') {
     // 학과 입결은 있는데 이 전형이 어느 줄인지 못 가렸다. 「자료 없음」과는 다른 말이다.
     const p = add('전형 못 가림', 'warn');
     p.title = '이 학과 입결에 전형이 여럿인데 지원한 전형을 가려내지 못했습니다.'

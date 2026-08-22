@@ -370,7 +370,11 @@ function figures(app) {
       ['70%컷', g2(s.cut)], comp,
     ]);
     // 어느 전형의 컷인지. 이 학과 입결에 전형이 여럿인 경우가 훨씬 흔하다.
-    if (left && s.type) {
+    if (left && s.alias && (s.alias.toUniv || s.alias.toDept)) {
+      // 다른 학과의 숫자다. 안 적으면 내 학과의 작년 값으로 읽는다.
+      const to = [s.alias.toUniv || '', s.alias.toDept || ''].filter(Boolean).join(' ');
+      left.appendChild(el('div', 'fig-note', `${to} 자료`));
+    } else if (left && s.type) {
       const guessed = s.typeFit === 'cat' || s.typeFit === 'only';
       left.appendChild(el('div', 'fig-note', guessed ? `${s.type} (아마도)` : s.type));
     }
@@ -410,6 +414,11 @@ function marks(app) {
   }
   if (s && s.stages > 1) add(`${s.stages}단계`);
   if (app.minReqText) add('수능 최저 있음', 'mark');
+  /*
+   * 올해 처음 뽑는 전형. 학생에게는 이게 제일 헷갈리는 자리다 —
+   * 숫자가 비어 있으면 「자료가 아직 안 왔나 보다」로 읽는다. 작년에 없었다고 말해 준다.
+   */
+  if (s && s.isNew) add('올해 새로 생긴 전형', 'mark');
   /*
    * 학과 입결은 있는데 이 전형이 어느 줄인지 못 가린 경우. 그냥 비워 두면
    * 학생은 「자료가 없구나」로 읽는다. 있는데 못 골랐다는 것과는 다른 말이다.
