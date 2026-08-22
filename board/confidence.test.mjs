@@ -8,7 +8,8 @@
  *   2. 등급 방향을 뒤집지 않는다 — 등급은 작을수록 좋다
  *   3. 들쭉날쭉한 것을 추세라 부르지 않는다
  */
-import { swing, thinness, position, confidence, worthFlagging } from './confidence.js';
+import { swing, thinness, position, confidence, worthFlagging,
+  percentile, predictCut, stance, pctText } from './confidence.js';
 
 let fails = 0;
 const eq = (got, want, label) => {
@@ -151,6 +152,61 @@ eq(confidence({
   rows: [R(2026, 3.0, '교과'), R(2026, 4.4, '종합')], mine: [],
 }, 3.0), null, '지원한 전형을 못 가려냈으면 null — 옆 전형 것을 빌리지 않는다');
 eq(confidence(null, 3.0), null, '요약이 없으면 null');
+
+/* ── 근사로 내는 것 — counsel.html 과 같은 식이어야 한다 ────────── */
+console.log('합격자 분포에서 내 위치');
+{
+  const R2 = (year, g70, g50) => ({ year, g70, g50, type: '교과' });
+  // μ=등급50 에 서면 상위 50%, 등급70 에 서면 상위 70%
+  const rows = [R2(2025, 3.20, 3.00), R2(2026, 3.20, 3.00)];
+  near(percentile(rows, 3.00).pct, 50, '50%컷과 같으면 50%');
+  near(percentile(rows, 3.20).pct, 70, '70%컷과 같으면 70%', 0.5);
+  eq(percentile(rows, 2.50).pct < 50, true, '더 좋은 등급이면 위쪽');
+  eq(percentile(rows, 4.00).pct > 70, true, '더 낮은 등급이면 아래쪽');
+  near(percentile(rows, 3.00).sd, (3.20 - 3.00) / 0.524, 'σ = (70컷−50컷) ÷ 0.524');
+
+  // 두 컷이 붙어 있으면 σ 가 0 으로 가서 위치가 0/100 으로 튄다 — 눌러 둔다
+  const tight = [R2(2026, 3.00, 2.99)];
+  near(percentile(tight, 3.00).sd, 0.18, 'σ 아래 한계 0.18');
+  const wide = [R2(2026, 5.00, 2.00)];
+  near(percentile(wide, 3.00).sd, 1.5, 'σ 위 한계 1.5');
+
+  // 50%컷이 없으면 전체 중앙값으로 때운다. 그렇다고 표시한다.
+  const only70 = [R2(2026, 3.20, null)];
+  eq(percentile(only70, 3.20).weak, true, '50%컷이 없으면 weak');
+  near(percentile(only70, 3.20).sd, 0.38, '그때 σ 는 전체 중앙값 기반 0.38');
+
+  eq(percentile([], 3.0), null, '자료가 없으면 null');
+  eq(percentile(rows, null), null, '내 등급이 없으면 null');
+  eq(percentile([R2(2026, null, null)], 3.0), null, '컷이 없으면 null');
+  // 최근 두 해만
+  eq(percentile([R2(2022, 9.0, 8.9), R2(2025, 3.2, 3.0), R2(2026, 3.2, 3.0)], 3.0).years,
+    [2025, 2026], '오래된 해는 안 본다');
+}
+
+console.log('판정 — 출발점이지 결론이 아니다');
+eq(stance(20).label, '안정', '40% 미만');
+eq(stance(50).label, '적정', '40~75%');
+eq(stance(80).label, '소신', '75~92%');
+eq(stance(95).label, '상향', '92% 이상');
+eq(stance(50, '높음').shaky, true, '변동이 크면 표시한다');
+eq(stance(null), null, '위치를 못 내면 판정도 없다');
+eq(pctText(97), '작년 합격선 밖으로 보입니다', '양 끝은 숫자로 읽히면 안 된다');
+eq(pctText(3), '작년 합격자 가운데 위쪽입니다', '반대쪽도');
+
+console.log('올해 컷 예측 — 점이 아니라 범위');
+{
+  const R2 = (year, g70) => ({ year, g70, g50: null, type: '교과' });
+  eq(predictCut([R2(2026, 3.0)]), null, '한 해로는 다음 해를 말할 수 없다');
+  const p = predictCut([R2(2024, 3.0), R2(2025, 3.1), R2(2026, 3.2)]);
+  eq(p.lo < p.center && p.center < p.hi, true, '범위가 중심을 감싼다');
+  eq(p.vola, '낮음', '거의 안 움직였으면 변동 낮음');
+  eq(predictCut([R2(2024, 2.0), R2(2025, 4.5), R2(2026, 2.2)]).vola, '높음', '들쭉날쭉하면 높음');
+  // 작년에 크게 뛰었으면 절반쯤 되돌린다
+  const jump = predictCut([R2(2024, 3.0), R2(2025, 3.0), R2(2026, 4.2)]);
+  eq(jump.rebound != null, true, '1.2등급 뛰었으면 반동을 본다');
+  eq(jump.center < 4.2, true, '되돌리는 쪽으로 잡는다');
+}
 
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');
 process.exit(fails ? 1 : 0);

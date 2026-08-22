@@ -190,6 +190,125 @@ export function position(mine, cut50, cut70) {
   };
 }
 
+/* ── 합격자 분포에서 내 위치 · 올해 컷 예측 ───────────────────────
+ *
+ * **여기서부터는 근사다.** 위(움직인 폭·모집인원·두 컷 사이 위치)는 자료를 그대로
+ * 센 값이고, 아래는 두 분위점으로 분포를 **가정해서** 낸 값이다. 갈라 두는 까닭이다.
+ *
+ * 이 방법은 이 저장소의 `counsel.html`(내신 중심 진학상담 보드)이 47,128건으로
+ * 타당성을 재고 쓰고 있던 것이다. 두 도구가 같은 자료를 두고 다른 말을 하면
+ * 안 되므로 식·문턱·한계 문구를 **그대로** 가져온다. 한쪽을 고치면 다른 쪽도 고친다.
+ *
+ * 말을 조심해서 쓴다 — 이것은 **작년 합격자들 사이에서 내가 어디쯤인가**이지
+ * 「올해 붙을 확률」이 아니다. 화면에도 그렇게 적는다.
+ */
+
+/** 표준정규 누적분포. Abramowitz–Stegun 7.1.26 근사(오차 1.5e-7). */
+function erf(x) {
+  const sign = x < 0 ? -1 : 1;
+  const z = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * z);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t
+    - 0.284496736) * t + 0.254829592) * t) * Math.exp(-z * z);
+  return sign * y;
+}
+const phi = (z) => 0.5 * (1 + erf(z / Math.SQRT2));
+
+// 등급70−등급50 차이의 중앙값 0.20 ÷ 0.524 (47,128건). 50%컷이 없을 때만 쓴다.
+const GLOBAL_SIGMA = 0.38;
+const Z70 = 0.524;               // Φ⁻¹(0.70)
+
+/**
+ * 작년 합격자 분포에서 내 위치.
+ *
+ * 등급50(중앙값)과 등급70(상위 70% 지점)은 합격자 분포의 두 분위점이다.
+ * 정규근사로 μ = 등급50, σ = (등급70 − 등급50) ÷ 0.524 를 잡고 Φ((내 등급 − μ)/σ).
+ *
+ * 최근 **두 해**를 평균 내서 쓴다. 한 해만 보면 그해 사정에 휘둘리고, 다 보면
+ * 오래된 해가 지금을 흐린다.
+ *
+ * σ 에 상·하한(0.18~1.5)을 두는 까닭 — 두 컷이 거의 붙어 있거나 이상하게 벌어진
+ * 학과에서 σ 가 0 에 가까워지거나 터무니없이 커진다. 그러면 위치가 0% 나 100% 로
+ * 튄다. 실제 값이 아니라 근사의 부작용이라 눌러 둔다.
+ *
+ * @return {?{pct, mu, sd, years, weak}}  weak=true 면 50%컷이 없어 전체 중앙값으로 때운 것
+ */
+export function percentile(rows, mine) {
+  if (mine == null || !rows || !rows.length) return null;
+  const have = rows.filter((r) => r.g70 != null).slice(-2);
+  if (!have.length) return null;
+  const cut70 = have.reduce((a, r) => a + r.g70, 0) / have.length;
+  const with50 = have.filter((r) => r.g50 != null);
+  let mu;
+  let sd;
+  let weak = false;
+  if (with50.length) {
+    const cut50 = with50.reduce((a, r) => a + r.g50, 0) / with50.length;
+    mu = cut50;
+    sd = Math.min(Math.max((cut70 - cut50) / Z70, 0.18), 1.5);
+  } else {
+    sd = GLOBAL_SIGMA;
+    mu = cut70 - Z70 * sd;
+    weak = true;
+  }
+  return {
+    pct: phi((mine - mu) / sd) * 100,
+    mu, sd, weak,
+    years: have.map((r) => r.year),
+  };
+}
+
+/**
+ * 올해 컷은 어디쯤일까 — **점이 아니라 범위로** 낸다.
+ *
+ * 직전 값과 가중평균(최근에 무게를 더 준다)을 절반씩 섞고, 작년에 0.5등급 넘게
+ * 크게 움직였으면 그 절반만큼 되돌린다(격년 효과, 상관 −0.38 · 12,995건).
+ * 범위는 표준편차의 1.6배 — 백테스트에서 68% 를 덮도록 맞춘 값이다.
+ *
+ * 두 해가 안 되면 내지 않는다. 점 하나로 다음 해를 말할 수는 없다.
+ */
+const REBOUND = -0.38;
+export function predictCut(rows) {
+  const cuts = (rows || []).filter((r) => r.g70 != null).map((r) => r.g70);
+  if (cuts.length < 2) return null;
+  const w = cuts.map((_, i) => 1 + 0.45 * i);
+  const wsum = w.reduce((a, b) => a + b, 0);
+  const wmean = cuts.reduce((a, v, i) => a + v * w[i], 0) / wsum;
+  const last = cuts[cuts.length - 1];
+  const jump = last - cuts[cuts.length - 2];
+  const adj = Math.abs(jump) >= 0.5 ? 0.5 * REBOUND * jump : 0;
+  const center = 0.5 * last + 0.5 * wmean + adj;
+  const m = mean(cuts);
+  const sigma = Math.sqrt(cuts.reduce((a, b) => a + (b - m) ** 2, 0) / cuts.length);
+  const band = 1.6 * Math.max(sigma, 0.2);
+  return {
+    center, lo: center - band, hi: center + band, sigma, n: cuts.length,
+    vola: sigma < 0.15 ? '낮음' : (sigma <= 0.40 ? '보통' : '높음'),
+    rebound: adj ? { jump, adj } : null,
+  };
+}
+
+/**
+ * 판정 — 안정 · 적정 · 소신 · 상향.
+ *
+ * **출발점이지 결론이 아니다.** 화면에도 그렇게 적는다.
+ * 문턱은 counsel.html 과 같다. 한쪽을 고치면 다른 쪽도 고친다.
+ */
+export function stance(pct, vola) {
+  if (pct == null) return null;
+  const label = pct < 40 ? '안정' : pct < 75 ? '적정' : pct < 92 ? '소신' : '상향';
+  const key = pct < 40 ? 'safe' : pct < 75 ? 'fit' : pct < 92 ? 'reach' : 'high';
+  return { key, label, shaky: vola === '높음' };
+}
+
+/** 위치를 한 줄로. 양 끝은 숫자를 그대로 읽으면 안 되는 자리라 말로 바꾼다. */
+export function pctText(pct) {
+  if (pct == null) return '';
+  if (pct >= 95) return '작년 합격선 밖으로 보입니다';
+  if (pct <= 5) return '작년 합격자 가운데 위쪽입니다';
+  return `작년 합격자 중 상위 ${Math.round(Math.min(99, Math.max(1, pct)))}% 언저리`;
+}
+
 /* ── 묶어서 한 줄 ───────────────────────────────────────────────── */
 
 const LEVEL = {
@@ -227,6 +346,15 @@ export function confidence(s, mine, norm) {
   const sw = swing(mineRows, null, norm);
   const th = thinness(s.quota != null ? s.quota : s.quotaNow);
   const spot = position(mine, s.cut50, s.cut);
+
+  /*
+   * 여기부터는 **근사**다. 위(움직인 폭·모집인원·두 컷 사이 위치)는 자료를 그대로
+   * 센 값이고, 아래는 두 분위점으로 분포를 가정해서 낸 값이다. 담는 자리를 갈라 둔다 —
+   * 화면에서도 갈라 놓아야 무엇이 잰 값이고 무엇이 어림인지 구별된다.
+   */
+  const est = percentile(mineRows, mine);
+  const pred = predictCut(mineRows);
+  const call = est ? stance(est.pct, pred && pred.vola) : null;
 
   const why = [];
   let rank = 3;                                   // solid 에서 깎아 내려간다
@@ -293,5 +421,9 @@ export function confidence(s, mine, norm) {
     ? '알 수 없음'
     : LEVEL[level].label;
 
-  return { level, label, evidence, lack, why, trend, swing: sw, thin: th, spot };
+  return {
+    level, label, evidence, lack, why, trend, swing: sw, thin: th, spot,
+    // 근사로 낸 것 — 화면에서 위의 값들과 갈라 놓는다
+    est, pred, call,
+  };
 }

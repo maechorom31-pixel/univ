@@ -645,8 +645,37 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
   word-break: keep-all;
 }
 .spot .lv { font-weight: 600; }
+/* 어느 해를 보고 한 말인지. 아래 「어림해 보면」과 잣대가 달라서 꼭 붙여 둔다. */
+.spot .tr { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); font-weight: 400; }
 .spot-in { border-color: var(--amber); background: var(--amber-face); }
 .spot-out { border-style: dashed; color: var(--muted); }
+
+/* 어림해 본 것 — 잰 값과 갈라 놓는다. 왼쪽 선 하나로 「여기부터는 추정」을 표시한다. */
+.est {
+  border-left: 3px solid var(--line); padding-left: var(--s3);
+  margin-top: var(--s4);
+}
+.est:empty { display: none; }
+.est h4 {
+  font-size: var(--t-xs); color: var(--muted); font-weight: 600;
+  margin-bottom: var(--s2);
+}
+.est-head {
+  display: flex; flex-wrap: wrap; align-items: center; margin-bottom: var(--s2);
+}
+.est-head .lv { font-size: var(--t-sm); font-weight: 600; word-break: keep-all; }
+.est-head > * + * { margin-left: var(--s2); }
+.call {
+  font-size: 11px; font-weight: 600; border-radius: 4px;
+  padding: 2px 7px; border: 1px solid var(--line); white-space: nowrap;
+}
+/* 색을 새로 들이지 않는다 — 앰버 한 색의 세기로만 가른다.
+   안정에 초록을 칠하면 「붙는다」로 읽힌다. 그건 이 값이 하는 말이 아니다. */
+.call-safe { color: var(--muted); }
+.call-fit { border-color: var(--amber); color: var(--amber-ink); }
+.call-reach { border-color: var(--amber); color: var(--amber-ink); background: var(--amber-face); }
+.call-high { border-color: var(--err); color: var(--err); background: var(--err-face); }
+.call-shaky { color: var(--muted); border-style: dashed; }
 
 .sure-why {
   list-style: none; margin: var(--s2) 0 0; padding: 0;

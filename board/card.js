@@ -14,7 +14,7 @@
  */
 import * as store from './store.js';
 import { realRate, normType, typeGroups } from './match.js';
-import { confidence } from './confidence.js';
+import { confidence, pctText } from './confidence.js';
 
 export { realRate };
 
@@ -528,6 +528,60 @@ function trend(s) {
 }
 
 /**
+ * 어림해 본 것 — **잰 값과 갈라 둔다.**
+ *
+ * 위쪽(견준 해·움직인 폭·모집인원·두 컷 사이 위치)은 자료를 그대로 센 값이고,
+ * 여기는 두 분위점으로 분포를 **가정해서** 낸 값이다. 같은 표에 섞어 놓으면 어디까지가
+ * 자료이고 어디부터가 어림인지 구별이 안 된다. 상담에서 그 차이가 제일 중요하다.
+ *
+ * 「합격 확률」이라 적지 않는다. 이건 **작년 합격자들 사이에서 내가 어디쯤인가**다.
+ * 올해 붙을 확률과는 다른 값이고, 그걸 낼 자료는 이 도구에 없다.
+ */
+function estimate(c) {
+  const wrap = el('div', 'est');
+  if (!c.est) return wrap;
+
+  wrap.appendChild(el('h4', '', '어림해 보면'));
+
+  const head = el('p', 'est-head');
+  if (c.call) {
+    head.appendChild(el('span', `call call-${c.call.key}`, c.call.label));
+    if (c.call.shaky) head.appendChild(el('span', 'call call-shaky', '변동 큼'));
+  }
+  head.appendChild(el('span', 'lv', pctText(c.est.pct)));
+  wrap.appendChild(head);
+  // 위의 「내 위치」와 잣대가 다르다. 다르다는 것을 적어 둔다.
+  wrap.appendChild(el('p', 'hint',
+    `${c.est.years.join(' · ')} 두 해를 평균 내서 봤습니다.`
+    + ' 맨 위 「내 위치」는 가장 최근 한 해만 본 값이라 서로 다를 수 있습니다.'));
+
+  const list = [];
+  list.push(['작년 합격자 중 내 자리', `상위 ${Math.round(c.est.pct)}%`,
+    `${c.est.years.join(' · ')} 두 해 평균 · 정규근사`]);
+  if (c.pred) {
+    list.push(['올해 컷은 이쯤일까', `${g2(c.pred.lo)} ~ ${g2(c.pred.hi)}`,
+      `가운데 ${g2(c.pred.center)} · 변동 ${c.pred.vola} · ${c.pred.n}개 해`]);
+    if (c.pred.rebound) {
+      list.push(['되돌림을 봤습니다',
+        `작년에 ${Math.abs(c.pred.rebound.jump).toFixed(2)}등급 움직였습니다`,
+        '크게 뛴 다음 해는 절반쯤 되돌아옵니다']);
+    }
+  }
+  wrap.appendChild(rowsBare(list));
+
+  const note = el('p', 'hint');
+  note.appendChild(el('b', null, '이건 출발점이지 결론이 아닙니다. '));
+  note.appendChild(document.createTextNode(
+    '등급50(가운데)과 등급70(상위 70% 지점) 두 점으로 합격자 분포를 정규분포라 치고'
+    + ' 잰 값입니다. ① 최종등록자 기준이라 추가합격 막차는 더 낮습니다'
+    + ' ② 정규분포는 어디까지나 근사라 적게 뽑는 학과는 오차가 큽니다'
+    + ' ③ 대학마다 반영교과가 달라 그 차이는 안 들어 있습니다.'
+    + (c.est.weak ? ' 이 학과는 50%컷이 없어 전체 중앙값으로 때웠습니다 — 더 성깁니다.' : '')));
+  wrap.appendChild(note);
+  return wrap;
+}
+
+/**
  * 이 컷을 얼마나 믿을 수 있나.
  *
  * **p값이나 신뢰구간은 적지 않는다.** 입결은 대학이 공개한 요약값(70%컷 하나,
@@ -559,8 +613,19 @@ function howSure(s, mine) {
     const where = c.spot.where === 'above' ? 'in' : c.spot.where === 'below' ? 'out' : 'mid';
     const p = el('p', `spot spot-${where}`);
     p.appendChild(el('span', 'lv', c.spot.text));
+    /*
+     * **어느 해를 보고 한 말인지 적는다.** 이건 가장 최근 한 해의 두 컷만 보고
+     * 잰 값이고, 아래 「어림해 보면」은 최근 두 해를 평균 낸 값이다. 그래서 한쪽이
+     * 「70%컷 밖」인데 다른 쪽이 「상위 61%」로 나오는 일이 생긴다. 어긋난 게 아니라
+     * 잣대가 다른 것인데, 안 적어 두면 둘 다 못 믿게 된다.
+     */
+    if (c.swing && c.swing.years.length) {
+      p.appendChild(el('span', 'tr', `${c.swing.years[c.swing.years.length - 1]} 한 해만 보고 잰 값`));
+    }
     wrap.appendChild(p);
   }
+
+
 
   const tone = c.evidence === 'one-year' && c.level !== 'thin' ? 'unknown' : c.level;
   const badge = el('p', `sure sure-${tone}`);
@@ -596,6 +661,10 @@ function howSure(s, mine) {
     }
     wrap.appendChild(ul);
   }
+
+  // **근거를 먼저, 어림을 나중에.** 판정을 먼저 보면 그 아래 숫자를 판정의
+  // 뒷받침으로 읽게 된다. 순서를 뒤집으면 숫자를 보고 판정을 의심할 수 있다.
+  wrap.appendChild(estimate(c));
 
   wrap.appendChild(el('p', 'hint',
     '유의확률(p값)이나 신뢰구간은 내지 않습니다. 입결은 대학이 공개한 요약값이라'
