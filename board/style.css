@@ -516,6 +516,30 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
   table.ledger col { width: auto !important; }
 }
 
+/* ── 얼마나 믿을 수 있나 ──────────────────────────────────────── */
+
+.sure {
+  display: grid; gap: var(--s1);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: var(--s2) var(--s3); margin-bottom: var(--s2);
+  font-size: var(--t-xs); line-height: 1.6;
+}
+.sure .lv { font-weight: 600; }
+.sure .tr { color: var(--muted); }
+/* 흔들리는 쪽만 표시한다. 안정적인 것까지 칠하면 무엇이 급한지 안 보인다. */
+.sure-thin { border-color: var(--err); background: var(--err-face); }
+.sure-thin .lv { color: var(--err); }
+.sure-wobbly { border-color: var(--amber); background: var(--amber-face); }
+.sure-unknown { border-style: dashed; }
+.sure-unknown .lv { color: var(--muted); }
+
+.sure-why {
+  list-style: none; margin: var(--s2) 0 0; padding: 0;
+  font-size: var(--t-xs); color: var(--text-2); line-height: 1.7;
+}
+.sure-why li { padding-left: 12px; position: relative; word-break: keep-all; }
+.sure-why li::before { content: '·'; position: absolute; left: 3px; color: var(--muted); }
+
 /* ── 점검 (못 붙인 학과 잇기) ─────────────────────────────────── */
 
 .miss + .miss { margin-top: var(--s4); }

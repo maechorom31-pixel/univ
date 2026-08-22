@@ -14,6 +14,7 @@
  */
 import * as store from './store.js';
 import { realRate } from './match.js';
+import { confidence } from './confidence.js';
 
 export { realRate };
 
@@ -214,6 +215,9 @@ export function detailPanel(app, student, onClose) {
   /* 9. 연도별 추이 */
   body.appendChild(trend(s));
 
+  /* 9.5 이 숫자를 얼마나 믿을 수 있나 */
+  body.appendChild(howSure(s, mine.grade));
+
   /* 10. 결과 — 발표가 나기 시작하면 채워진다 */
   const r = app.result || {};
   if (r.final || r.stage1 || r.waitNo || r.enrolled) {
@@ -404,6 +408,63 @@ function trend(s) {
     wrap.appendChild(el('p', 'hint',
       '같은 학과의 여러 전형이 함께 나옵니다. 내가 넣은 전형과 이름이 다를 수 있습니다.'));
   }
+  return wrap;
+}
+
+/**
+ * 이 컷을 얼마나 믿을 수 있나.
+ *
+ * **p값이나 신뢰구간은 적지 않는다.** 입결은 대학이 공개한 요약값(70%컷 하나,
+ * 50%컷 하나)이라 합격자 개개인의 점수가 없다. 개별 값이 없으면 분산을 모르고,
+ * 분산을 모르면 검정도 신뢰구간도 만들 수 없다. 그 자리에 숫자를 놓으면 계산이
+ * 아니라 지어내기다.
+ *
+ * 대신 정말 셀 수 있는 것을 적는다 — 해마다 얼마나 움직였나, 몇 명을 뽑나,
+ * 어느 쪽으로 가고 있나, 내 점수가 어디쯤인가.
+ */
+function howSure(s, mine) {
+  const wrap = el('div', 'detail-block');
+  const c = confidence(s, mine);
+  if (!c) return wrap;
+
+  const h = el('h3', '', '이 컷을 얼마나 믿을 수 있나');
+  wrap.appendChild(h);
+
+  const tone = c.evidence === 'one-year' && c.level !== 'thin' ? 'unknown' : c.level;
+  const badge = el('p', `sure sure-${tone}`);
+  badge.appendChild(el('span', 'lv', c.label));
+  if (c.lack) badge.appendChild(el('span', 'tr', c.lack));
+  if (c.trend) badge.appendChild(el('span', 'tr', c.trend));
+  wrap.appendChild(badge);
+
+  const sw = c.swing;
+  const rows2 = [];
+  if (sw) {
+    rows2.push(['견준 해', `${sw.years.join(' · ')} (${sw.n}개)`, '입결']);
+    rows2.push(['70%컷 범위', `${g2(sw.lo)} ~ ${g2(sw.hi)}`,
+      `가장 최근 ${g2(sw.latest)}`]);
+    if (sw.span != null) rows2.push(['움직인 폭', `${sw.span.toFixed(2)}등급`, '']);
+    if (sw.sd != null) rows2.push(['표준편차', sw.sd.toFixed(2), `${sw.n}개 표본`]);
+  }
+  if (c.thin && c.thin.quota != null) {
+    rows2.push(['모집 인원', `${c.thin.quota}명`, `70%컷은 대략 ${c.thin.at}번째 사람`]);
+  }
+  if (c.spot) rows2.push(['내 위치', c.spot.text, '50%컷과 70%컷 사이를 나눠 본 값']);
+  wrap.appendChild(rowsBare(rows2));
+
+  if (c.why.length) {
+    const ul = el('ul', 'sure-why');
+    for (const w of c.why) {
+      const li = document.createElement('li');
+      li.textContent = w;
+      ul.appendChild(li);
+    }
+    wrap.appendChild(ul);
+  }
+
+  wrap.appendChild(el('p', 'hint',
+    '유의확률(p값)이나 신뢰구간은 내지 않습니다. 입결은 대학이 공개한 요약값이라'
+    + ' 합격자 한 사람 한 사람의 점수가 없고, 그것 없이는 계산할 수 없는 값입니다.'));
   return wrap;
 }
 

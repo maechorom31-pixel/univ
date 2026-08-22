@@ -17,6 +17,7 @@
  */
 import * as store from './store.js';
 import { detailPanel } from './card.js';
+import { confidence, worthFlagging } from './confidence.js';
 
 const RANKS = [1, 2, 3, 4, 5, 6];
 const SLOT_LABEL = { rank: '순위', pool: '후보', archive: '보관', tray: '전문대' };
@@ -394,6 +395,14 @@ function pills(app) {
   if (s.kind === 'college' && s.linked) {
     if (s.employ != null) add(`취업 ${Math.round(s.employ)}%`);
     if (s.transfer) add('연계편입', 'mark');
+  }
+
+  // 컷이 흔들리는 전형은 짚어 준다. 「작년 3.58」만 보고 판단하면 안 되는 자리다.
+  // 안정적인 것에는 아무 표시도 하지 않는다 — 다 칠하면 무엇이 급한지 안 보인다.
+  const sure = confidence(s, (app.myScore || {}).grade);
+  if (worthFlagging(sure)) {
+    const p = add(sure.label, sure.level === 'thin' ? 'warn' : '');
+    p.title = sure.why.join('\n');
   }
 
   // 값이 왜 비었는지 감추지 않는다
