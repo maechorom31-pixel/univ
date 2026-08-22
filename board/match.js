@@ -517,6 +517,31 @@ export function link(app, src) {
  */
 const RENAME_SIM = 0.5;
 
+/**
+ * **이름 끝에 번호가 붙은 것은 이름이 바뀐 게 아니라 쪼개진 것이다.**
+ *
+ *     종합(학생부종합) → 종합(학생부종합Ⅰ)      신라대
+ *     교과(일반전형)   → 교과(일반전형Ⅰ)        동양대
+ *     종합(미래인재)   → 종합(미래인재1)        강원대
+ *     교과(지역학생)   → 교과(지역1)           광주대
+ *
+ * 1:1 조건만으로는 안 걸린다. 쪼개진 가지 가운데 하나만 그 학과에서 이어지는 해에
+ * 나타나면 1:1 로 보이기 때문이다. 그런데 이어 붙이면 컷이 3~5등급씩 벌어진다 —
+ * 다른 전형이니 당연하다.
+ *
+ * 재 봤다. 이 규칙 하나로 이어 붙인 짝이 991 → 767 로 줄고, 경계에서 컷이 기준선
+ * 95%(1.34등급)를 넘는 비율이 **9% → 6%** 가 된다. 같은 전형의 이웃한 해에서
+ * 기대되는 5% 와 구별되지 않는 수준이다.
+ *
+ * 「면접·서류·교과」 꼴 표시가 다르면 막는 규칙도 재 봤는데 오히려 나빠졌다(8%).
+ * 좋은 연결을 더 많이 잃는다. 그래서 **번호만** 본다.
+ */
+function isSplit(a, b) {
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  if (!long.startsWith(short) || long === short) return false;
+  return /^[0-9I]+$/.test(long.slice(short.length));
+}
+
 export function typeGroups(rows) {
   const g = new Map();
   for (const r of rows || []) {
@@ -543,6 +568,7 @@ export function typeGroups(rows) {
         const B = info.get(b);
         if (A.cat !== B.cat || A.hi + 1 !== B.lo) continue;
         if (similarity(a, b) < RENAME_SIM) continue;
+        if (isSplit(a, b)) continue;
         pairs.push([a, b]);
       }
     }
@@ -1024,7 +1050,59 @@ export function indexIpgyeol(doc) {
     if (!byKey.has(k)) byKey.set(k, []);
     byKey.get(k).push(row);
   }
+  for (const rows of byKey.values()) dropCatTwins(rows);
   return { index: buildUnivIndex(names), byKey, univNames: [...names] };
+}
+
+/**
+ * **카테고리만 다른 쌍둥이 행을 지운다.**
+ *
+ * 원본에 값이 전부 같은데 카테고리 칸만 다른 행이 짝을 지어 들어 있다 —
+ * 꽃동네대 간호 2026 「종합(가톨릭지도자)」이 `종합` 으로도 `교과` 로도 한 줄씩.
+ * 75,494행 중 36쌍이다.
+ *
+ * 숫자가 같으니 어느 쪽을 골라도 화면 값은 같다. 문제는 **연결**이다.
+ * `pickIpgyeol` 의 카테고리 경로가 그 묶음을 교과로도 종합으로도 인정해 버려서,
+ * 교과로 지원한 학생에게 종합 전형의 줄이 붙는다. 값이 같아 아무도 못 알아챈다.
+ *
+ * 전형 이름이 진실을 말한다 — 「종합(…)」이면 종합이고 「교과(…)」면 교과다.
+ * 이름이 말해 주지 않으면 손대지 않는다(먼저 온 줄을 남긴다).
+ */
+const CAT_PREFIX = [[/^논술/, '논술'], [/^실기|^실적|^특기/, '실기'],
+  [/^교과|^학생부교과/, '교과'], [/^종합|^학생부종합/, '종합']];
+
+function catFromName(type) {
+  const t = String(type || '').trim();
+  for (const [re, cat] of CAT_PREFIX) if (re.test(t)) return cat;
+  return null;
+}
+
+function dropCatTwins(rows) {
+  const seen = new Map();
+  const drop = new Set();
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i];
+    /*
+     * **학과 원문 이름을 서명에 넣어야 한다.** 안 넣으면 `normDept` 가 한 키로 합쳐
+     * 놓은 서로 다른 학과까지 쌍둥이로 본다 — 전남대 `국제학부(일본학전공)` 과
+     * `국제학부(중국학전공)` 은 둘 다 키가 `국제` 다. 그걸 지우면 없는 학과가 된다.
+     * 공백만 지운다. 이화여대 `스크랜튼학부 자유전공` 과 `스크랜튼학부자유전공` 은
+     * 같은 학과를 두 번 적은 것이라 한 줄로 줄여야 한다.
+     */
+    const sig = [String(r.dept || '').replace(/\s/g, ''),
+      r.year, r.type, r.quota, r.rate, r.g50, r.g70, r.applied].join('\u0001');
+    if (!seen.has(sig)) { seen.set(sig, i); continue; }
+    const j = seen.get(sig);
+    if (rows[j].cat === r.cat) { drop.add(i); continue; }   // 완전한 중복
+    const truth = catFromName(r.type);
+    if (!truth) { drop.add(i); continue; }                  // 못 가리면 먼저 것을 남긴다
+    drop.add(rows[j].cat === truth ? i : j);
+    if (rows[j].cat !== truth) seen.set(sig, i);
+  }
+  if (!drop.size) return;
+  const kept = rows.filter((_, i) => !drop.has(i));
+  rows.length = 0;
+  rows.push(...kept);
 }
 
 /**
