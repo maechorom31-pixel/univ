@@ -38,6 +38,23 @@ const tidy = (s) => String(s || '').replace(/ (?=[^ ]{1,4}$)/, ' ');
 const g2 = (n) => (n == null || n === '' ? '—' : Number(n).toFixed(2));
 const p1 = (n) => (n == null ? '—' : `${Number(n).toFixed(1)}%`);
 const shortUniv = (s) => String(s || '').replace(/\s*[-–—]\s*.*$/, '');
+/**
+ * 줄이 갈려야 한다면 괄호 앞에서 갈리게 한다.
+ *
+ * 칸이 좁아 두 줄이 되는 것 자체는 어쩔 수 없지만, 「한국외국어대 / 대학교(서울)」
+ * 처럼 낱말 한가운데서 갈리면 대학 이름으로 안 읽힌다. 폭이 없는 공백을 괄호
+ * 앞에 끼워 그 자리를 먼저 쓰게 한다.
+ */
+const brk = (s) => String(s || '').replace(/(?=[（(])/g, '\u200B');
+
+/** 문서에 찍는 날짜는 뽑은 날이다. 결재 문서라 언제 기준인지가 곧 근거다. */
+function today() {
+  const d = new Date();
+  return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate(),
+    dow: ['일', '월', '화', '수', '목', '금', '토'][d.getDay()] };
+}
+const stampDot = () => { const t = today(); return `${t.y}. ${t.m}. ${t.d}.`; };
+const stampFull = () => { const t = today(); return `${t.y}.${String(t.m).padStart(2, '0')}.${String(t.d).padStart(2, '0')}.(${t.dow})`; };
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 /** 2026-09-04 → 9/4(금). 대장은 종이라 자리를 아껴야 한다. */
@@ -94,13 +111,14 @@ function render() {
 
   main.appendChild(chooser());
   if (notice) main.appendChild(el('p', 'note', notice));
-  main.appendChild(view === 'ledger' ? ledger() : view === 'final' ? finalReport() : report());
+  const VIEW = { ledger, report, status, final: finalReport };
+  main.appendChild((VIEW[view] || ledger)());
 }
 
 function chooser() {
   const box = el('div', 'tabs');
   for (const [key, label] of [['ledger', '진학 대장'], ['report', '지원 결과 보고서'],
-    ['final', '최종 결과 보고서']]) {
+    ['status', '합격자 발표 현황'], ['final', '최종 결과 보고서']]) {
     const b = el('button', 'btn', label);
     b.type = 'button';
     b.setAttribute('aria-pressed', String(view === key));
@@ -196,14 +214,14 @@ const LEDGER_LINES = ['univ', 'dept', 'type', 'result'];
 
 function ledgerCell(app, line) {
   if (!app) return '';
-  if (line === 'univ') return shortUniv(app.univ);
+  if (line === 'univ') return brk(shortUniv(app.univ));
   if (line === 'dept') {
     // 예년 서식은 학과 뒤에 괄호로 모집인원을 적는다. 원문에 괄호가 이미
     // 있으면(정원 외를 뜻한다) 그대로 두고, 숫자만 있으면 괄호를 씌운다.
     const raw = String(app.quotaText || '').trim();
     const q = raw ? (/^\(.*\)$/.test(raw) ? raw : `(${raw})`)
       : (app.quota != null ? `(${app.quota})` : '');
-    return `${app.dept || ''}${q}`;
+    return brk(`${app.dept || ''}${q}`);
   }
   if (line === 'type') return app.typeSub || app.typeName || '';
   return resultText(store.resultOf(app));
@@ -301,6 +319,7 @@ function ledgerSheet(cls, students) {
   const page = el('section', 'sheet sheet-land');
   page.appendChild(el('h2', 'sheet-title',
     `${YEAR()}학년도 대학 진학 대장(수시) ${gradeOfClass(students)}-${cls}`));
+  page.appendChild(el('p', 'sheet-stamp', `${stampDot()} 기준`));
 
   const tw = el('div', 'tw');
   const table = document.createElement('table');
@@ -386,8 +405,8 @@ function ledgerBlock(student) {
         const enr = enrolledOf(student.hak);
         const reg = el('td', 'fix reg');
         if (enr) {
-          reg.appendChild(el('div', 'u', enr.univ));
-          reg.appendChild(el('div', 'd', tidy(enr.dept)));
+          reg.appendChild(el('div', 'u', brk(enr.univ)));
+          reg.appendChild(el('div', 'd', brk(tidy(enr.dept))));
         }
         reg.rowSpan = span;
         tr.appendChild(reg);
@@ -711,7 +730,7 @@ function report() {
 
   const sheet = el('section', 'sheet sheet-doc');
   sheet.appendChild(el('h1', 'doc-title', `${YEAR()}학년도 대입 수시 전형 지원 결과`));
-  sheet.appendChild(el('p', 'doc-date', `${YEAR() - 1}. 9.`));
+  sheet.appendChild(el('p', 'doc-date', stampDot()));
 
   const thisYear = {
     students: new Set(rows.map((x) => x.student.hak)).size,
@@ -756,12 +775,13 @@ function report() {
 /** 2부 명단. 예년 서식의 칸 이름을 그대로 쓴다. */
 function detailTable(list) {
   const cols = ['연번', '학번', '이름', '대학 및 모집단위', '전형 유형',
-    '모집 인원', '경쟁률', '환산 성적', '모집 인원', '경쟁률', '70%컷'];
+    '모집', '경쟁률', '환산', '모집', '경쟁률', '70%컷'];
   const sorted = list.slice().sort((a, b) =>
     String(a.student.hak).localeCompare(String(b.student.hak)));
   const tw = el('div', 'tw');
   const table = document.createElement('table');
   table.className = 'gov';
+  widths(table, ['4%', '6%', '7%', '22%', '19%', '6%', '7%', '7%', '7%', '7%', '8%']);
 
   const thead = document.createElement('thead');
   const r1 = document.createElement('tr');
@@ -788,8 +808,8 @@ function detailTable(list) {
       ['num', i + 1],
       ['num', student.hak],
       ['nm', tidy(student.name)],
-      [null, `${shortUniv(app.univ)} ${app.dept || ''}`.trim()],
-      [null, `${typeLabel(app)} ${app.typeSub || app.typeName || ''}`.trim()],
+      [null, brk(`${shortUniv(app.univ)} ${app.dept || ''}`.trim())],
+      [null, brk(`${typeLabel(app)} ${app.typeSub || app.typeName || ''}`.trim())],
       ['num', app.quota ?? ''],
       ['num', sm.real && sm.real.rate != null ? Number(sm.real.rate).toFixed(2) : ''],
       ['num', mine.grade != null ? Number(mine.grade).toFixed(2) : ''],
@@ -889,6 +909,159 @@ function analysisBlocks(r) {
     )));
   }
   return out;
+}
+
+/* ── 합격자 발표 현황 ────────────────────────────────────────────
+ *
+ * 발표가 한창일 때 그날그날 뽑는 문서다. 최종 결과 보고서는 다 끝난 뒤에
+ * 쓰지만 이건 진행 중의 스냅샷이라, 1단계 결과와 최초 결과를 나란히 놓고
+ * 아직 안 끝난 것은 「면접 예정 11.28.」 처럼 다음 일정을 적는다.
+ * 대학 단위로 끊어 1) 2) 3) 으로 번호를 매긴다.
+ */
+
+/** 아직 결과가 안 나온 지원의 다음 일정. 면접·실기·논술 중 먼저 오는 것. */
+function nextStep(app) {
+  for (const kind of ['면접', '실기', '논술']) {
+    const d = store.dateOf(app, kind);
+    if (!d || !d.from) continue;
+    const [, m, day] = String(d.from).split('-');
+    if (m && day) return `${kind} 예정 ${Number(m)}.${Number(day)}.`;
+  }
+  return '';
+}
+
+/** 이 지원이 발표 현황에 실릴 만한가 — 결과나 일정 중 하나라도 있어야 한다. */
+function announced(app) {
+  const r = store.resultOf(app) || {};
+  return !!(r.stage1 || r.final || r.waitNo || r.enrolled || nextStep(app));
+}
+
+/** 최초 결과 칸. 발표 전이면 다음 일정을 대신 적는다. */
+function statusText(app) {
+  const r = store.resultOf(app) || {};
+  const bits = [];
+  if (r.final) bits.push(String(r.final));
+  if (r.waitNo) bits.push(`예비 ${r.waitNo}`);
+  if (r.enrolled) bits.push(String(r.enrolled));
+  if (bits.length) return bits.join(' · ');
+  return nextStep(app);
+}
+
+function statusTable(list) {
+  const sorted = list.slice().sort((a, b) =>
+    String(a.student.hak).localeCompare(String(b.student.hak)));
+  const tw = el('div', 'tw');
+  const table = document.createElement('table');
+  table.className = 'gov';
+  widths(table, ['3.5%', '5.5%', '6.5%', '16%', '18%', '5%', '6.5%', '6%',
+    '5.5%', '11.5%', '5%', '6%', '5.5%']);
+
+  const thead = document.createElement('thead');
+  const r1 = document.createElement('tr');
+  // 칸이 좁아 머리글을 줄인다. 「모집 인원」을 그대로 두면 옆 칸을 덮는다.
+  ['연번', '학번', '이름', '모집단위', '전형 유형', '모집', '경쟁률',
+    '환산', '1단계', '최초 결과'].forEach((c) => {
+    const th = el('th', null, c);
+    th.rowSpan = 2;
+    r1.appendChild(th);
+  });
+  const prev = el('th', null, `${YEAR() - 1} 입시 결과`);
+  prev.colSpan = 3;
+  r1.appendChild(prev);
+  const r2 = document.createElement('tr');
+  ['모집', '경쟁률', '70%컷'].forEach((c) => r2.appendChild(el('th', 'sub', c)));
+  thead.appendChild(r1);
+  thead.appendChild(r2);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  sorted.forEach(({ app, student }, i) => {
+    const sm = store.summary(app);
+    const mine = app.myScore || {};
+    const r = store.resultOf(app) || {};
+    const txt = statusText(app);
+    const won = /합격/.test(txt) && !/불합격/.test(txt);
+    const tr = document.createElement('tr');
+    [
+      ['num', i + 1],
+      ['num', student.hak],
+      ['nm', tidy(student.name)],
+      [null, brk(app.dept || '')],
+      [null, brk(app.typeSub || app.typeName || typeLabel(app))],
+      ['num', app.quota ?? ''],
+      ['num', sm.real && sm.real.rate != null ? `${Number(sm.real.rate).toFixed(2)}:1` : ''],
+      ['num', mine.grade != null ? Number(mine.grade).toFixed(2) : ''],
+      [null, r.stage1 || ''],
+      [won ? 'won' : null, txt],
+      ['num', sm.quotaPrev ?? ''],
+      ['num', sm.linked && sm.rate != null ? `${Number(sm.rate).toFixed(2)}:1` : ''],
+      ['num', sm.linked && sm.cut != null ? Number(sm.cut).toFixed(2) : ''],
+    ].forEach(([cl, v]) => tr.appendChild(el('td', cl, v === '' || v == null ? '—' : String(v))));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  tw.appendChild(table);
+  return tw;
+}
+
+function status() {
+  const box = el('div');
+  const all = rowsForReport().filter(({ app }) => announced(app));
+
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '합격자 발표 현황'));
+  head.appendChild(el('span', 'count num', `${all.length}건`));
+  box.appendChild(head);
+
+  box.appendChild(el('p', 'section-label',
+    '오늘까지 발표가 났거나 앞으로 일정이 잡힌 지원만 싣습니다.'
+    + ' 문서의 날짜는 뽑는 날로 찍힙니다.'));
+
+  if (!all.length) {
+    box.appendChild(el('p', 'empty-state',
+      '아직 발표된 결과도, 잡힌 일정도 없습니다.'));
+    return box;
+  }
+
+  // 대학 단위로 묶고, 다른 문서와 같은 차례(수도권 주요 → 거점국립 → …)로 늘어놓는다
+  const order = FINAL_GROUPS.map(([key]) => key);
+  const byUniv = new Map();
+  for (const r of all) {
+    const k = shortUniv(r.app.univ);
+    if (!byUniv.has(k)) byUniv.set(k, []);
+    byUniv.get(k).push(r);
+  }
+  const rank = (name) => {
+    const g = groupOf({ univ: name, region: '' });
+    const i = order.indexOf(g);
+    return i < 0 ? order.length : i;
+  };
+  const names = [...byUniv.keys()].sort((a, b) =>
+    rank(a) - rank(b) || a.localeCompare(b, 'ko'));
+
+  box.appendChild(tools('합격자발표현황', () => {
+    const rows = [['대학', '학번', '이름', '모집단위', '전형 유형',
+      '1단계 결과', '최초 결과']];
+    for (const name of names) {
+      for (const { app, student } of byUniv.get(name)) {
+        const r = store.resultOf(app) || {};
+        rows.push([name, student.hak, student.name, app.dept || '',
+          app.typeSub || app.typeName || typeLabel(app),
+          r.stage1 || '', statusText(app)]);
+      }
+    }
+    return rows;
+  }));
+
+  const sheet = el('section', 'sheet sheet-doc');
+  sheet.appendChild(el('h1', 'doc-title',
+    `주요 대학 합격자 발표 현황(${stampDot()} 현재)`));
+  names.forEach((name, i) => {
+    sheet.appendChild(el('h3', 'doc-h2', `${i + 1}) ${name}`));
+    sheet.appendChild(statusTable(byUniv.get(name)));
+  });
+  box.appendChild(sheet);
+  return box;
 }
 
 /* ── 수시 최종 결과 보고서 ───────────────────────────────────────
@@ -1031,11 +1204,13 @@ function finalDetail(list) {
   const tw = el('div', 'tw');
   const table = document.createElement('table');
   table.className = 'gov';
+  widths(table, ['3.5%', '5.5%', '6.5%', '19%', '15%', '5%', '6.5%', '6%',
+    '5.5%', '13.5%', '5%', '5.5%', '4.5%']);
 
   const thead = document.createElement('thead');
   const r1 = document.createElement('tr');
-  ['연번', '학번', '이름', '대학 및 모집단위', '전형 유형', '모집 인원', '경쟁률',
-    '환산 성적', '1단계 결과', '최종 결과'].forEach((c) => {
+  ['연번', '학번', '이름', '대학 및 모집단위', '전형 유형', '모집', '경쟁률',
+    '환산', '1단계', '최종 결과'].forEach((c) => {
     const th = el('th', null, c);
     th.rowSpan = 2;
     r1.appendChild(th);
@@ -1044,7 +1219,7 @@ function finalDetail(list) {
   prev.colSpan = 3;
   r1.appendChild(prev);
   const r2 = document.createElement('tr');
-  ['모집 인원', '경쟁률', '70%컷'].forEach((c) => r2.appendChild(el('th', 'sub', c)));
+  ['모집', '경쟁률', '70%컷'].forEach((c) => r2.appendChild(el('th', 'sub', c)));
   thead.appendChild(r1);
   thead.appendChild(r2);
   table.appendChild(thead);
@@ -1060,8 +1235,8 @@ function finalDetail(list) {
       ['num', i + 1],
       ['num', student.hak],
       ['nm', tidy(student.name)],
-      [null, `${shortUniv(app.univ)} ${app.dept || ''}`.trim()],
-      [null, `${typeLabel(app)} ${app.typeSub || app.typeName || ''}`.trim()],
+      [null, brk(`${shortUniv(app.univ)} ${app.dept || ''}`.trim())],
+      [null, brk(`${typeLabel(app)} ${app.typeSub || app.typeName || ''}`.trim())],
       ['num', app.quota ?? ''],
       ['num', sm.real && sm.real.rate != null ? Number(sm.real.rate).toFixed(2) : ''],
       ['num', mine.grade != null ? Number(mine.grade).toFixed(2) : ''],
@@ -1168,7 +1343,7 @@ function finalReport() {
   const sheet = el('section', 'sheet sheet-doc');
   sheet.appendChild(el('h1', 'doc-title',
     `${YEAR()}학년도 대입 수시전형 주요 대학 합격자 발표 결과`));
-  sheet.appendChild(el('p', 'doc-date', `${YEAR() - 1}. 12. 기준`));
+  sheet.appendChild(el('p', 'doc-date', `${stampFull()} 기준`));
 
   sheet.appendChild(el('h2', 'doc-h1', '1. 주요 대학 통계'));
   let n = 0;
@@ -1234,6 +1409,24 @@ function finalTable(rows) {
       (r && r.stage1) || '', resultText(r)]);
   }
   return out;
+}
+
+/**
+ * 열 너비를 못박는다.
+ *
+ * 열이 열셋이나 되는 표를 브라우저가 알아서 나누면 숫자 칸이 필요 이상으로
+ * 넓어지고 「대학 및 모집단위」가 세 줄로 갈린다. 좁아도 되는 칸을 눌러
+ * 이름이 들어갈 자리를 만든다.
+ */
+function widths(table, list) {
+  const cg = document.createElement('colgroup');
+  for (const w of list) {
+    const col = document.createElement('col');
+    col.style.width = w;
+    cg.appendChild(col);
+  }
+  table.insertBefore(cg, table.firstChild);
+  table.classList.add('fixed');
 }
 
 /** 표 복사·CSV 로 나가는 한 판. 화면에 있는 것을 그대로 줄로 편다. */

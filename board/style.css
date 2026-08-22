@@ -748,6 +748,7 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
   text-align: center; font-size: 16pt; font-weight: 700; margin: 0 0 2mm;
 }
 .doc-date { text-align: center; font-size: 10pt; margin: 0 0 8mm; }
+.sheet-stamp { text-align: right; font-size: 9pt; margin: -2mm 0 2mm; }
 .doc-h1 { font-size: 12pt; font-weight: 700; margin: 8mm 0 3mm; }
 .doc-h2 { font-size: 10.5pt; font-weight: 600; margin: 5mm 0 2mm; }
 
@@ -775,8 +776,9 @@ table.ledger tr.band-top td.slot:not(.empty) {
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 table.ledger td.slot-result.pass { font-weight: 700; }
-table.ledger td.reg { font-weight: 700; text-align: center; }
-table.ledger td.reg .d { font-weight: 600; }
+/* 등록 대학은 대학과 학과를 두 줄로. 칸이 좁으니 학과는 한 단계 작게 둔다 */
+table.ledger td.reg { font-weight: 700; text-align: center; line-height: 1.3; }
+table.ledger td.reg .d { font-weight: 600; font-size: 8pt; margin-top: 0.6mm; }
 table.ledger td.memo { text-align: left; vertical-align: top; }
 table.ledger td.memo ul { margin: 0; padding: 0; list-style: none; }
 table.ledger td.memo li { text-indent: -2.4mm; padding-left: 2.4mm; }
@@ -790,8 +792,27 @@ table.gov {
 }
 table.gov th, table.gov td {
   border: 0.4pt solid #000; padding: 1.2mm 1.4mm; text-align: center;
-  word-break: keep-all;
+  word-break: keep-all; overflow-wrap: break-word;
 }
+/*
+ * 두 줄로 갈리면 안 되는 칸.
+ *
+ * 이름이 「김가 / 빈」으로 갈리면 표에서 사람을 못 찾는다. 숫자도 마찬가지라
+ * 「8.45 / :1」이나 「1,2 / 34」로 갈리면 읽다가 걸린다. 머리글도 한 줄로 둔다 —
+ * 두 줄이 되면 그 행만 키가 커져 표가 들쭉날쭉해진다.
+ */
+table.gov td.nm, table.gov td.num { white-space: nowrap; }
+/*
+ * 머리글은 줄바꿈을 막지 않는다. 「모집 인원」·「1단계 결과」처럼 긴 이름이
+ * 좁은 칸에 들어가는데 한 줄로 묶으면 옆 칸을 덮고 글자가 겹친다(실제로 그랬다).
+ * 대신 낱말 가운데서는 안 끊기게 둔다.
+ */
+table.gov th { word-break: keep-all; overflow-wrap: break-word; line-height: 1.2; }
+table.gov.fixed th { font-size: 8pt; padding: 1mm 0.6mm; }
+table.gov.fixed td { padding: 1mm 0.8mm; }
+table.gov.fixed { table-layout: fixed; }
+/* 너비를 못박으면 긴 이름이 칸을 넘칠 수 있으니 그때만 낱말 안에서 끊는다 */
+table.gov.fixed td { overflow-wrap: break-word; }
 table.gov thead th, table.gov th.rowhead, table.gov th.sub {
   background: #EDEDED; font-weight: 600;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
@@ -851,7 +872,8 @@ table.gov tr.sum > * { font-weight: 700; background: #F6F6F6;
    * (좌 6.1mm · 우 4.9mm · 표 상단 16.2mm · 제목 6mm).
    */
   @page land { size: A4 landscape; margin: 6mm 5mm 10mm 6mm; }
-  @page doc  { size: A4 portrait;  margin: 15mm 20mm; }
+  /* 명단 표가 열셋이라 좌우 20mm 로는 글자가 겹친다. 12mm 로 16mm 를 번다 */
+  @page doc  { size: A4 portrait;  margin: 15mm 12mm; }
   .sheet-land { page: land; }
   .sheet-doc  { page: doc; }
   .sheet-land .sheet-title { font-size: 18pt; margin: 0 0 3mm; }
