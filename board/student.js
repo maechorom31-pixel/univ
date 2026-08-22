@@ -17,7 +17,10 @@ import * as api from './api.js';
 import { link as makeLink, indexIpgyeol, indexMojip, indexCollege, summarize } from './match.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
-const MOCK = '모의면접';        // 학교에서 잡아 준다 — 학생은 보기만 한다
+const MOCK = '모의면접';
+/** 모의면접은 여러 번 한다. 학생 화면도 전부 보여 준다. */
+// 학교에서 잡아 준다 — 학생은 보기만 한다. 여러 번 하므로 전부 본다.
+const MOCKS = [MOCK, ...Array.from({ length: 5 }, (_, i) => `${MOCK}${i + 1}`)];
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
 let offline = false;
@@ -141,8 +144,19 @@ function render() {
   $('#who').textContent = `${s.hak} ${tidy(s.name)}`;
 
   if (state.notice) main.appendChild(note(state.notice));
-  main.appendChild(upcoming());
-  main.appendChild(clashPanel());
+
+  /*
+   * 차례는 **지금 급한 것**을 따른다.
+   *
+   * 원서 마감이 9월 11일이고 면접은 10월부터다. 지원을 고르는 지금은 「내가 어디
+   * 여섯 곳을 넣었나」가 먼저고, 면접 날짜는 아직 한참 뒤다. 그래서 6칸을 위에 둔다.
+   *
+   * 다만 면접이 코앞이면 그때는 그게 먼저다. 여섯 장을 스크롤해서 내려가야 내일
+   * 면접 날짜가 나오면 안 된다. 그래서 **이레 안에 닥친 것만** 맨 위에 한 줄로 띄운다.
+   * 지원철에는 닥친 것이 없으니 이 줄이 아예 안 나오고, 11월이 되면 저절로 나타난다.
+   * 학생이 무엇을 켜고 끌 필요가 없다.
+   */
+  main.appendChild(soon());
 
   const ranked = state.apps
     .filter((a) => (state.placement.get(String(a.id)) || {}).slot === 'rank')
@@ -178,15 +192,61 @@ function render() {
     main.appendChild(group('그 밖의 지원', rest, `${rest.length}곳`,
       '6칸에 넣지 않았거나 6회 제한 밖(전문대·특수대)인 지원입니다.'));
   }
+
+  main.appendChild(upcoming());
+  main.appendChild(clashPanel());
+}
+
+/** 오늘. 시험에서 흔들리지 않게 한곳에서 만든다. */
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * 이레 안에 닥친 것만. 없으면 아무것도 그리지 않는다.
+ *
+ * 지원철에는 이 줄이 안 나온다. 11월이 되면 저절로 나타난다.
+ */
+function soon() {
+  const wrap = el('div');
+  const today = todayISO();
+  const limit = new Date(Date.parse(today) + 7 * 86400000).toISOString().slice(0, 10);
+
+  const list = [];
+  for (const app of state.apps) {
+    for (const kind of [...ATTEND, ...MOCKS]) {
+      const d = dateOf(app, kind);
+      if (d && d.to >= today && d.from <= limit) list.push({ app, kind, d });
+    }
+  }
+  if (!list.length) return wrap;
+  list.sort((a, b) => (a.d.from < b.d.from ? -1 : 1));
+
+  const box = el('section', 'panel soon');
+  box.appendChild(el('h2', '', '곧 있습니다'));
+  const stack = el('div', 'stack');
+  for (const x of list) {
+    const row = el('div', 'row');
+    const txt = el('div', 'txt');
+    txt.appendChild(el('div', 'univ', `${shortUniv(x.app.univ)} ${x.kind}`));
+    txt.appendChild(el('div', 'dept', x.d.fixed
+      ? label(x.d.from)
+      : `${label(x.d.from)}~${label(x.d.to)} 중 하루`));
+    row.appendChild(txt);
+    const days = Math.round((Date.parse(x.d.from) - Date.parse(today)) / 86400000);
+    row.appendChild(el('span', 'pill mark num', days <= 0 ? '오늘' : `D-${days}`));
+    stack.appendChild(row);
+  }
+  box.appendChild(stack);
+  wrap.appendChild(box);
+  return wrap;
 }
 
 function upcoming() {
   const box = el('section', 'panel');
   box.appendChild(el('h2', '', '다가오는 일정'));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
   const list = [];
   for (const app of state.apps) {
-    for (const kind of [...ATTEND, MOCK]) {
+    for (const kind of [...ATTEND, ...MOCKS]) {
       const d = dateOf(app, kind);
       if (d && d.to >= today) list.push({ app, kind, d });
     }
@@ -309,6 +369,11 @@ function figures(app) {
     left = group(s.year ? `작년 ${String(s.year).slice(2)}입결` : '작년', [
       ['70%컷', g2(s.cut)], comp,
     ]);
+    // 어느 전형의 컷인지. 이 학과 입결에 전형이 여럿인 경우가 훨씬 흔하다.
+    if (left && s.type) {
+      const guessed = s.typeFit === 'cat' || s.typeFit === 'only';
+      left.appendChild(el('div', 'fig-note', guessed ? `${s.type} (아마도)` : s.type));
+    }
   } else if (s && s.before && s.before.line.g70) {
     const g = s.before.line.g70;
     left = group('묶이기 전 참고', [
@@ -345,6 +410,13 @@ function marks(app) {
   }
   if (s && s.stages > 1) add(`${s.stages}단계`);
   if (app.minReqText) add('수능 최저 있음', 'mark');
+  /*
+   * 학과 입결은 있는데 이 전형이 어느 줄인지 못 가린 경우. 그냥 비워 두면
+   * 학생은 「자료가 없구나」로 읽는다. 있는데 못 골랐다는 것과는 다른 말이다.
+   */
+  if (s && s.linked && s.kind === 'univ' && s.typeFit === 'none') {
+    add('작년 숫자 못 붙임', 'warn');
+  }
   return wrap;
 }
 
@@ -358,10 +430,13 @@ function card(app) {
   box.appendChild(figures(app));
   box.appendChild(marks(app));
 
-  const mock = dateOf(app, MOCK);
-  if (mock) {
-    const line = el('p', 'hint', `모의면접 ${label(mock.from)} — 학교에서 잡아 준 날짜입니다.`);
-    box.appendChild(line);
+  // 모의면접은 여러 번 한다. 잡힌 것을 다 보여 준다.
+  const mocks = MOCKS.map((k) => dateOf(app, k)).filter(Boolean);
+  if (mocks.length) {
+    box.appendChild(el('p', 'hint', mocks.length === 1
+      ? `모의면접 ${label(mocks[0].from)} — 학교에서 잡아 준 날짜입니다.`
+      : `모의면접 ${mocks.map((m, i) => `${i + 1}차 ${label(m.from)}`).join(' · ')}`
+        + ' — 학교에서 잡아 준 날짜입니다.'));
   }
   for (const kind of ATTEND) {
     const d = dateOf(app, kind);

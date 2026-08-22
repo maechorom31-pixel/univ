@@ -13,7 +13,7 @@
  * 계산하지 않고 「자료 불일치」로 둔다.
  */
 import * as store from './store.js';
-import { realRate } from './match.js';
+import { realRate, normType } from './match.js';
 import { confidence } from './confidence.js';
 
 export { realRate };
@@ -78,6 +78,22 @@ export function detailPanel(app, student, onClose) {
   const body = el('div', 'detail-body');
   box.appendChild(body);
 
+  if (s && s.linked && s.kind === 'univ' && s.typeFit === 'none') {
+    /*
+     * 학과 입결은 있는데 지원한 전형이 어느 줄인지 못 가렸다.
+     * 옆 전형의 컷을 앉히면 그럴듯하게 틀린다 — 비워 두고, 아래 표에서 직접 보게 한다.
+     */
+    const all = s.among || [];
+    const among = all.slice(0, 4);
+    const rest = all.length - among.length;
+    const list = among.join(' · ') + (rest > 0 ? ` 외 ${rest}개` : '');
+    body.appendChild(el('p', 'note',
+      `이 학과 입결에 전형이 여럿인데 「${app.typeSub || app.typeName || '지원한 전형'}」이`
+      + ' 어느 줄인지 가려내지 못했습니다. 컷과 경쟁률을 비워 두었습니다.'
+      + (among.length ? ` 아래 「연도별 추이」의 ${list} 가운데 하나입니다 —`
+        + ' 직접 봐 주세요.' : ' 아래 「연도별 추이」에서 직접 봐 주세요.')));
+  }
+
   if (s && !s.linked && s.before) {
     // 묶이기 전 선이라도 있으면 「없다」가 아니라 「이것으로 본다」고 적는다
     body.appendChild(el('p', 'note', s.why));
@@ -97,6 +113,14 @@ export function detailPanel(app, student, onClose) {
     ['전형 단계', mo && mo.stages ? `${mo.stages}단계` : null, '모집요강'],
   ]));
 
+  /*
+   * 입결 숫자가 **어느 전형에서 왔는지** 늘 적는다.
+   * 입결은 (대학·학과) 로만 묶여 있어 한 학과에 전형이 여럿 들어 있고,
+   * 학과의 73% 는 가장 최근 해에만도 전형이 둘 이상이다. 어느 줄을 골랐는지
+   * 안 적으면 선생님이 옆 전형의 컷을 이 전형의 컷으로 읽는다.
+   */
+  const ipSrc = ipgyeolSource(s);
+
   /* 2. 인원과 경쟁률 */
   const quotaNow = s.quotaNow;
   const quotaPrev = s.quotaPrev;
@@ -108,7 +132,7 @@ export function detailPanel(app, student, onClose) {
       ? `${quotaNow}명${diff ? ` (작년 ${quotaPrev}명, ${diff > 0 ? '+' : ''}${diff})` : ''}`
       : app.quotaText || null, '즐겨찾기 + 모집요강'],
     ['작년 모집 인원', !diff && quotaPrev != null ? `${quotaPrev}명` : null, '모집요강'],
-    ['작년 경쟁률', s && s.rate != null ? `${s.rate}:1` : null, isCollege ? '전문대 자료' : '입결'],
+    ['작년 경쟁률', s && s.rate != null ? `${s.rate}:1` : null, isCollege ? '전문대 자료' : ipSrc],
     ['작년 실질 경쟁률', real.value != null ? `${one(real.value)}:1` : null,
       real.why || '명목 × 모집 ÷ (모집 + 추합)'],
     ['작년 추가 합격', mo && mo.filled26 != null ? `${mo.filled26}명` : null, '모집요강'],
@@ -125,10 +149,10 @@ export function detailPanel(app, student, onClose) {
     ['내 환산 점수', mine.score != null ? String(mine.score) : null, '즐겨찾기'],
     isCollege
       ? ['작년 평균 등급', g2(s.avg), '전문대 자료']
-      : ['작년 70% 컷', g2(s && s.cut), '입결'],
+      : ['작년 70% 컷', g2(s && s.cut), ipSrc],
     isCollege
       ? ['작년 최저 등급', g2(s.cut), '전문대 자료']
-      : ['작년 50% 컷', g2(s && s.cut50), '입결'],
+      : ['작년 50% 컷', g2(s && s.cut50), ipSrc],
   ]));
 
   /* 4. 일정 — 없는 항목도 「모집요강 확인」으로 남긴다. 빠뜨리는 것이 더 위험하다. */
@@ -350,6 +374,21 @@ function rowsBare(list) {
 }
 
 /** 연도별 추이. 그래프 대신 표로 둔다 — 상담에서는 정확한 숫자를 읽는다. */
+/**
+ * 이 카드의 입결 숫자가 어느 전형에서 왔는지 한 줄로. match.js pickIpgyeol 의 결과를 옮긴다.
+ * 「입결」이라고만 적으면 어느 전형인지 알 수 없어서 옆 전형의 컷과 구별이 안 된다.
+ */
+function ipgyeolSource(s) {
+  if (!s || s.kind !== 'univ' || !s.linked) return '입결';
+  switch (s.typeFit) {
+    case 'exact': return `입결 · ${s.type}`;
+    case 'near': return `입결 · ${s.type} · 이름이 조금 다르지만 같은 전형으로 봤습니다`;
+    case 'cat': return `입결 · ${s.type} · 전형 이름은 못 맞추고 유형만 같습니다`;
+    case 'only': return `입결 · ${s.type} · 이 학과 입결에 전형이 이것 하나뿐입니다`;
+    default: return '입결 · 지원한 전형을 가려내지 못했습니다';
+  }
+}
+
 function trend(s) {
   const wrap = el('div', 'detail-block');
   if (!s || !s.linked || !s.rows || !s.rows.length) return wrap;
@@ -377,17 +416,67 @@ function trend(s) {
       tbody.appendChild(tr);
     });
   } else {
+    /*
+     * **전형으로 먼저 묶고, 그 안에서 연도순.**
+     *
+     * 연도순으로만 늘어놓으면 교과 3.58 · 종합 5.20 · 교과 3.62 처럼 서로 다른 잣대가
+     * 번갈아 나와서 흐름이 안 읽힌다. 상담에서 보는 것은 「이 전형이 해마다 어떻게
+     * 움직였나」이지 「2024년에 무슨 일이 있었나」가 아니다.
+     *
+     * 내가 넣은 전형을 맨 위에 둔다. 그게 지금 궁금한 것이다.
+     */
     wrap.appendChild(el('h3', '', '연도별 추이'));
-    th(['연도', '전형', '모집', '경쟁률', '70%컷', '50%컷']);
+    th(['연도', '모집', '경쟁률', '70%컷', '50%컷']);
+
+    /*
+     * 이름이 조금 달라도 같은 전형이면 한 묶음이다.
+     * `종합(고교생활Ⅰ)` 과 `종합(고교Ⅰ)` 이 갈려 있으면 추이가 한 해씩 토막 난다.
+     * 전형이 둘 이상인 학과의 25.8% 가 이 꼴이었다. (match.js normType 참고)
+     *
+     * 화면에 적는 이름은 **가장 최근 해의 표기**를 쓴다. 올해 원서를 쓰는 사람에게는
+     * 그게 지금 쓰이는 이름이다.
+     */
+    const groups = new Map();
     for (const row of s.rows) {
-      const tr = document.createElement('tr');
-      tr.appendChild(el('td', 'num', String(row.year)));
-      tr.appendChild(el('td', null, row.type || '—'));
-      tr.appendChild(el('td', 'num', row.quota != null ? String(row.quota) : '—'));
-      tr.appendChild(el('td', 'num', row.rate != null ? `${row.rate}:1` : '—'));
-      tr.appendChild(el('td', 'num', g2(row.g70) || '—'));
-      tr.appendChild(el('td', 'num', g2(row.g50) || '—'));
-      tbody.appendChild(tr);
+      const key = normType(row.type) || '전형 미상';
+      if (!groups.has(key)) groups.set(key, { rows: [], name: row.type || '전형 미상', year: -1 });
+      const g = groups.get(key);
+      g.rows.push(row);
+      if ((row.year || 0) > g.year) { g.year = row.year || 0; g.name = row.type || g.name; }
+    }
+    // 「내가 넣은 전형」은 match.js pickIpgyeol 이 가려 둔 것을 그대로 쓴다.
+    // 화면에서 다시 짐작하면 카드 머리의 숫자와 표가 어긋난다.
+    const mine = s.typeFit && s.typeFit !== 'none' ? (normType(s.type) || null) : null;
+    const order = [...groups.keys()].sort((a, b) => {
+      if (a === mine) return -1;
+      if (b === mine) return 1;
+      return groups.get(b).rows.length - groups.get(a).rows.length
+        || groups.get(a).name.localeCompare(groups.get(b).name, 'ko');
+    });
+
+    for (const type of order) {
+      const g = groups.get(type);
+      const head = document.createElement('tr');
+      head.className = 'group';
+      const cell = el('th', 'gname', g.name);
+      cell.colSpan = 5;
+      if (type === mine) cell.appendChild(el('span', 'tag', '내가 넣은 전형'));
+      // 해마다 이름이 달랐으면 그것도 적는다. 감추면 왜 묶였는지 알 수 없다.
+      const alias = [...new Set(g.rows.map((r) => r.type).filter((t) => t && t !== g.name))];
+      if (alias.length) cell.appendChild(el('span', 'alias', `예전 이름 ${alias.join(' · ')}`));
+      head.appendChild(cell);
+      tbody.appendChild(head);
+
+      const rows = g.rows.slice().sort((a, b) => b.year - a.year);
+      for (const row of rows) {
+        const tr = document.createElement('tr');
+        tr.appendChild(el('td', 'num', String(row.year)));
+        tr.appendChild(el('td', 'num', row.quota != null ? String(row.quota) : '—'));
+        tr.appendChild(el('td', 'num', row.rate != null ? `${row.rate}:1` : '—'));
+        tr.appendChild(el('td', 'num', g2(row.g70) || '—'));
+        tr.appendChild(el('td', 'num', g2(row.g50) || '—'));
+        tbody.appendChild(tr);
+      }
     }
   }
   table.appendChild(thead);
@@ -397,7 +486,8 @@ function trend(s) {
 
   if (s.kind !== 'college') {
     wrap.appendChild(el('p', 'hint',
-      '같은 학과의 여러 전형이 함께 나옵니다. 내가 넣은 전형과 이름이 다를 수 있습니다.'));
+      '전형끼리는 잣대가 달라 견주지 않습니다. 같은 전형 안에서 해마다 어떻게'
+      + ' 움직였는지를 봐 주세요. 입결 쪽 전형 이름이 즐겨찾기와 다를 수 있습니다.'));
   }
   return wrap;
 }
@@ -415,7 +505,7 @@ function trend(s) {
  */
 function howSure(s, mine) {
   const wrap = el('div', 'detail-block');
-  const c = confidence(s, mine);
+  const c = confidence(s, mine, normType);
   if (!c) return wrap;
 
   const h = el('h3', '', '이 컷을 얼마나 믿을 수 있나');

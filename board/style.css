@@ -204,6 +204,13 @@ button { font: inherit; color: inherit; }
   font-size: var(--t-xs);
 }
 .card.over { border-color: var(--amber); background: var(--amber-face); }
+.card.dragging, .row.dragging { opacity: 0.45; }
+/* 받을 수 있는 묶음. 끌어 왔을 때만 티가 난다 — 평소에는 아무 표시도 하지 않는다. */
+.panel.drops.over { border-color: var(--amber); background: var(--amber-face); }
+.row { cursor: grab; }
+.row:active { cursor: grabbing; }
+.card { cursor: grab; }
+.card select, .card .btn, .row select, .row .btn { cursor: pointer; }
 .card .rank {
   font-size: var(--t-xs); font-weight: 600; color: var(--amber-ink);
   font-variant-numeric: tabular-nums;
@@ -230,6 +237,11 @@ button { font: inherit; color: inherit; }
 .fig-h {
   font-size: 11px; color: var(--muted); line-height: 1.4;
   margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 어느 전형의 컷인지. 학과의 73% 는 입결에 전형이 여럿이라 이름 없이는 못 읽는다. */
+.fig-note {
+  font-size: 11px; color: var(--muted); line-height: 1.4; margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* 이름과 값을 한 줄에. 값이 오른쪽 끝에 모여야 위아래로 견줄 수 있다. */
 .fig {
@@ -287,6 +299,10 @@ body.student { --t-sm: 17px; --t-xs: 14px; --t-md: 21px; }
 body.student .wrap { max-width: 640px; }
 body.student .btn { font-size: var(--t-xs); min-height: 44px; padding: 0 var(--s4); }
 body.student .pill { font-size: 13px; padding: 3px 8px; }
+
+/* 코앞에 닥친 것. 맨 위에 한 덩이만. 지원철에는 아예 안 나온다. */
+.soon { border-color: var(--amber); background: var(--amber-face); }
+.soon .row + .row { border-top-color: rgba(180, 83, 9, 0.18); }
 
 .mycard { border-top: 1px solid var(--line); padding: var(--s4) 0; }
 .mycard:first-of-type { border-top: 0; padding-top: var(--s2); }
@@ -412,6 +428,24 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 .tw tbody tr:last-child th, .tw tbody tr:last-child td { border-bottom: 0; }
 .tw td.num, .tw th.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tw td.muted { color: var(--muted); }
+
+/* 표 안의 묶음 머리 — 연도별 추이를 전형으로 갈라 놓는다.
+   묶음이 바뀌는 자리에 굵은 선을 둬야 잣대가 바뀌었다는 게 보인다. */
+.tw tr.group th {
+  background: var(--bg); font-weight: 600; color: var(--text);
+  border-top: 2px solid var(--line-strong); border-bottom: 1px solid var(--line);
+  padding: var(--s2) var(--s3); white-space: normal; word-break: keep-all;
+}
+.tw tbody tr.group:first-child th { border-top: 0; }
+.tw tr.group .alias {
+  display: block; font-size: 11px; font-weight: 400; color: var(--muted);
+  margin-top: 2px;
+}
+.tw tr.group .tag {
+  font-size: 11px; font-weight: 500; color: var(--amber-ink);
+  border: 1px solid var(--amber); border-radius: 4px;
+  padding: 1px 5px; margin-left: var(--s2); white-space: nowrap;
+}
 
 /* ── 상세 ─────────────────────────────────────────────────────── */
 

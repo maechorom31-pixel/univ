@@ -15,6 +15,7 @@ import {
   univStem, campusOf, resolveUniv, buildUnivIndex,
   normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
+  normType, pickIpgyeol,
 } from './match.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -152,6 +153,66 @@ console.log(`\n자료 — 입결 대학 ${ip.univNames.length} · 학과키 ${ip
   + ` / 모집요강 대학 ${mo.univNames.length} · 학과키 ${mo.byKey.size}`
   + (co ? ` / 전문대 ${co.univNames.length} · 학과키 ${co.byKey.size}` : ''));
 
+/* ── 전형 이름 정규화와 전형 고르기 ─────────────────────────────── */
+console.log('전형 이름 정규화');
+{
+  const same = (a, b, label) => eq(normType(a) === normType(b), true, label);
+  const diff = (a, b, label) => eq(normType(a) === normType(b), false, label);
+  same('교과(일반)', '교과(일반전형)', '꼬리 「전형」은 턴다');
+  same('종합(고교생활Ⅰ)', '종합(고교Ⅰ)', '「생활」은 붙었다 떨어졌다 한다');
+  same('교과(지역)', '교과(지역인재)', '「인재」도 마찬가지');
+  same('종합(고교Ⅱ)', '종합(고교2)', '로마 숫자와 아라비아 숫자는 같은 것');
+  same('학생부교과(일반전형)', '교과(일반)', '「학생부」는 「학생」보다 먼저 턴다');
+  diff('종합(고교Ⅰ)', '종합(고교Ⅱ)', 'Ⅰ과 Ⅱ는 다른 전형이다');
+  diff('교과(일반)', '종합(일반)', '교과와 종합은 절대 안 합친다');
+  diff('교과(지역)', '교과(학교장추천)', '지역과 학교장추천도 다르다');
+}
+
+console.log('지원한 전형의 입결 줄 고르기');
+{
+  const r = (year, type, g70, cat) => ({ year, type, g70, cat: cat || (type.includes('종합') ? '종합' : '교과') });
+  // 전남대 영어영문 꼴 — 연도순 마지막 줄을 집으면 교과 지원자에게 종합의 컷이 붙는다
+  const rows = [
+    r(2025, '교과(일반)', 3.05), r(2026, '교과(일반)', 3.20),
+    r(2025, '교과(지역)', 3.74), r(2026, '교과(지역인재)', 3.33),
+    r(2025, '종합(고교Ⅰ)', 3.65), r(2026, '종합(고교생활Ⅰ)', 3.58),
+  ];
+  const a = pickIpgyeol(rows, { typeSub: '교과(일반)', typeCat: '학생부위주(교과)' });
+  eq(a.fit, 'exact', '이름이 같으면 exact');
+  eq(a.rows.map((x) => x.g70), [3.05, 3.20], '그 전형의 줄만, 연도 오름차순');
+  eq(a.type, '교과(일반)', '입결 쪽 이름을 돌려준다');
+
+  const b = pickIpgyeol(rows, { typeSub: '교과(지역인재)', typeCat: '학생부위주(교과)' });
+  eq(b.rows.map((x) => x.g70), [3.74, 3.33], '이름이 해마다 달라도 한 묶음');
+  eq(b.type, '교과(지역인재)', '가장 최근 해의 표기를 쓴다');
+
+  const c = pickIpgyeol(rows, { typeSub: '학생부교과(일반전형)', typeCat: '학생부위주(교과)' });
+  eq(c.fit, 'exact', '즐겨찾기가 「학생부교과(일반전형)」이라 적어도 붙는다');
+
+  // 「일반」은 「교과일반」에 감싸인다. 길이를 안 재면 둘이 비겨서 못 고른다.
+  const loose = [r(2026, '일반', 4.0), r(2026, '교과(일반)', 3.2)];
+  const d = pickIpgyeol(loose, { typeSub: '학생부교과(일반전형)', typeCat: '학생부위주(교과)' });
+  eq(d.type, '교과(일반)', '겹치는 글자가 더 긴 쪽을 고른다');
+
+  // 이름을 못 맞추고 같은 유형이 둘이면 **고르지 않는다**
+  const amb = [r(2026, '교과(가야인재)', 3.9), r(2026, '교과(다른것)', 2.7)];
+  const e = pickIpgyeol(amb, { typeSub: '교과(없는이름)', typeCat: '학생부위주(교과)' });
+  eq(e.fit, 'none', '어느 줄인지 못 가리면 고르지 않는다');
+  eq(e.rows, [], '옆 전형의 줄을 빌려 오지 않는다');
+  eq(e.among, ['교과(가야인재)', '교과(다른것)'], '무엇들 사이에서 못 골랐는지는 말해 준다');
+
+  // 유형이 하나뿐이면 그것으로
+  const one = [r(2026, '교과(가야인재)', 3.9), r(2026, '종합(무언가)', 5.0)];
+  const f = pickIpgyeol(one, { typeSub: '교과(없는이름)', typeCat: '학생부위주(교과)' });
+  eq(f.fit, 'cat', '유형이 같은 묶음이 하나뿐이면 그것');
+  eq(f.type, '교과(가야인재)', '교과 쪽');
+
+  const g = pickIpgyeol([r(2026, '교과(일반)', 3.2)], { typeSub: '전혀다른것', typeCat: '' });
+  eq(g.fit, 'only', '전형이 하나뿐이면 그것');
+  eq(pickIpgyeol([], { typeSub: '교과(일반)' }).fit, 'none', '빈 목록');
+}
+
+
 const files = process.argv.slice(2);
 if (!files.length) {
   console.log('\n시트 픽스처를 넘기지 않아 규칙 확인만 했습니다.');
@@ -216,6 +277,7 @@ for (const file of files) {
     }
   }
 }
+
 
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');
 process.exit(fails ? 1 : 0);

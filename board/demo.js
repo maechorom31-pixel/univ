@@ -157,7 +157,13 @@ export const demo = {
       reason: '', waitNo: '', enrolled: '등록',
       status: 'confirmed', by: '보기용 계정', at: '2026-12-16T09:00:00Z' },
   ],
-  dates: [],
+  // 모의면접을 두 번 잡아 둔 자리 — 대학별로 묶여 보이는지 확인하려고
+  dates: [
+    { id: at('숭실대', '영어영문학과').id, hak: '3201', kind: '모의면접1',
+      from: inDays(4), to: inDays(4), status: 'confirmed' },
+    { id: at('숭실대', '영어영문학과').id, hak: '3201', kind: '모의면접2',
+      from: inDays(9), to: inDays(9), status: 'confirmed' },
+  ],
   unknownCols: [],
   skipped: 0,
 };

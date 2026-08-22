@@ -68,10 +68,15 @@ function fit(xs, ys) {
  *
  * @return {?{n, years, lo, hi, span, sd, latest, slope, r2, direction}}
  */
-export function swing(rows, type) {
+export function swing(rows, type, norm) {
   if (!rows || !rows.length) return null;
+  // 이름이 해마다 조금씩 달라도 같은 전형이면 함께 본다.
+  // 글자 그대로 견주면 `종합(고교생활Ⅰ)` 과 `종합(고교Ⅰ)` 이 갈려
+  // 「견줄 해가 한 해뿐」이 되어 버린다.
+  const same = norm || ((x) => String(x || ''));
+  const want = same(type);
   const pick = type
-    ? rows.filter((r) => String(r.type || '') === String(type))
+    ? rows.filter((r) => same(r.type) === want)
     : rows;
   const use = (pick.length >= 2 ? pick : rows)
     .filter((r) => r.g70 != null && r.year != null)
@@ -209,11 +214,17 @@ export function worthFlagging(c) {
  * @param {?number} mine  내 환산 등급
  * @return {?{level, label, why:string[], swing, thin, spot}}
  */
-export function confidence(s, mine) {
+export function confidence(s, mine, norm) {
   if (!s || !s.linked) return null;
 
-  const type = s.rows && s.rows.length ? s.rows[s.rows.length - 1].type : null;
-  const sw = swing(s.rows, type);
+  /*
+   * **지원한 전형의 줄만 본다.** `s.mine` 은 match.js pickIpgyeol 이 가려 둔 것이다.
+   * 예전에는 `s.rows` 의 마지막 줄에서 전형을 집었는데, 그건 그 학과에 마지막으로
+   * 들어온 아무 전형이라 교과 지원자에게 종합의 변동폭이 붙었다.
+   */
+  const mineRows = s.mine && s.mine.length ? s.mine : null;
+  if (!mineRows) return null;
+  const sw = swing(mineRows, null, norm);
   const th = thinness(s.quota != null ? s.quota : s.quotaNow);
   const spot = position(mine, s.cut50, s.cut);
 

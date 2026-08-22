@@ -361,10 +361,14 @@ export function examHint(app) {
 }
 
 /** 일정 한 종목을 넣는다(선생님). 화면을 먼저 바꾸고 서버에 보낸다. */
+/**
+ * 날짜를 넣는다. **빈 값으로 부르면 지운다** — 모의면접을 잘못 잡았을 때 되돌려야 한다.
+ */
 export async function setDate(app, kind, from, to) {
   const key = `${app.id}|${kind}`;
   const before = state.dates.get(key);
-  state.dates.set(key, { from, to: to || from, status: 'confirmed' });
+  if (!from) state.dates.delete(key);
+  else state.dates.set(key, { from, to: to || from, status: 'confirmed' });
   emit('change', 'state');
   if (offline) return;
   try {

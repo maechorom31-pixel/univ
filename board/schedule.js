@@ -25,9 +25,18 @@ import * as store from './store.js';
 const ATTEND = ['면접', '실기', '논술', '적성'];
 /** 보기만 하는 것 — 겹쳐도 상관없다 */
 const NOTICE = ['1단계발표', '최종발표'];
-/** 학교에서 잡는 일정. 대학 일정과 겹침을 따지지 않는다 */
+/**
+ * 학교에서 잡는 일정. 대학 일정과 겹침을 따지지 않는다.
+ *
+ * **모의면접은 여러 번 한다.** 한 번 보고 끝나는 게 아니라 고쳐 가며 두세 번 본다.
+ * 그래서 `모의면접1` · `모의면접2` … 로 나눠 담는다. 시트의 (id, kind) 키가
+ * 그대로 쓰이므로 저장 구조를 바꾸지 않아도 된다.
+ */
 const MOCK = '모의면접';
-const KINDS = [...ATTEND, ...NOTICE, MOCK];
+const MOCK_MAX = 5;
+const MOCKS = Array.from({ length: MOCK_MAX }, (_, i) => `${MOCK}${i + 1}`);
+const isMock = (kind) => String(kind || '').startsWith(MOCK);
+const KINDS = [...ATTEND, ...NOTICE, MOCK, ...MOCKS];
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -181,7 +190,7 @@ function render() {
   if (student) {
     main.appendChild(clashPanel(clashes(events)));
     main.appendChild(calendars(events));
-    main.appendChild(mockPanel(events, student));
+    main.appendChild(interviewPanel(student));
   } else {
     main.appendChild(dayList(events));
   }
@@ -282,57 +291,163 @@ function month(ym, events) {
  * 자동으로 D-3을 잡아 두지 않는다. 실제로는 다른 학생과 겹치고 교실 사정도 있어서
  * 사람이 정해야 한다. 대신 제안일을 옆에 띄우고 한 번에 넣을 수 있게 한다.
  */
-function mockPanel(events, student) {
+/**
+ * 면접 — **대학별로 묶는다.**
+ *
+ * 면접이 넷이고 대학마다 모의면접을 세 번 하면 열여섯 줄이 날짜순으로 섞여 나온다.
+ * 그 상태로는 「숭실대 준비가 어디까지 됐나」를 볼 수가 없다. 상담에서 묻는 것은
+ * 늘 대학 단위다 — 숭실대 면접이 언제고, 그 전에 모의면접을 몇 번 했나.
+ *
+ * 그래서 한 대학이 한 덩이다. 본 면접이 맨 위, 그 아래 모의면접이 차례로,
+ * 맨 밑에 「모의면접 추가」.
+ *
+ * 전문대·특수대도 여기 들어온다. 즐겨찾기가 그쪽 면접일을 주지 않는 일이 많아서
+ * **날짜가 없어도 덩이를 만들고** 선생님이 직접 넣을 수 있게 둔다.
+ */
+function interviewPanel(student) {
   const box = el('section', 'panel');
-  const interviews = events.filter((e) => e.kind === '면접');
+  const apps = store.appsOf(student.hak);
+
+  // 면접·실기·논술이 있거나, 있을 법한 지원. 전문대는 날짜가 없어도 넣는다 —
+  // 그게 바로 선생님이 손으로 채워야 하는 자리다.
+  const rows = [];
+  for (const app of apps) {
+    const go = ATTEND.map((k) => ({ kind: k, d: store.dateOf(app, k) })).filter((x) => x.d);
+    const other = app.univType === '전문대' || app.univType === '특수대';
+    if (!go.length && !other) continue;
+    rows.push({ app, go, other });
+  }
+
   const head = el('div', 'panel-head');
-  head.appendChild(el('h2', '', '모의면접'));
-  head.appendChild(el('span', 'count num', `${interviews.length}건`));
+  head.appendChild(el('h2', '', '면접 준비'));
+  head.appendChild(el('span', 'count num', `${rows.length}곳`));
   box.appendChild(head);
 
-  if (!interviews.length) {
-    box.appendChild(el('p', 'empty-state', '면접이 있는 지원이 없습니다.'));
+  if (!rows.length) {
+    box.appendChild(el('p', 'empty-state',
+      '면접·실기·논술이 있는 지원이 없습니다.'));
     return box;
   }
   box.appendChild(el('p', 'section-label',
-    '여기 넣은 날짜는 학생 화면에도 그대로 보입니다.'));
+    '대학마다 묶어 두었습니다. 넣은 날짜는 학생 화면에도 그대로 보입니다.'));
 
-  const stack = el('div', 'stack');
-  for (const e of interviews) {
-    const mock = store.dateOf(e.app, MOCK);
-    const suggested = suggestMock(e.from);
-
-    const row = el('div', 'row');
-    const txt = el('div', 'txt');
-    txt.appendChild(el('div', 'univ', `${shortUniv(e.app.univ)} · 면접 ${span(e)}`));
-    txt.appendChild(el('div', 'dept', mock
-      ? `모의면접 ${label(mock.from)}`
-      : `아직 안 잡혔습니다. ${label(suggested)} 쯤이 면접 사흘 전입니다.`));
-
-    const field = el('div', 'field-in');
-    const input = document.createElement('input');
-    input.type = 'date';
-    input.value = mock ? mock.from : suggested;
-    input.max = e.from;
-    input.setAttribute('aria-label', `${shortUniv(e.app.univ)} 모의면접 날짜`);
-    field.appendChild(input);
-    const save = el('button', 'btn btn-primary', '저장');
-    save.type = 'button';
-    save.onclick = () => saveMock(e.app, input.value);
-    field.appendChild(save);
-
-    row.appendChild(txt);
-    row.appendChild(field);
-    stack.appendChild(row);
-  }
-  box.appendChild(stack);
+  for (const r of rows) box.appendChild(univBlock(r));
   return box;
 }
 
-async function saveMock(app, value) {
-  if (!value) return;
+/** 대학 한 덩이. */
+function univBlock({ app, go, other }) {
+  const box = el('div', 'uni-block');
+
+  const h = el('div', 'uni-head');
+  h.appendChild(el('span', 'nm', tidy(shortUniv(app.univ))));
+  h.appendChild(el('span', 'fig', app.typeSub || app.typeName || ''));
+  box.appendChild(h);
+
+  const list = el('div', 'stack');
+
+  // 1. 대학이 정한 것
+  if (go.length) {
+    for (const x of go) list.appendChild(fixedRow(app, x.kind, x.d));
+  } else {
+    list.appendChild(missingRow(app, other));
+  }
+
+  // 2. 학교에서 잡는 모의면접. 여러 번 한다.
+  const mocks = MOCKS
+    .map((kind) => ({ kind, d: store.dateOf(app, kind) }))
+    .filter((x) => x.d);
+  // 예전 방식(`모의면접` 하나)으로 저장된 것도 그대로 보여 준다
+  const old = store.dateOf(app, MOCK);
+  if (old) mocks.unshift({ kind: MOCK, d: old });
+
+  mocks.forEach((m, i) => list.appendChild(mockRow(app, m.kind, m.d, i + 1)));
+
+  const next = MOCKS.find((k) => !store.dateOf(app, k));
+  if (next) {
+    const first = go[0];
+    list.appendChild(addMockRow(app, next, mocks.length + 1,
+      first ? suggestMock(first.d.from) : ''));
+  }
+
+  box.appendChild(list);
+  return box;
+}
+
+/** 대학이 정한 날. 고치지 않는다 — 학생이 배정받으면 학생 화면에서 넣는다. */
+function fixedRow(app, kind, d) {
+  const row = el('div', 'row ev-row');
+  const txt = el('div', 'txt');
+  txt.appendChild(el('div', 'univ', kind));
+  txt.appendChild(el('div', 'dept', d.fixed
+    ? label(d.from)
+    : `${label(d.from)}~${label(d.to)} 중 하루`));
+  row.appendChild(txt);
+  const tag = d.status === 'pending' ? '학생 입력 · 확인 대기'
+    : d.status === 'confirmed' ? '확정'
+      : d.fixed ? '공지' : '기간';
+  row.appendChild(el('span', `pill${d.fixed ? '' : ' wait'}`, tag));
+  return row;
+}
+
+/** 날짜가 없는 지원 — 선생님이 직접 넣는다. 전문대가 주로 여기다. */
+function missingRow(app, other) {
+  const wrap = el('div', 'field');
+  wrap.appendChild(el('label', '', '면접일'));
+  wrap.appendChild(el('p', 'hint', other
+    ? '전문대·특수대는 즐겨찾기에 면접일이 없는 일이 많습니다. 직접 넣어 주세요.'
+    : '즐겨찾기에 면접일이 없습니다. 아는 날짜가 있으면 넣어 주세요.'));
+  const line = el('div', 'field-in');
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.setAttribute('aria-label', `${shortUniv(app.univ)} 면접일`);
+  line.appendChild(input);
+  const save = el('button', 'btn', '넣기');
+  save.type = 'button';
+  save.onclick = () => saveDate(app, '면접', input.value);
+  line.appendChild(save);
+  wrap.appendChild(line);
+  return wrap;
+}
+
+/** 이미 잡힌 모의면접. */
+function mockRow(app, kind, d, n) {
+  const row = el('div', 'row ev-row mock-row');
+  const txt = el('div', 'txt');
+  txt.appendChild(el('div', 'univ', `모의면접 ${n}차`));
+  txt.appendChild(el('div', 'dept', label(d.from)));
+  row.appendChild(txt);
+  const del = el('button', 'btn', '지우기');
+  del.type = 'button';
+  del.onclick = () => saveDate(app, kind, '');
+  row.appendChild(del);
+  return row;
+}
+
+/** 모의면접 한 번 더. */
+function addMockRow(app, kind, n, suggested) {
+  const wrap = el('div', 'field');
+  wrap.appendChild(el('label', '', `모의면접 ${n}차`));
+  if (suggested) {
+    wrap.appendChild(el('p', 'hint', `${label(suggested)} 쯤이 면접 사흘 전입니다.`));
+  }
+  const line = el('div', 'field-in');
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.value = n === 1 ? suggested : '';
+  input.setAttribute('aria-label', `${shortUniv(app.univ)} 모의면접 ${n}차 날짜`);
+  line.appendChild(input);
+  const save = el('button', 'btn', '넣기');
+  save.type = 'button';
+  save.onclick = () => saveDate(app, kind, input.value);
+  line.appendChild(save);
+  wrap.appendChild(line);
+  return wrap;
+}
+
+async function saveDate(app, kind, value) {
   try {
-    await store.setDate(app, MOCK, value, value);
+    await store.setDate(app, kind, value, value);
   } catch (err) {
     const main = $('#schedule');
     if (main) main.prepend(el('p', 'note error', `오류: ${err.message}`));

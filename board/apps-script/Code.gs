@@ -597,6 +597,19 @@ function setDate_(p, who, status) {
   if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
     return { ok: false, error: '날짜는 2025-11-29 형식으로 보내주세요.' };
   }
+  // 빈 날짜는 **지우기**다. 모의면접을 잘못 잡았을 때 되돌릴 길이 있어야 한다.
+  if (!from) {
+    var sh = tab_(SHEET.date), all = rows_(SHEET.date);
+    for (var i = 0; i < all.length; i++) {
+      if (String(all[i].id) === String(p.id) && String(all[i].kind) === String(p.kind)) {
+        sh.deleteRow(all[i]._row);
+        log_(who, 'clearDate', p.kind + ' ' + p.id);
+        return { ok: true, removed: true };
+      }
+    }
+    return { ok: true, removed: false };
+  }
+
   upsert_(SHEET.date, ['id', 'kind'], {
     id: p.id, hak: p.hak || '', kind: p.kind, from: from, to: to,
     status: status, by: who, at: now_()

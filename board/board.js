@@ -18,6 +18,7 @@
 import * as store from './store.js';
 import { detailPanel } from './card.js';
 import { confidence, worthFlagging } from './confidence.js';
+import { normType } from './match.js';
 
 const RANKS = [1, 2, 3, 4, 5, 6];
 const SLOT_LABEL = { rank: '순위', pool: '후보', archive: '보관', tray: '전문대' };
@@ -208,15 +209,18 @@ function render() {
     return slot !== 'archive' && slot !== 'rank';
   });
 
-  main.appendChild(group('후보', pool, '아직 순위를 정하지 않은 지원입니다.', student));
+  main.appendChild(group('후보', pool,
+    '아직 순위를 정하지 않은 지원입니다. 6칸에서 끌어다 놓으면 여기로 옵니다.',
+    student, 'pool'));
   if (others.length) {
     const kept = others.filter((a) => store.placementOf(a.id).slot !== 'archive');
     const put = others.filter((a) => store.placementOf(a.id).slot === 'archive');
     main.appendChild(group('전문대 · 특수대', kept,
-      '수시 6회 제한 밖이라 순위를 매기지 않습니다.', student));
-    if (put.length) main.appendChild(group('전문대 보관', put, '', student));
+      '수시 6회 제한 밖이라 순위를 매기지 않습니다.', student, 'tray'));
+    if (put.length) main.appendChild(group('전문대 보관', put, '', student, 'archive'));
   }
-  if (archive.length) main.appendChild(group('보관', archive, '', student));
+  main.appendChild(group('보관', archive,
+    '올해 넣지 않기로 한 지원입니다. 끌어다 놓으면 여기로 옵니다.', student, 'archive'));
 }
 
 /**
@@ -288,14 +292,53 @@ function header(s) {
 
 /* ── 카드 ─────────────────────────────────────────────────────── */
 
-function card(app, rank, student) {
-  const box = el('div', 'card');
+/* ── 끌어다 놓기 ──────────────────────────────────────────────────
+ * 6칸만 끌 수 있고 후보·보관은 못 끄는 상태였다. 그런데 상담에서 제일 잦은 손짓이
+ * 「후보에 있던 걸 6칸으로」와 「6칸에 있던 걸 후보로」다. 정작 그 둘이 안 됐다.
+ *
+ * 끄는 쪽과 받는 쪽을 도우미 둘로 갈라, 카드·목록 줄·빈 칸·묶음 패널에 다 붙인다.
+ */
+
+/** 끌 수 있게 만든다. */
+function dragSource(box, app) {
   box.draggable = true;
   box.dataset.id = app.id;
   box.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('text/plain', app.id);
     e.dataTransfer.effectAllowed = 'move';
+    box.classList.add('dragging');
   });
+  box.addEventListener('dragend', () => box.classList.remove('dragging'));
+}
+
+/**
+ * 받을 수 있게 만든다.
+ * @param {Function} where  놓인 지원 → 'rank:3' 같은 자리 문자열. null 이면 안 받는다
+ */
+function dropTarget(box, where) {
+  const leave = () => box.classList.remove('over');
+  box.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    box.classList.add('over');
+  });
+  box.addEventListener('dragleave', leave);
+  box.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();          // 묶음 패널이 카드의 놓기를 가로채지 않게
+    leave();
+    const app = store.state.apps.get(e.dataTransfer.getData('text/plain'));
+    if (!app) return;
+    const slot = where(app);
+    if (slot) move(app, slot);
+  });
+}
+
+function card(app, rank, student) {
+  const box = el('div', 'card');
+  dragSource(box, app);
+  // 찬 칸에 놓으면 자리를 맞바꾼다. move() 가 밀려난 것을 알아서 옮긴다.
+  dropTarget(box, (dropped) => (dropped.id === app.id ? null : `rank:${rank}`));
   openable(box, app);
 
   if (rank) box.appendChild(el('div', 'rank', `${rank}순위`));
@@ -378,10 +421,21 @@ function figures(app, student) {
     const comp = s.real.value != null
       ? ['실질', `${one(s.real.value)}:1`, `명목 ${s.rate != null ? s.rate + ':1' : '?'} · 모집과 추합을 반영한 값`]
       : (s.rate != null ? ['경쟁률', `${s.rate}:1`, s.real.why || '추가합격 자료가 없어 명목값입니다'] : null);
-    left = group(s.year ? `작년 ${String(s.year).slice(2)}입결` : '작년', [
+    // 어느 전형의 컷인지 제목에 달아 둔다. 학과의 73% 는 입결에 전형이 여럿이라
+    // 「작년 26입결」만으로는 옆 전형의 컷과 구별이 안 된다.
+    const head = group(s.year ? `작년 ${String(s.year).slice(2)}입결` : '작년', [
       ['70%컷', g2(s.cut)],
       comp,
     ]);
+    if (s.type) head.title = `입결 전형 ${s.type}`;
+    /*
+     * 이름으로 맞춘 게 아니라 유형만 보고(cat) 또는 전형이 하나뿐이라(only) 고른 것이면
+     * 마우스를 올려야 보이는 곳에 숨기지 않는다. 전체의 3% 라 시끄럽지도 않다.
+     */
+    if (s.typeFit === 'cat' || s.typeFit === 'only') {
+      head.appendChild(el('div', 'fig-note', `${s.type} · 전형을 이름으로 맞추지 못했습니다`));
+    }
+    left = head;
   } else if (s.before && s.before.line.g70) {
     // 올해 새로 묶여 제 입결이 없는 자유전공. 묶이기 전 학과들의 선을 참고로 둔다.
     const g = s.before.line.g70;
@@ -466,7 +520,7 @@ function pills(app) {
 
   // 컷이 흔들리는 전형은 짚어 준다. 「작년 3.58」만 보고 판단하면 안 되는 자리다.
   // 안정적인 것에는 아무 표시도 하지 않는다 — 다 칠하면 무엇이 급한지 안 보인다.
-  const sure = confidence(s, (app.myScore || {}).grade);
+  const sure = confidence(s, (app.myScore || {}).grade, normType);
   if (worthFlagging(sure)) {
     const p = add(sure.label, sure.level === 'thin' ? 'warn' : '');
     p.title = sure.why.join('\n');
@@ -481,6 +535,11 @@ function pills(app) {
   } else if (!s.linked) {
     const p = add('작년 자료 없음', 'warn');
     if (s.why) p.title = s.why;
+  } else if (s.typeFit === 'none') {
+    // 학과 입결은 있는데 이 전형이 어느 줄인지 못 가렸다. 「자료 없음」과는 다른 말이다.
+    const p = add('전형 못 가림', 'warn');
+    p.title = '이 학과 입결에 전형이 여럿인데 지원한 전형을 가려내지 못했습니다.'
+      + ' 카드를 열어 연도별 추이에서 봐 주세요.';
   } else if (s.cut == null && s.avg == null) {
     add('작년 컷 없음');
   }
@@ -521,19 +580,28 @@ function mover(app) {
 
 function emptySlot(rank) {
   const box = el('div', 'card empty', `${rank}순위 — 비어 있음`);
-  box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('over'); });
-  box.addEventListener('dragleave', () => box.classList.remove('over'));
-  box.addEventListener('drop', (e) => {
-    e.preventDefault();
-    box.classList.remove('over');
-    const app = store.state.apps.get(e.dataTransfer.getData('text/plain'));
-    if (app) move(app, `rank:${rank}`);
-  });
+  dropTarget(box, () => `rank:${rank}`);
   return box;
 }
 
-function group(title, apps, help, student) {
+/**
+ * 후보 · 보관 · 전문대 묶음.
+ *
+ * @param {?string} slot  이 묶음에 끌어다 놓으면 가는 자리. null 이면 안 받는다
+ */
+function group(title, apps, help, student, slot) {
   const box = el('section', 'panel');
+  // 묶음 자체가 받는 쪽이다. 비어 있어도 받아야 「후보로 빼기」가 된다.
+  if (slot) {
+    dropTarget(box, (dropped) => {
+      const other = dropped.univType === '전문대' || dropped.univType === '특수대';
+      // 전문대를 6칸 쪽 묶음에, 일반대를 전문대 묶음에 놓는 것은 막는다
+      if (slot === 'tray' && !other) return null;
+      if (slot !== 'tray' && slot !== 'archive' && other) return null;
+      return slot;
+    });
+    box.classList.add('drops');
+  }
   const head = el('div', 'panel-head');
   head.appendChild(el('h2', '', title));
   head.appendChild(el('span', 'count num', `${apps.length}건`));
@@ -546,6 +614,7 @@ function group(title, apps, help, student) {
   const stack = el('div', 'stack');
   for (const app of apps) {
     const row = el('div', 'row');
+    dragSource(row, app);
     openable(row, app);
     const txt = el('div', 'txt');
     txt.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));

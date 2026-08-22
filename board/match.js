@@ -136,6 +136,38 @@ export function normDept(name) {
   return d + (discs.length ? '~' + discs.join('') : '');
 }
 
+/**
+ * 전형 이름 정규화.
+ *
+ * 입결 자료의 전형 이름이 해마다 조금씩 달라진다. 같은 전형인데
+ *
+ *     교과(일반)        ↔  교과(일반전형)
+ *     교과일반          ↔  교과(일반전형)
+ *     종합(고교생활Ⅰ)   ↔  종합(고교Ⅰ)
+ *     교과(지역)        ↔  교과(지역인재)
+ *
+ * 처럼 갈린다. 전형이 둘 이상인 (대학·학과) 7,550 곳 가운데 **25.8%** 가 이렇다.
+ * 그대로 두면 연도별 추이가 한 해씩 토막 나고, 「해마다 얼마나 움직였나」도 못 잰다.
+ *
+ * 다만 **적게 지운다.** 교과와 종합, Ⅰ과 Ⅱ, 지역과 학교장추천은 서로 다른 전형이라
+ * 절대 합치면 안 된다. 붙었다 떨어졌다 하는 꼬리(전형·선발·우수자·생활·인재)만 턴다.
+ *
+ * 로마 숫자만 아라비아로 바꾼다. `종합(고교Ⅱ)` 와 `종합(고교2)` 는 같은 전형인데
+ * 글자로는 안 겹친다. Ⅰ↔Ⅱ 는 여전히 1↔2 로 갈리니 서로 다른 전형은 그대로 갈린다.
+ *
+ * `학생부` 는 `학생` 보다 먼저 턴다. 뒤에 두면 `학생부교과` 가 `부교과` 로 남아
+ * 즐겨찾기의 `학생부교과(일반전형)` 와 입결의 `교과(일반)` 이 안 붙는다.
+ */
+const TYPE_NOISE = /(학생부|전형|선발|우수자|생활|인재|학생|모집)/g;
+const ROMAN = { 'Ⅰ': '1', 'Ⅱ': '2', 'Ⅲ': '3', 'Ⅳ': '4', 'Ⅴ': '5', 'ⅰ': '1', 'ⅱ': '2', 'ⅲ': '3' };
+export function normType(name) {
+  return String(name || '')
+    .replace(/[ⅠⅡⅢⅣⅤⅰⅱⅲ]/g, (c) => ROMAN[c])
+    .replace(/[\s()[\]·・,／/]/g, '')
+    .replace(TYPE_NOISE, '')
+    .trim();
+}
+
 export function key(univ, dept) {
   return `${univ}|${normDept(dept)}`;
 }
@@ -367,6 +399,85 @@ export function link(app, src) {
 }
 
 /**
+ * 지원한 전형의 입결 줄만 고른다.
+ * =====================================================================
+ * 입결은 (대학·학과) 로만 묶여 있어서 한 학과에 전형이 여럿 들어 있다.
+ * 학과키 9,825 곳 가운데 **73.0%** 가 가장 최근 해에만도 전형이 둘 이상이고,
+ * 그 중 **23.6%** 는 전형끼리 70%컷이 1등급 넘게 벌어진다.
+ *
+ *     전남대 영어영문  2026  교과(일반) 3.20  ·  종합(고교생활Ⅰ) 3.58
+ *     가천대 경영학과  2026  교과(학생부) 2.52  ·  종합(바람개비) 3.90
+ *
+ * 그래서 「연도순으로 정렬한 뒤 마지막 줄」을 쓰면 교과로 넣은 학생 카드에
+ * 종합의 컷이 뜬다. 그럴듯한 숫자라 아무도 못 알아챈다. **오연결이 미연결보다 나쁘다.**
+ *
+ * 고르는 차례
+ *
+ *   exact  정규화한 이름이 같다
+ *   near   한쪽이 다른 쪽을 감싼다. 겹치는 글자가 가장 긴 묶음이 **하나뿐**일 때만.
+ *          겹침 길이로 재는 까닭 — `교과(일반)` 은 `일반` 도 감싼다. 길이를 안 보면
+ *          `일반` 과 `교과일반` 이 비겨서 못 고른다.
+ *   cat    이름은 못 맞췄지만 카테고리(교과/종합/논술/실기)가 같은 묶음이 하나뿐
+ *   only   이 학과 입결에 전형이 애초에 하나뿐
+ *   none   위 어느 것도 아니면 **고르지 않는다.** 컷·경쟁률·모집을 비운다.
+ *
+ * 돌려주는 것은 고른 묶음의 행들(연도 오름차순)과 어떻게 골랐는지다.
+ * 나머지 전형도 버리지 않는다 — 연도별 추이는 여전히 전부 보여 준다.
+ */
+export function pickIpgyeol(rows, app) {
+  const groups = new Map();
+  for (const r of rows) {
+    const k = normType(r.type) || '전형 미상';
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  const keys = [...groups.keys()];
+  if (!keys.length) return { rows: [], fit: 'none', type: null };
+  const take = (k, fit) => ({
+    rows: groups.get(k).slice().sort((a, b) => a.year - b.year),
+    fit,
+    type: groups.get(k)[groups.get(k).length - 1].type,
+  });
+
+  const want = normType(app.typeSub) || normType(app.typeName);
+  if (want) {
+    if (groups.has(want)) return take(want, 'exact');
+    // 겹치는 글자가 가장 긴 묶음. 비기면 고르지 않는다.
+    let best = 0;
+    let hit = [];
+    for (const k of keys) {
+      if (k.length < 2 || !(k.includes(want) || want.includes(k))) continue;
+      const len = Math.min(k.length, want.length);
+      if (len > best) { best = len; hit = [k]; } else if (len === best) hit.push(k);
+    }
+    if (hit.length === 1) return take(hit[0], 'near');
+  }
+
+  const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
+  if (cat) {
+    const hit = keys.filter((k) => groups.get(k).some((r) => r.cat === cat || String(r.type).includes(cat)));
+    if (hit.length === 1) return take(hit[0], 'cat');
+  }
+
+  if (keys.length === 1) return take(keys[0], 'only');
+
+  /*
+   * 못 골랐으면 **무엇들 사이에서 못 골랐는지**를 함께 돌려준다.
+   * 「가려내지 못했습니다」만 적으면 선생님은 표를 처음부터 훑어야 한다.
+   * 같은 유형(교과/종합)의 이름만 추리면 대개 둘이라 눈으로 바로 고를 수 있다.
+   */
+  const near = cat ? keys.filter((k) => groups.get(k).some((r) => r.cat === cat)) : [];
+  // 이름이 가장 많이 겹치는 것부터. 화면에서 잘리더라도 앞에 남는 것이 진짜 후보여야 한다.
+  const overlap = (k) => (want && (k.includes(want) || want.includes(k))
+    ? Math.min(k.length, want.length) : 0);
+  const among = (near.length ? near : keys)
+    .slice()
+    .sort((a, b) => overlap(b) - overlap(a))
+    .map((k) => groups.get(k)[groups.get(k).length - 1].type);
+  return { rows: [], fit: 'none', type: null, among };
+}
+
+/**
  * 한 학과에 전형이 여럿이면 모집요강 행도 여럿이다. **지원한 전형과 같은 줄을 골라야 한다.**
  * 아무거나(첫 줄) 쓰면 종합으로 넣은 학생에게 교과의 작년 모집인원과 추합이 붙어,
  * 「30명 (작년 3명)」 같은 엉뚱한 증감이 뜬다.
@@ -454,10 +565,20 @@ export function summarize(l, app) {
   }
 
   const rows = l.ipgyeol;
-  const latest = rows[rows.length - 1] || null;
+  /*
+   * 머리 숫자(컷·경쟁률·모집)는 **지원한 전형의 줄**에서만 온다.
+   * 못 가려내면 비운다 — 옆 전형의 숫자를 대신 앉히지 않는다. pickIpgyeol 참고.
+   */
+  const picked = pickIpgyeol(rows, app || {});
+  const mineRows = picked.rows;
+  const latest = mineRows[mineRows.length - 1] || null;
   const mo = l.mojip[0] || null;
   return {
     linked: rows.length > 0, kind: 'univ', why: l.why, rows,
+    mine: mineRows,                    // 지원한 전형의 줄만
+    type: picked.type,                 // 입결 쪽 전형 이름 (즐겨찾기와 다를 수 있다)
+    typeFit: picked.fit,               // exact | near | cat | only | none
+    among: picked.among || null,       // 못 골랐을 때 후보로 남은 전형 이름들
     before: l.before,                  // {type:'유형2', parts, line} | null
     year: latest ? latest.year : null,
     rate: latest ? latest.rate : null,

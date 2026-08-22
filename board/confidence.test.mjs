@@ -97,10 +97,8 @@ eq(position(2.8, null, 2.96), null, '컷이 없으면 null');
 /* ── 묶어서 ─────────────────────────────────────────────────────── */
 console.log('흐름은 못 믿을 까닭이 아니다');
 {
-  const s = {
-    linked: true, quota: 40, cut: 4.0, cut50: 3.5,
-    rows: [R(2024, 3.0), R(2025, 3.5), R(2026, 4.0)],
-  };
+  const rows = [R(2024, 3.0), R(2025, 3.5), R(2026, 4.0)];
+  const s = { linked: true, quota: 40, cut: 4.0, cut50: 3.5, rows, mine: rows };
   const c = confidence(s, 3.8);
   eq(c.why.some((w) => w.includes('흐름')), false, '흐름은 why 에 넣지 않는다');
   eq(c.trend.includes('내려가는'), true, 'trend 에 따로 낸다');
@@ -109,10 +107,8 @@ console.log('흐름은 못 믿을 까닭이 아니다');
 
 console.log('한 줄로 묶기');
 {
-  const s = {
-    linked: true, quota: 40, cut: 3.20, cut50: 2.90,
-    rows: [R(2024, 3.10), R(2025, 3.15), R(2026, 3.20)],
-  };
+  const rows = [R(2024, 3.10), R(2025, 3.15), R(2026, 3.20)];
+  const s = { linked: true, quota: 40, cut: 3.20, cut50: 2.90, rows, mine: rows };
   const c = confidence(s, 3.05);
   eq(c.level, 'solid', '넉넉히 뽑고 안 흔들리면 안정적');
   eq(c.why, [], '깎을 까닭이 없으면 빈 목록');
@@ -120,10 +116,8 @@ console.log('한 줄로 묶기');
   eq(c.spot.where, 'between', '내 위치도 함께');
 }
 {
-  const s = {
-    linked: true, quota: 3, cut: 4.00, cut50: 3.50,
-    rows: [R(2023, 2.50), R(2024, 2.80), R(2025, 4.30), R(2026, 4.00)],
-  };
+  const rows = [R(2023, 2.50), R(2024, 2.80), R(2025, 4.30), R(2026, 4.00)];
+  const s = { linked: true, quota: 3, cut: 4.00, cut50: 3.50, rows, mine: rows };
   const c = confidence(s, 3.80);
   eq(c.level, 'thin', '적게 뽑고 크게 흔들리면 많이 흔들림');
   eq(c.why.length >= 2, true, '까닭을 여럿 적는다');
@@ -132,7 +126,8 @@ console.log('한 줄로 묶기');
 console.log('「흔들린다」와 「모른다」를 가른다');
 {
   // 자료의 61% 가 한 해치뿐이다. 그건 불안정하다는 뜻이 아니라 아직 모른다는 뜻이다.
-  const c = confidence({ linked: true, quota: 30, cut: 3.0, rows: [R(2026, 3.0)] }, 3.0);
+  const one = [R(2026, 3.0)];
+  const c = confidence({ linked: true, quota: 30, cut: 3.0, rows: one, mine: one }, 3.0);
   eq(c.evidence, 'one-year', '견줄 해가 하나뿐');
   eq(c.level, 'solid', '못 쟀을 뿐이지 흔들린 것은 아니다');
   eq(c.label, '알 수 없음', '그런데 「안정적」이라 적으면 안 된다');
@@ -141,14 +136,20 @@ console.log('「흔들린다」와 「모른다」를 가른다');
   eq(worthFlagging(c), false, '카드 꼬리표는 붙이지 않는다');
 }
 {
+  const many = [R(2024, 3.0), R(2025, 4.4), R(2026, 4.5)];
   const c = confidence({
-    linked: true, quota: 30, cut: 4.5, cut50: 4.0,
-    rows: [R(2024, 3.0), R(2025, 4.4), R(2026, 4.5)],
+    linked: true, quota: 30, cut: 4.5, cut50: 4.0, rows: many, mine: many,
   }, 4.2);
   eq(worthFlagging(c), true, '정말 움직인 것에는 붙인다');
   eq(c.label, '많이 흔들림', '1.5등급 이상 움직임');
 }
 eq(confidence({ linked: false }, 3.0), null, '안 붙었으면 null');
+// 학과 입결은 있는데 **지원한 전형**을 가려내지 못한 경우.
+// 옆 전형의 변동폭을 빌려 오면 그럴듯하게 틀린다 — 아예 내지 않는다.
+eq(confidence({
+  linked: true, quota: 30, cut: 3.0,
+  rows: [R(2026, 3.0, '교과'), R(2026, 4.4, '종합')], mine: [],
+}, 3.0), null, '지원한 전형을 못 가려냈으면 null — 옆 전형 것을 빌리지 않는다');
 eq(confidence(null, 3.0), null, '요약이 없으면 null');
 
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');
