@@ -20,7 +20,10 @@ const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';        // 학교에서 잡아 준다 — 학생은 보기만 한다
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
+let offline = false;
+
 const state = {
+  results: new Map(),
   token: '',
   student: null,
   apps: [],
@@ -52,6 +55,9 @@ const label = (iso) => {
 
 export async function start(token, demoData) {
   state.token = token;
+  // 보기용 자료로 열면 서버를 부르지 않는다. 그래야 학생에게 링크를 주기 전에
+  // 선생님이 저장까지 눌러 보며 확인할 수 있다.
+  offline = Boolean(demoData);
   render();
   try {
     const data = demoData || await api.call('student', { token }, { timeout: 45000 });
@@ -67,6 +73,11 @@ function apply(data) {
   state.student = data.student || null;
   state.apps = data.apps || [];
   state.notes = data.notes || [];
+  state.results = new Map((data.results || []).map((r) => [String(r.id), {
+    stage1: String(r.stage1 || ''), final: String(r.final || ''),
+    reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
+    enrolled: String(r.enrolled || ''), status: String(r.status || 'confirmed'),
+  }]));
   state.placement = new Map((data.state || []).map((r) => [String(r.id), {
     slot: r.slot || 'pool',
     rank: r.rank === '' || r.rank == null ? null : Number(r.rank),
@@ -358,6 +369,7 @@ function card(app) {
     box.appendChild(dateRow(app, kind, d));
   }
   box.appendChild(applyNoRow(app));
+  box.appendChild(resultRow(app));
   return box;
 }
 
@@ -393,6 +405,107 @@ function dateRow(app, kind, d) {
   row.appendChild(btn);
   wrap.appendChild(row);
   return wrap;
+}
+
+/* ── 결과 ───────────────────────────────────────────────────────── */
+
+const FINAL = ['', '1단계 합격', '최초합격', '충원합격', '불합격', '미등록'];
+
+/**
+ * 합격·불합격을 **학생이 적는다.**
+ *
+ * 한 학년 121명 × 여섯 칸이면 700건이다. 담임이 다 칠 수 없고, 애초에 합격자 발표는
+ * 학생이 대학 홈페이지에서 먼저 본다. 예비번호가 몇 번까지 돌았는지는 더 그렇다 —
+ * 학생은 하루에도 몇 번씩 들여다본다.
+ *
+ * 그래서 학생이 적고 선생님은 확인만 한다. 적은 값은 바로 선생님 화면에 뜨되
+ * 「학생이 적음」으로 표시된다.
+ *
+ * 칸을 셋으로 줄였다. 학생이 발표 화면에서 그대로 옮길 수 있는 것만 남긴다 —
+ * 「불합격 사유」 같은 건 학생이 모르고, 알아도 적기 괴로운 칸이다.
+ */
+function resultRow(app) {
+  const wrap = el('div', 'field');
+  const saved = state.results.get(String(app.id)) || {};
+  const base = app.result || {};
+  const now = saved.final || base.final || '';
+
+  const lab = el('label', '', '결과');
+  wrap.appendChild(lab);
+
+  const hint = el('p', 'hint');
+  if (!now) {
+    hint.textContent = '발표가 나면 여기에 적어 주세요. 선생님도 함께 봅니다.';
+  } else if (saved.status === 'student') {
+    hint.textContent = `${now}${saved.waitNo ? ` · 예비 ${saved.waitNo}번` : ''}`
+      + ' — 선생님 확인을 기다리는 중입니다.';
+  } else {
+    hint.textContent = `${now}${saved.waitNo || base.waitNo ? ` · 예비 ${saved.waitNo || base.waitNo}번` : ''}`
+      + (saved.status === 'confirmed' && saved.final ? ' 로 확인되었습니다.' : ' 입니다.');
+  }
+  wrap.appendChild(hint);
+
+  const row = el('div', 'field-in res-in');
+  const sel = document.createElement('select');
+  sel.setAttribute('aria-label', `${app.univ} 결과`);
+  for (const o of FINAL) {
+    const opt = document.createElement('option');
+    opt.value = o;
+    opt.textContent = o || '아직 발표 전';
+    if (now === o) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  if (now && !FINAL.includes(now)) {
+    const opt = document.createElement('option');
+    opt.value = now; opt.textContent = now; opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.disabled = state.busy;
+  row.appendChild(sel);
+
+  // 예비번호는 충원합격일 때만 묻는다. 늘 띄우면 여섯 칸이 다 예비번호 칸이 된다.
+  const wait = document.createElement('input');
+  wait.type = 'text';
+  wait.inputMode = 'numeric';
+  wait.placeholder = '예비번호';
+  wait.setAttribute('aria-label', `${app.univ} 예비번호`);
+  wait.value = saved.waitNo || base.waitNo || '';
+  wait.hidden = !/충원|예비/.test(now);
+  sel.onchange = () => { wait.hidden = !/충원|예비/.test(sel.value); };
+  row.appendChild(wait);
+
+  const btn = el('button', 'btn btn-primary', '저장');
+  btn.type = 'button';
+  btn.disabled = state.busy;
+  btn.onclick = () => saveResult(app, sel.value, wait.value.trim());
+  row.appendChild(btn);
+  wrap.appendChild(row);
+  return wrap;
+}
+
+async function saveResult(app, final, waitNo) {
+  state.busy = true; render();
+  try {
+    if (!offline) {
+      await api.call('studentResult', {
+        token: state.token, id: app.id,
+        final, waitNo: /충원|예비/.test(final) ? waitNo : '',
+        stage1: final === '1단계 합격' ? '합격' : '',
+        enrolled: final === '미등록' ? '미등록' : '',
+      });
+    }
+    state.results.set(String(app.id), {
+      final, waitNo: /충원|예비/.test(final) ? waitNo : '',
+      stage1: final === '1단계 합격' ? '합격' : '', reason: '',
+      enrolled: final === '미등록' ? '미등록' : '', status: 'student',
+    });
+    state.notice = `${shortUniv(app.univ)} 결과를 ${final || '지움'} 으로 보냈습니다.`
+      + ' 선생님도 함께 봅니다.';
+  } catch (err) {
+    state.notice = `오류: ${err.message}`;
+  } finally {
+    state.busy = false; render();
+  }
 }
 
 /** 접수번호 안내를 이미 한 번 냈나. 일곱 장에 같은 문장이 일곱 번 나오면 소음이다. */
@@ -436,7 +549,7 @@ async function saveDate(app, kind, value) {
   if (!value) { state.notice = '날짜를 골라 주세요.'; render(); return; }
   state.busy = true; state.notice = ''; render();
   try {
-    await api.call('studentDate', { token: state.token, id: app.id, kind, from: value, to: value });
+    if (!offline) await api.call('studentDate', { token: state.token, id: app.id, kind, from: value, to: value });
     state.dates.set(`${app.id}|${kind}`, { from: value, to: value, status: 'pending' });
     state.notice = `${shortUniv(app.univ)} ${kind}일을 ${label(value)} 로 보냈습니다. 선생님이 확인하면 확정됩니다.`;
   } catch (err) {
@@ -449,7 +562,7 @@ async function saveDate(app, kind, value) {
 async function saveApplyNo(app, value) {
   state.busy = true; state.notice = ''; render();
   try {
-    await api.call('studentApplyNo', { token: state.token, id: app.id, applyNo: value });
+    if (!offline) await api.call('studentApplyNo', { token: state.token, id: app.id, applyNo: value });
     const key = state.notes.find((n) => String(n.id) === String(app.id)
       && String(n.text || '').startsWith('접수번호'));
     if (key) key.text = `접수번호 ${value}`;

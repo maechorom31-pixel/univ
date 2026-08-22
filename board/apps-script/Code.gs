@@ -48,7 +48,9 @@ var HEADERS = {
   설정:  ['이메일', '메모'],
   배치:  ['id', 'hak', 'slot', 'rank', 'by', 'at'],
   메모:  ['noteId', 'hak', 'id', 'text', 'visible', 'by', 'at'],
-  결과:  ['id', 'hak', 'stage1', 'final', 'reason', 'waitNo', 'enrolled', 'by', 'at'],
+  // status: 'student' 학생이 적음 · 'confirmed' 선생님이 확인함
+  결과:  ['id', 'hak', 'stage1', 'final', 'reason', 'waitNo', 'enrolled',
+          'status', 'by', 'at'],
   일정:  ['id', 'hak', 'kind', 'from', 'to', 'status', 'by', 'at'],
   공유:  ['hak', 'token', 'issuedAt', 'expiresAt'],
   // 즐겨찾기 표기 → 자료 쪽 표기. 학생이 아니라 **학과**에 붙는 것이라
@@ -128,7 +130,8 @@ function handle_(p) {
     case 'setState':   return setState_(p, who);
     case 'addNote':    return addNote_(p, who);
     case 'removeNote': return removeNote_(p, who);
-    case 'setResult':  return setResult_(p, who);
+    case 'setResult':  return setResult_(p, who, 'confirmed');
+    case 'approveResult': return approveResult_(p, who);
     case 'setDate':    return setDate_(p, who, 'confirmed');
     case 'approveDate': return approveDate_(p, who);
     case 'issueToken': return issueToken_(p, who);
@@ -551,14 +554,40 @@ function removeNote_(p, who) {
   return { ok: true, removed: false };
 }
 
-function setResult_(p, who) {
+/**
+ * 결과를 적는다.
+ *
+ * **주로 학생이 적는다.** 121명 × 6칸이면 700건이라 담임이 다 칠 수 없고,
+ * 합격자 발표는 학생이 대학 홈페이지에서 먼저 본다. 예비번호가 몇 번까지 돌았는지도
+ * 학생이 실시간으로 안다.
+ *
+ * 선생님은 확인만 한다(status='confirmed'). 선생님이 직접 적으면 그 자체가 확인이다.
+ */
+function setResult_(p, who, status) {
   if (!p.id || !p.hak) return { ok: false, error: 'id 와 hak 이 필요합니다.' };
   upsert_(SHEET.result, ['id'], {
     id: p.id, hak: p.hak,
     stage1: p.stage1 || '', final: p.final || '', reason: p.reason || '',
-    waitNo: p.waitNo || '', enrolled: p.enrolled || '', by: who, at: now_()
+    waitNo: p.waitNo || '', enrolled: p.enrolled || '',
+    status: status || 'confirmed', by: who, at: now_()
   });
   log_(who, 'setResult', p.hak + ' ' + p.id + ' ' + (p.final || ''));
+  return { ok: true };
+}
+
+/** 담임이 학생이 적은 결과를 확인해 확정으로 올린다. */
+function approveResult_(p, who) {
+  var all = rows_(SHEET.result), hit = null;
+  for (var i = 0; i < all.length; i++) {
+    if (String(all[i].id) === String(p.id)) hit = all[i];
+  }
+  if (!hit) return { ok: false, error: '확인할 결과가 없습니다.' };
+  upsert_(SHEET.result, ['id'], {
+    id: hit.id, hak: hit.hak, stage1: hit.stage1, final: hit.final,
+    reason: hit.reason, waitNo: hit.waitNo, enrolled: hit.enrolled,
+    status: 'confirmed', by: who, at: now_()
+  });
+  log_(who, 'approveResult', hit.hak + ' ' + hit.id);
   return { ok: true };
 }
 
@@ -627,6 +656,10 @@ function studentAction_(action, p) {
   if (action === 'studentAsk') {
     if (!String(p.text || '').trim()) return { ok: false, error: '내용을 적어 주세요.' };
     return addNote_({ hak: hak, id: p.id, text: p.text, visible: 'true' }, who);
+  }
+  if (action === 'studentResult') {
+    return setResult_({ id: p.id, hak: hak, stage1: p.stage1, final: p.final,
+      reason: p.reason, waitNo: p.waitNo, enrolled: p.enrolled }, who, 'student');
   }
   return { ok: false, error: '알 수 없는 요청입니다: ' + action };
 }

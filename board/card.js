@@ -463,14 +463,15 @@ const STAGE1 = ['', '합격', '불합격'];
 const FINAL = ['', '최초합격', '충원합격', '불합격', '미등록'];
 
 /**
- * 결과 — 보고 적는다.
+ * 결과 — **주로 학생이 적고 선생님은 확인한다.**
  *
- * 즐겨찾기가 결과를 주긴 하지만 **12월에는 담임이 먼저 안다.** 예비번호가 몇 번
- * 돌았는지, 등록을 했는지는 대교협 자료가 늦거나 아예 없다.
- * 처음에 보내 주신 시트가 정확히 이 일을 하던 것이라 여기에 옮겼다.
+ * 121명 × 여섯 칸이면 700건이라 담임이 다 칠 수 없고, 합격자 발표는 학생이 대학
+ * 홈페이지에서 먼저 본다. 예비번호는 더 그렇다 — 학생은 하루에도 몇 번씩 본다.
+ *
+ * 그래서 이 화면의 주된 단추는 「맞습니다」다. 고칠 일이 있을 때만 칸을 만진다.
+ * 학생이 못 적는 것(불합격 사유 같은)은 여기서만 적는다.
  *
  * 적은 값은 즐겨찾기 값 **위에** 덮인다. 칸을 비우고 저장하면 도로 즐겨찾기 값이 된다.
- * 어느 쪽에서 온 값인지 화면에 적는다.
  */
 function result(app) {
   const wrap = el('div', 'detail-block');
@@ -528,10 +529,30 @@ function result(app) {
   wrap.appendChild(form);
 
   const bar = el('div', 'res-bar');
-  const from = el('span', 'hint', r.edited
-    ? `선생님이 적은 값입니다${r.at ? ` · ${String(r.at).slice(0, 10)}` : ''}`
-    : (r.final || r.stage1 ? '즐겨찾기에서 온 값입니다' : '아직 결과가 없습니다'));
+  const from = el('span', 'hint', r.pending
+    ? `학생이 적었습니다${r.at ? ` · ${String(r.at).slice(0, 10)}` : ''} — 확인해 주세요`
+    : (r.edited
+      ? `확인된 값입니다${r.at ? ` · ${String(r.at).slice(0, 10)}` : ''}`
+      : (r.final || r.stage1 ? '즐겨찾기에서 온 값입니다' : '아직 결과가 없습니다')));
   bar.appendChild(from);
+
+  // 학생이 적은 것은 대개 맞다. 고치는 것보다 확인하는 쪽이 훨씬 잦으니 한 번에 되게 둔다.
+  if (r.pending) {
+    const ok = el('button', 'btn', '맞습니다');
+    ok.type = 'button';
+    ok.onclick = async () => {
+      ok.disabled = true;
+      try {
+        await store.approveResult(app);
+      } catch (err) {
+        alertBox.textContent = `확인하지 못했습니다 — ${err.message}`;
+        alertBox.hidden = false;
+        ok.disabled = false;
+      }
+    };
+    bar.insertBefore(ok, bar.firstChild);
+    bar.classList.add('three');
+  }
 
   const save = el('button', 'btn btn-primary', '결과 저장');
   save.type = 'button';

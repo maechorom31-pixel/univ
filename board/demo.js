@@ -145,7 +145,18 @@ export const demo = {
   state: placed,
   aliases: [],
   notes: [],
-  results: [],
+  // 학생이 적어 두고 선생님 확인을 기다리는 결과. 12월의 흔한 자리다.
+  results: [
+    { id: at('건국대', '영어영문학과').id, hak: '3201', stage1: '합격',
+      final: '충원합격', reason: '', waitNo: '7', enrolled: '',
+      status: 'student', by: '3201 학생', at: '2026-12-15T20:11:00Z' },
+    { id: at('숭실대', '영어영문학과').id, hak: '3201', stage1: '', final: '불합격',
+      reason: '', waitNo: '', enrolled: '',
+      status: 'student', by: '3201 학생', at: '2026-12-15T20:12:00Z' },
+    { id: at('동신대', '간호학과').id, hak: '3204', stage1: '', final: '최초합격',
+      reason: '', waitNo: '', enrolled: '등록',
+      status: 'confirmed', by: '보기용 계정', at: '2026-12-16T09:00:00Z' },
+  ],
   dates: [],
   unknownCols: [],
   skipped: 0,
@@ -163,4 +174,5 @@ export const studentDemo = {
     { id: at('건국대', '영어영문학과').id, hak: '3201', kind: '면접', from: inDays(14), to: inDays(14), status: 'pending' },
   ],
   notes: [{ noteId: 'n1', hak: '3201', id: at('건국대', '영어영문학과').id, text: '접수번호 0021170267', visible: 'Y' }],
+  results: [],
 };

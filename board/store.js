@@ -96,7 +96,8 @@ function apply(data) {
   state.results = new Map((data.results || []).map((r) => [String(r.id), {
     stage1: String(r.stage1 || ''), final: String(r.final || ''),
     reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
-    enrolled: String(r.enrolled || ''), by: r.by || '', at: r.at || '',
+    enrolled: String(r.enrolled || ''),
+    status: String(r.status || 'confirmed'), by: r.by || '', at: r.at || '',
   }]));
   state.aliases = new Map((data.aliases || [])
     .map((r) => [`${r.univ}|${r.dept}`, {
@@ -390,10 +391,14 @@ export function resultOf(app) {
   const base = (app && app.result) || {};
   const mine = state.results.get(String(app && app.id)) || {};
   const pick = (k) => (mine[k] ? mine[k] : (base[k] || null));
+  const written = Boolean(mine.final || mine.stage1 || mine.waitNo || mine.enrolled);
   return {
     stage1: pick('stage1'), final: pick('final'), reason: pick('reason'),
     waitNo: pick('waitNo'), enrolled: pick('enrolled'),
-    edited: Boolean(mine.final || mine.stage1 || mine.waitNo || mine.enrolled),
+    edited: written,
+    // 학생이 적고 아직 선생님이 확인하지 않은 것
+    pending: written && mine.status === 'student',
+    status: written ? (mine.status || 'confirmed') : '',
     by: mine.by || '', at: mine.at || '',
   };
 }
@@ -405,7 +410,7 @@ export async function setResult(app, next) {
   const row = {
     stage1: next.stage1 || '', final: next.final || '', reason: next.reason || '',
     waitNo: next.waitNo || '', enrolled: next.enrolled || '',
-    by: state.who || '', at: new Date().toISOString(),
+    status: 'confirmed', by: state.who || '', at: new Date().toISOString(),
   };
   const empty = !row.stage1 && !row.final && !row.reason && !row.waitNo && !row.enrolled;
   if (empty) state.results.delete(id); else state.results.set(id, row);
@@ -413,6 +418,36 @@ export async function setResult(app, next) {
   if (offline) return;
   try {
     await api.setResult({ id, hak: app.hak, ...next });
+  } catch (err) {
+    state.results = before;
+    emit('change', 'state');
+    throw err;
+  }
+}
+
+/** 학생이 적어 두고 선생님 확인을 기다리는 결과. */
+export function pendingResults(cls) {
+  const out = [];
+  for (const student of studentsOf(cls || '')) {
+    for (const app of appsOf(student.hak)) {
+      const r = resultOf(app);
+      if (r.pending) out.push({ app, student, result: r });
+    }
+  }
+  return out;
+}
+
+/** 학생이 적은 결과를 그대로 확인한다. */
+export async function approveResult(app) {
+  const id = String(app.id);
+  const row = state.results.get(id);
+  if (!row) return;
+  const before = new Map(state.results);
+  state.results.set(id, { ...row, status: 'confirmed', by: state.who || '' });
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.call('approveResult', { id, hak: app.hak });
   } catch (err) {
     state.results = before;
     emit('change', 'state');

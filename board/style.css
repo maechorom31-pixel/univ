@@ -161,12 +161,22 @@ button { font: inherit; color: inherit; }
   display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: var(--s2);
   align-items: baseline;
 }
+/* 확인 대기 배지가 붙으면 칸이 하나 는다 */
+.roster button:has(.todo) { grid-template-columns: 52px minmax(0, 1fr) auto auto; }
 .roster button[aria-current='true'] { background: var(--amber-face); }
 @media (hover: hover) { .roster button:hover { background: #F3F1ED; } }
 .roster .hak { font-size: var(--t-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
 .roster .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roster .cnt { font-size: var(--t-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
 .roster .cnt.full { color: var(--amber-ink); font-weight: 600; }
+/* 확인을 기다리는 결과가 몇 건인지. 12월에 담임이 명단에서 제일 먼저 보는 것. */
+.roster .todo {
+  font-size: 11px; font-weight: 700; line-height: 1;
+  min-width: 18px; padding: 3px 5px; border-radius: 9px; text-align: center;
+  background: var(--amber); color: var(--text);
+}
+.todo-panel { border-color: var(--amber); }
+.todo-row .univ { font-weight: 600; }
 
 /* ── 학생 머리글 ──────────────────────────────────────────────── */
 
@@ -342,6 +352,16 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
   width: 100%;
 }
 .field-in .btn { min-height: 44px; }
+/* 결과 줄 — 고르기 · 예비번호 · 저장. 예비번호는 충원일 때만 나온다. */
+.res-in { grid-template-columns: minmax(0, 1fr) auto; }
+.res-in select {
+  font: inherit; font-size: 16px; min-height: 44px; padding: 0 var(--s2);
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
+  width: 100%;
+}
+.res-in input { max-width: 7rem; }
+.res-in input[hidden] { display: none; }
+.res-in:has(input:not([hidden])) { grid-template-columns: minmax(0, 1fr) auto auto; }
 
 /* ── 알림 ─────────────────────────────────────────────────────── */
 
@@ -550,6 +570,10 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
 .res-bar {
   display: grid; grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--s3); align-items: center;
+}
+.res-bar.three { grid-template-columns: auto minmax(0, 1fr) auto; }
+.res-bar.three .btn:first-child {
+  border-color: var(--amber); background: var(--amber-face); font-weight: 600;
 }
 
 /* ── 얼마나 믿을 수 있나 ──────────────────────────────────────── */

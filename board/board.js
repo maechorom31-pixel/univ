@@ -57,8 +57,11 @@ export function start() {
     if (what === 'data') {
       const list = store.classes();
       if (!store.selection.cls) store.select({ cls: list.includes(myClass) ? myClass : (list[0] || '') });
-      renderRoster();
     }
+    // 명단은 자료가 바뀔 때만이 아니라 **쓰기가 일어날 때도** 다시 그린다.
+    // 6칸 숫자와 확인 대기 배지가 거기 붙어 있어서, 결과를 확인해도 배지가
+    // 그대로 남아 있으면 담임이 같은 것을 두 번 연다.
+    if (what === 'data' || what === 'state') renderRoster();
     render();
     renderDetail();
   });
@@ -124,6 +127,16 @@ function renderRoster() {
     const cnt = el('span', `cnt${ranked >= 6 ? ' full' : ''}`, `${ranked}/6`);
     cnt.title = `확정 ${ranked}건 · 지원 ${apps.length}건`;
     b.appendChild(cnt);
+
+    // 12월에는 6칸 숫자보다 「확인할 게 있나」가 급하다.
+    // 학생이 밤사이 적어 둔 것을 담임이 명단에서 바로 알아야 한다 —
+    // 121명을 한 명씩 열어 볼 수는 없다.
+    const waiting = apps.filter((a) => store.resultOf(a).pending).length;
+    if (waiting) {
+      const dot = el('span', 'todo num', String(waiting));
+      dot.title = `학생이 적은 결과 ${waiting}건 — 확인해 주세요`;
+      b.appendChild(dot);
+    }
     li.appendChild(b);
     roster.appendChild(li);
   }
@@ -160,6 +173,7 @@ function render() {
     ));
   }
   if (notice) main.appendChild(banner(notice));
+  main.appendChild(waitingPanel());
 
   const student = store.state.students.get(store.selection.hak);
   if (!student) {
@@ -203,6 +217,54 @@ function render() {
     if (put.length) main.appendChild(group('전문대 보관', put, '', student));
   }
   if (archive.length) main.appendChild(group('보관', archive, '', student));
+}
+
+/**
+ * 학생이 적어 두고 확인을 기다리는 결과.
+ *
+ * 12월에는 이게 담임이 보드를 여는 이유다. 학생 121명이 밤사이 대학 홈페이지를 보고
+ * 결과를 적어 두면, 아침에 열었을 때 **누구를 봐야 하는지가 첫 화면에 있어야** 한다.
+ * 명단의 배지만으로는 반 전체를 훑어야 하고, 다른 반 것은 아예 안 보인다.
+ */
+function waitingPanel() {
+  const wrap = el('div');
+  const list = store.pendingResults(store.selection.cls);
+  if (!list.length) return wrap;
+
+  const box = el('section', 'panel todo-panel');
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '학생이 적은 결과'));
+  head.appendChild(el('span', 'count num', `${list.length}건`));
+  box.appendChild(head);
+  box.appendChild(el('p', 'section-label',
+    '학생이 발표를 보고 적어 둔 것입니다. 카드를 열어 「맞습니다」를 누르면 확인됩니다.'));
+
+  const stack = el('div', 'stack');
+  for (const x of list) {
+    const row = el('div', 'row todo-row');
+    const txt = el('div', 'txt');
+    txt.appendChild(el('div', 'univ',
+      `${x.student.hak} ${tidy(x.student.name)} — ${shortName(x.app)}`));
+    txt.appendChild(el('div', 'dept', [
+      x.result.final,
+      x.result.waitNo ? `예비 ${x.result.waitNo}번` : '',
+      String(x.result.at || '').slice(0, 10),
+    ].filter(Boolean).join(' · ')));
+    row.appendChild(txt);
+
+    const go = el('button', 'btn', '열기');
+    go.type = 'button';
+    go.onclick = () => {
+      store.select({ hak: x.student.hak });
+      renderRoster();
+      openDetail(x.app, go);
+    };
+    row.appendChild(go);
+    stack.appendChild(row);
+  }
+  box.appendChild(stack);
+  wrap.appendChild(box);
+  return wrap;
 }
 
 function header(s) {
@@ -396,6 +458,11 @@ function pills(app) {
     if (s.employ != null) add(`취업 ${Math.round(s.employ)}%`);
     if (s.transfer) add('연계편입', 'mark');
   }
+
+  // 학생이 결과를 적어 두면 담임이 바로 알아야 한다. 확인이 밀리면 대장이 빈다.
+  const res = store.resultOf(app);
+  if (res.pending) add(`${res.final || '결과'} · 확인 필요`, 'mark');
+  else if (res.final) add(res.final);
 
   // 컷이 흔들리는 전형은 짚어 준다. 「작년 3.58」만 보고 판단하면 안 되는 자리다.
   // 안정적인 것에는 아무 표시도 하지 않는다 — 다 칠하면 무엇이 급한지 안 보인다.
