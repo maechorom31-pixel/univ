@@ -134,19 +134,39 @@ export function detailPanel(app, student, onClose) {
   if (s && s.stale) {
     const st = s.stale;
     const note = el('p', 'note');
-    note.appendChild(document.createTextNode(`「${s.type}」${josa(s.type, '은', '는')} 입결에 `));
-    note.appendChild(el('b', null, `${st.hi}년까지만 있습니다`));
-    note.appendChild(document.createTextNode(
-      `. 이 학과 자료는 ${st.deptHi}년까지 있으니, 아래 숫자는 작년이 아니라`
-      + ` ${st.year}년 것입니다.`));
-    if (st.heirs.length) {
-      const list = st.heirs
-        .map((h) => `${h.name} (${h.year}년 ${h.g70 != null ? `70%컷 ${g2(h.g70)}` : '컷 없음'})`)
-        .join(' · ');
+    const others = st.heirs.filter((h) => !st.heir || h.name !== st.heir.name);
+    const label = (h) => `${h.name} (${h.year}년 `
+      + `${h.g70 != null ? `70%컷 ${g2(h.g70)}` : '컷 없음'})`;
+    const last = st.heirs[st.heirs.length - 1];
+
+    note.appendChild(document.createTextNode(`「${st.was}」${josa(st.was, '은', '는')} 입결에 `));
+    note.appendChild(el('b', null, `${st.hi}년까지만 있${st.heirs.length ? '고' : '습니다'}`));
+
+    if (!st.heirs.length) {
       note.appendChild(document.createTextNode(
-        ` ${st.hi + 1}년부터는 ${list}${josa(st.heirs[st.heirs.length - 1].name, '이', '가')}`
-        + ' 뒤를 잇습니다 — 쪼개진 것으로 보이는데 이름만으로는 어느 쪽인지 가릴 수'
-        + ' 없어 잇지 않았습니다. 아래 「연도별 추이」에서 직접 견줘 주세요.'));
+        `. 이 학과 자료는 ${st.deptHi}년까지 있으니, 아래 숫자는 작년이 아니라`
+        + ` ${st.year}년 것입니다.`));
+    } else {
+      note.appendChild(document.createTextNode(` ${st.hi + 1}년에 `
+        + `${st.heirs.map((h) => h.name).join(' · ')}`
+        + `${josa(last.name, '으로', '로')} 쪼개졌습니다. `));
+      if (st.heir) {
+        /*
+         * 가려냈으면 **근거를 그대로 적는다.** 「면접형으로 봤다」만 적으면 그건
+         * 그냥 오연결이고, 왜 그렇게 봤는지 적어야 선생님이 아니라고 할 수 있다.
+         */
+        note.appendChild(el('b', null, `${st.heir.why} 「${st.heir.name}」`));
+        note.appendChild(document.createTextNode(
+          `${josa(st.heir.name, '으로', '로')} 이어 읽었습니다. 아래 숫자는 그 전형의`
+          + ` ${st.heir.year}년 것입니다.`
+          + (others.length ? ` 다른 갈래는 ${others.map(label).join(' · ')}입니다 —`
+            + ' 아래 「연도별 추이」에서 함께 볼 수 있습니다.' : '')));
+      } else {
+        note.appendChild(document.createTextNode(
+          `${st.heirs.map(label).join(' · ')} 가운데 어느 쪽인지 가릴 수 없어`
+          + ' 잇지 않았습니다. 아래 숫자는 작년이 아니라'
+          + ` ${st.year}년 「${st.was}」 것입니다. 「연도별 추이」에서 직접 견줘 주세요.`));
+      }
     }
     body.appendChild(note);
   }
@@ -667,6 +687,7 @@ function ipgyeolSource(s) {
     case 'near': return `입결 · ${s.type} · 이름이 조금 다르지만 같은 전형으로 봤습니다`;
     case 'cat': return `입결 · ${s.type} · 전형 이름은 못 맞추고 유형만 같습니다`;
     case 'only': return `입결 · ${s.type} · 이 학과 입결에 전형이 이것 하나뿐입니다`;
+    case 'heir': return `입결 · ${s.type} · ${s.stale.was}에서 갈라져 나온 전형입니다`;
     default: return '입결 · 지원한 전형을 가려내지 못했습니다';
   }
 }

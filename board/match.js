@@ -692,8 +692,86 @@ function nearbyOf(rows, cat, picked, reason) {
  * 고른 전형의 이름을 **앞에 그대로 두고 더 붙인 것**이며, 더 나중 해까지 있는 것.
  * 이름이 아주 달라진 경우는 여기서 안 잡힌다. 그건 `nearbyOf` 의 몫이다.
  */
-function staleOf(rows, mineRows, latest) {
-  if (!latest || !mineRows.length) return null;
+const MJ = /면접/;
+const SR = /서류/;
+const mark = (t) => {
+  const m = MJ.test(t);
+  const r = SR.test(t);
+  return m && !r ? '면접' : (r && !m ? '서류' : null);
+};
+
+/**
+ * **면접이냐 서류냐는 가릴 수 있다.** 전형단계가 말해 준다.
+ * =====================================================================
+ * 쪼개진 갈래가 「면접형·서류형」 둘이면 어느 쪽인지 자료로 가려진다.
+ * 면접형은 1단계에서 걸러 놓고 2단계에서 면접을 보니 **단계별전형**이고,
+ * 서류형은 서류만 보고 한 번에 뽑으니 **일괄전형**이다.
+ *
+ * 2027 모집요강의 학생부종합 가운데 이름에 면접·서류가 든 1,898줄로 재 봤다.
+ *
+ *              2단계    1단계
+ *     면접형     843       17
+ *     서류형       2    1,036
+ *
+ * 「2단계면 면접·1단계면 서류」로 읽으면 **99.0%(1,879/1,898)** 를 맞힌다.
+ *
+ * 여기에 지원한 전형의 **이름**도 같이 본다. 이름에 면접·서류가 들어 있으면
+ * 그것도 한 표다. 실제로 갈릴 일이 있는 41장에서는 이름과 단계가 **41장 모두
+ * 일치했고 어긋난 것이 0장**이다. 어긋나면 안 고른다.
+ *
+ * **`among`(전형 못 가림) 후보에는 이 규칙을 안 쓴다.** 거기 후보들은 그저
+ * 「이 학과에 있는 전형」이라 끝 글자만 같은 남남이 섞인다 — 강원대(강릉) 사학과의
+ * 「지역인재서류전형」을 「미래인재서류」에 이어 버린다. 아예 다른 전형이다.
+ * 쪼개진 갈래는 다르다. 고른 전형의 이름을 앞에 그대로 두고 갈라져 나온 것이라
+ * 남는 물음이 「면접이냐 서류냐」 하나뿐이다.
+ */
+const STAGE_OF = { 면접: 2, 서류: 1 };
+
+function pickHeir(heirs, app, mojipRows) {
+  const m = heirs.filter((h) => mark(h.name) === '면접');
+  const r = heirs.filter((h) => mark(h.name) === '서류');
+  // 면접 하나 · 서류 하나로 깨끗이 갈릴 때만. 셋 이상이거나 딴것이 섞이면 손 뗀다.
+  if (m.length !== 1 || r.length !== 1 || heirs.length !== 2) return null;
+
+  const rows = (mojipRows || []).filter((x) => x && x.stages != null);
+  const byName = mark([app && app.typeSub, app && app.typeName].filter(Boolean).join(' '));
+
+  /*
+   * **전형단계는 모집요강이 한 목소리일 때만 그 자체로 쓴다.**
+   * `pickMojip` 의 `byName` 은 「이름으로 맞은 줄이 있다」는 뜻이지 「하나뿐」이라는
+   * 뜻이 아니다. 두루뭉술한 이름(`종합(잠재능력)`)은 면접전형(2단계)과 서류전형
+   * (1단계)에 **둘 다** 걸려서, 맨 앞 줄의 단계를 집으면 동전 던지기가 된다.
+   */
+  const one = rows.length && rows.every((x) => x.stages === rows[0].stages)
+    ? rows[0].stages : null;
+  const byStage = one === 2 ? '면접' : (one === 1 ? '서류' : null);
+  if (byName && byStage && byName !== byStage) return null;   // 어긋나면 안 고른다
+
+  /*
+   * 이름으로 가렸으면 **같은 표시를 단 모집요강 줄**의 단계로 뒷받침한다.
+   * 모집요강이 반대로 말하면(면접형인데 일괄전형) 손 뗀다 — 1,898줄에 19줄 있는
+   * 그 예외 가운데 하나일 수 있다.
+   */
+  let backed = false;
+  if (byName) {
+    const same = rows.filter((x) => mark(x.type) === byName);
+    if (same.length) {
+      if (!same.every((x) => x.stages === STAGE_OF[byName])) return null;
+      backed = true;
+    }
+  }
+
+  const want = byName || byStage;
+  if (!want) return null;
+  const why = byName
+    ? (backed ? `${STAGE_OF[want]}단계 전형이고 이름도 ${want}형이라`
+      : `전형 이름이 ${want}형이라`)
+    : `${one}단계 전형이라`;
+  return { ...(want === '면접' ? m[0] : r[0]), why };
+}
+
+function staleOf(rows, mineRows, app, mojipRows) {
+  if (!mineRows.length) return null;
   const hi = Math.max(...mineRows.map((r) => r.year));
   const deptHi = Math.max(...rows.map((r) => r.year));
   if (hi >= deptHi) return null;
@@ -705,10 +783,20 @@ function staleOf(rows, mineRows, latest) {
     .map((G) => {
       const cut = G.rows.filter((r) => r.g70 != null);
       const last = cut[cut.length - 1] || G.rows[G.rows.length - 1];
-      return { name: G.name, hi: G.hi, year: last.year, g70: last.g70, rate: last.rate };
+      return {
+        name: G.name, rows: G.rows, hi: G.hi,
+        year: last.year, g70: last.g70, rate: last.rate,
+      };
     })
     .sort((a, b) => (a.g70 == null) - (b.g70 == null) || (a.g70 ?? 0) - (b.g70 ?? 0));
-  return { year: latest.year, hi, deptHi, heirs };
+  const withCut = mineRows.filter((r) => r.g70 != null);
+  const last = withCut[withCut.length - 1] || mineRows[mineRows.length - 1];
+  return {
+    was: mineRows[0].type,                 // 끊긴 쪽 이름 — 카드가 이것을 설명한다
+    year: last ? last.year : null, hi, deptHi,
+    heirs,
+    heir: pickHeir(heirs, app, mojipRows),   // 갈래를 가렸으면 그 갈래
+  };
 }
 
 /**
@@ -984,7 +1072,16 @@ export function summarize(l, app) {
     ? nearbyOf(rows, want, picked, isNew ? 'new' : 'unsure')
     : null;
 
-  const mineRows = nearby ? [] : picked.rows;
+  const mo = l.mojip[0] || null;
+  let mineRows = nearby ? [] : picked.rows;
+
+  /*
+   * **쪼개진 갈래를 가렸으면 그 갈래의 줄을 쓴다.**
+   * 가리지 못했으면 끊긴 쪽 줄을 그대로 두고, 카드가 「2023년까지만 있습니다」라고
+   * 적는다. 가린 근거도 화면에 적는다 — 숨기면 그냥 오연결이다.
+   */
+  const stale = staleOf(rows, mineRows, app, l.mojip);
+  if (stale && stale.heir) mineRows = stale.heir.rows;
 
   /*
    * **가장 최근 해에 컷이 없으면 그 앞 해를 본다.**
@@ -1000,10 +1097,8 @@ export function summarize(l, app) {
    */
   const withCut = mineRows.filter((r) => r.g70 != null);
   const latest = withCut[withCut.length - 1] || mineRows[mineRows.length - 1] || null;
-  const stale = staleOf(rows, mineRows, latest);
   // 줄은 붙었는데 어느 해에도 컷이 없는 경우. 「연결 실패」와는 다른 말이다.
   const cutMissing = mineRows.length > 0 && withCut.length === 0;
-  const mo = l.mojip[0] || null;
   return {
     linked: rows.length > 0, kind: 'univ', why: l.why, rows,
     mine: mineRows,                    // 지원한 전형의 줄만 (신설이면 빈다)
@@ -1012,8 +1107,9 @@ export function summarize(l, app) {
     cutMissing,                        // 전형은 붙었는데 어느 해에도 70%컷이 없으면 true
     isNew,                             // 올해 처음 뽑는 전형인가 (모집요강이 말한다)
     alias: l.alias || null,            // 선생님이 손으로 이어 둔 학과가 있으면 그것
-    type: picked.type,                 // 입결 쪽 전형 이름 (즐겨찾기와 다를 수 있다)
-    typeFit: picked.fit,               // exact | near | cat | only | none
+    // 숫자가 어느 전형에서 왔는지. 갈래를 가렸으면 그 갈래 이름이다.
+    type: stale && stale.heir ? stale.heir.name : picked.type,
+    typeFit: stale && stale.heir ? 'heir' : picked.fit,   // exact|near|cat|only|heir|none
     among: picked.among || null,       // 못 골랐을 때 후보로 남은 전형 이름들
     stale,                             // 고른 전형이 학과 자료보다 일찍 끊겼으면 {year, deptHi, heirs}
     before: l.before,                  // {type:'유형2', parts, line} | null

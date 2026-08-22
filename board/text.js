@@ -17,8 +17,19 @@ export function josa(word, withBatchim, without) {
    */
   const last = String(word || '').trim().replace(/[)\]}」』"'’”.·]+$/, '').slice(-1);
   if (!last) return withBatchim;
+  /*
+   * **「로/으로」만 규칙이 다르다.** ㄹ 받침은 받침이 없는 것처럼 「로」를 쓴다 —
+   * 「서울로」이지 「서울으로」가 아니다. 「면접으로」는 ㅂ 받침이라 그대로 「으로」다.
+   * 은/는·이/가·을/를에는 이 예외가 없으니 「로」를 부를 때만 본다.
+   */
+  const RIEUL = 8;
   const code = last.charCodeAt(0);
-  if (code >= 0xac00 && code <= 0xd7a3) return (code - 0xac00) % 28 ? withBatchim : without;
+  if (code >= 0xac00 && code <= 0xd7a3) {
+    const jong = (code - 0xac00) % 28;
+    if (!jong) return without;
+    if (jong === RIEUL && without === '로') return without;
+    return withBatchim;
+  }
 
   /*
    * **숫자·로마숫자·알파벳은 소리 내어 읽은 뒤 받침을 본다.**
