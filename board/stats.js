@@ -286,8 +286,26 @@ export function minFails(rows) {
  * 리포트의 「등급대별 현실적 목표」를 손으로 적지 않고 **작년 우리 학교 결과에서**
  * 뽑는다. 남이 만든 배치표가 아니라 우리 아이들이 실제로 간 곳이라는 게 요점이다.
  */
+/*
+ * **한 칸을 0.5등급으로 잡는다.**
+ *
+ * 예전에는 맨 위가 1~2등급 한 칸이었다. 그런데 상담에서 1.2와 1.9는 갈 수 있는
+ * 대학이 다르다. 한 칸에 묶어 놓으면 「1~2등급이면 여기 갔다」가 되어 아무한테도
+ * 안 맞는 말이 된다. 0.5칸이면 1.0~1.5 · 1.5~2.0 으로 갈려 그 차이가 표에 남는다.
+ *
+ * 아래 끝은 6.0 에서 묶는다. 그 아래는 사람이 적어 0.5로 갈라 봐야 칸마다 한둘이라
+ * 흐름이 안 읽힌다. 아무도 없는 칸은 마지막에 걷어 낸다.
+ */
+const BAND = 0.5;
+const DEFAULT_BANDS = (() => {
+  const out = [];
+  for (let g = 1; g < 6; g += BAND) out.push([g, Number((g + BAND).toFixed(1))]);
+  out.push([6, 10]);
+  return out;
+})();
+
 export function byBand(rows, bands) {
-  const cuts = bands || [[0, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 10]];
+  const cuts = bands || DEFAULT_BANDS;
   return cuts.map(([lo, hi]) => {
     const mine = rows.filter((r) => {
       const g = gradeOf(r.student);
@@ -300,7 +318,7 @@ export function byBand(rows, bands) {
     }
     return {
       lo, hi,
-      label: hi >= 10 ? `${lo}등급 아래` : `${lo}~${hi}등급`,
+      label: hi >= 10 ? `${lo.toFixed(1)} 아래` : `${lo.toFixed(1)} ~ ${hi.toFixed(1)}`,
       people: new Set(mine.map((r) => r.app.hak)).size,
       univs: [...map].sort((a, b) => b[1] - a[1]).map(([univ, n]) => ({ univ, n })),
     };

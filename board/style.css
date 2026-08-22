@@ -876,6 +876,30 @@ table.gov td.nm { font-weight: 600; }
 table.gov td.won { font-weight: 700; }
 table.gov tr.sum > * { font-weight: 700; background: #F5F5F5;
   -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+/*
+ * 표 하나 안에서 대학을 끊는 머리줄.
+ *
+ * 대학마다 표를 새로 만들면 머리글 두 줄에 내용 한 줄짜리 표가 줄줄이 이어져
+ * 눈이 표를 건너뛰느라 내용을 못 따라간다. 표는 하나로 두고 여기서 끊는다.
+ */
+/* 표를 안 만든 묶음 — 지켜보긴 했다는 사실만 한 줄로 남긴다 */
+.sheet p.rest-line { margin: 0 0 2mm; font-size: 8pt; color: #333; line-height: 1.45; }
+/* 지원이 없어 접어 둔 대학 이름 줄 — 본문과 같은 무게로 두면 눈이 걸린다 */
+table.gov tr.rest > td { text-align: left; font-size: 8pt; color: #333; line-height: 1.45; }
+table.gov tr.grp > td {
+  text-align: left; font-weight: 700; background: #EFEFEF; padding: 1.6mm 1.4mm;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+/*
+ * **갈리면 안 읽히는 칸.** 「충원합격(예비7)」이 「충원합격(예비」/「7)」로
+ * 갈리면 예비번호가 아랫줄에 혼자 떨어지고, 전형 이름이 갈리면 어느 전형인지
+ * 안 읽힌다. 폭이 모자라면 글자를 줄이는 편이 갈리는 것보다 낫다.
+ */
+table.gov td.verdict, table.gov td.type { white-space: nowrap; }
+@media print {
+  /* 대학 머리줄만 남기고 쪽이 넘어가면 그 대학이 통째로 사라진 것처럼 보인다 */
+  table.gov tr.grp { break-after: avoid; page-break-after: avoid; }
+}
 /* 표의 바깥 테두리만 한 단계 굵게 — 한글 표의 기본 모양이다 */
 table.gov { border: 0.8pt solid #000; }
 
@@ -884,6 +908,16 @@ table.gov { border: 0.8pt solid #000; }
  * px 로 환산해 최소 폭을 박아 두지 않으면, 좁은 화면에서 「반·번호·성명」이
  * 한 글자씩 세로로 쌓여 실제 인쇄와 딴판이 된다.
  */
+/*
+ * 대장의 지원 칸 가운데 **넘치는 것만** 글자를 줄인다. 표 전체를 낮추면
+ * 짧은 칸까지 작아져 종이가 읽기 힘들어진다. 어느 칸이 넘치는지는 글자 수로
+ * 재서 `export.js` 가 붙인다(`textUnits` · `LEDGER_FIT`).
+ */
+/* 재는 동안만 한 줄로 붙잡아 둔다 — 배치 계산을 한 번으로 줄이려고 */
+table.ledger.measuring td.slot { white-space: nowrap; }
+table.ledger td.tight { font-size: 8pt; letter-spacing: -0.01em; }
+table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
+
 .sheet-land .tw { overflow-x: auto; }
 .sheet-land table.ledger { min-width: 1080px; }
 
