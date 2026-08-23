@@ -468,7 +468,8 @@ function marks(app) {
     else add(`${now}명 뽑음`);
   }
   if (s && s.stages > 1) add(`${s.stages}단계`);
-  if (app.minReqText) add('수능 최저 있음', 'mark');
+  // 관심대학 리스트는 기준 글 없이 Y/N 만 준다 — 그때도 표시가 나와야 한다
+  if (app.minReqText || app.minReq === true) add('수능 최저 있음', 'mark');
   /*
    * 올해 처음 뽑는 전형. 학생에게는 이게 제일 헷갈리는 자리다 —
    * 숫자가 비어 있으면 「자료가 아직 안 왔나 보다」로 읽는다. 작년에 없었다고 말해 준다.

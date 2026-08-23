@@ -61,10 +61,65 @@ eq(G.parseQuota_('(29)'), 29, '정원 외 괄호');
 eq(G.parseQuota_('7(<10)'), 7, '증감 표기');
 eq(G.parseQuota_(''), null, '빈 값');
 
+/* ── 두 모양을 다 읽는가 ─────────────────────────────────────────
+ *
+ * 대교협 파일은 해마다 모양이 다르다. 지어낸 이름으로 만든 두 벌을 늘 돌려서
+ * 한쪽을 고치다 다른 쪽이 깨지는 것을 잡는다. 실제 시트는 실명이 들어 있어
+ * 커밋하지 않고, 필요하면 경로로 넘긴다.
+ */
+const F = (name) => JSON.parse(readFileSync(resolve(HERE, 'fixtures', name), 'utf8'));
+
+console.log('\n모양 둘 — 즐겨찾기(머리글 두 줄) · 관심대학 리스트(머리글이 4행)');
+{
+  const oldV = F('즐겨찾기-옛모양.json');
+  const oldH = G.readHeader_(oldV);
+  eq([oldH.headerAt, oldH.dataFrom], [0, 2], '옛 모양 — 머리글 0행 · 자료 2행');
+  eq(oldH.suneungAt, 28, '옛 모양 — 수능 블록을 찾는다');
+  const o = G.parseFavorites_(oldV, { year: 2025 });
+  eq([o.students.length, o.apps.length, o.skipped], [2, 2, 0], '옛 모양 — 학생 2 · 지원 2');
+  eq(o.unknownCols, [], '옛 모양 — 미인식 칸 없음');
+  eq(o.apps[0].dates['면접'], { from: '2025-11-29', to: '2025-11-29', fixed: true },
+    '옛 모양 — 면접 일자');
+  eq(o.students[0].naesin['전교과'], 3.2, '옛 모양 — 내신 조합');
+  eq(o.students[0].suneung['국어'], { subject: '화법과작문', std: 128 }, '옛 모양 — 수능 영역');
+  eq(o.apps[0].minReq, true, '옛 모양 — 최저 기준 글이 있으면 있는 것');
+
+  const newV = F('관심대학-새모양.json');
+  const newH = G.readHeader_(newV);
+  eq([newH.headerAt, newH.dataFrom], [3, 4], '새 모양 — 머리글 3행 · 자료 4행');
+  eq(newH.suneungAt, -1, '새 모양 — 수능 블록 없음');
+  const n = G.parseFavorites_(newV, { year: 2025 });
+  eq([n.students.length, n.apps.length, n.skipped], [2, 3, 0], '새 모양 — 학생 2 · 지원 3');
+  eq(n.unknownCols, [], '새 모양 — 미인식 칸 없음 (No 는 줄 번호라 뺀다)');
+  eq(n.apps[0].univType, '일반대', '새 모양 — 「설립 구분」을 학교유형으로');
+  eq(n.apps[0].period, '수시', '새 모양 — 「시기」를 모집시기로');
+  eq(n.apps[0].quota, 30, '새 모양 — 「모집 인원」 (줄바꿈 든 이름)');
+  eq(n.apps[0].selectType, '일괄합산', '새 모양 — 「선발 유형」');
+  eq([n.apps[0].minReq, n.apps[1].minReq], [true, false],
+    '새 모양 — 「수능 최저 유무」 Y/N 을 있다/없다로');
+  eq(n.apps[0].minReqText, '', '새 모양 — Y 를 기준 글로 쓰지 않는다');
+  eq(n.apps[0].stage1Rule, '서류 100%', '새 모양 — 1단계 반영요소');
+  eq(n.apps[0].myScore, { score: 921.5, grade: 3.17 }, '새 모양 — 내등급·내점수');
+  eq(n.apps[2].myScore, null, '새 모양 — 0 은 「아직 안 적음」이다');
+  /*
+   * **모양이 바뀌면 안정키도 바뀐다.** 여기서 못 박아 둔다.
+   *
+   * 안정키는 학번+대학+세부유형+학과의 sha1 인데, 두 파일이 같은 전형을 다르게
+   * 적는다 — 즐겨찾기는 「종합(KU자기추천)」, 관심대학 리스트는
+   * 「학생부종합(KU자기추천전형)」. 글자가 다르니 키가 달라지고, 그 지원에 붙어
+   * 있던 순위·메모·결과가 **통째로 떨어진다.**
+   *
+   * 파서가 고칠 수 있는 문제가 아니다(어느 쪽이 옳은지 자료가 말해 주지 않는다).
+   * 학년 중간에 파일 모양을 바꾸지 않는 것으로 푼다 — `board/SETUP.md` 에 적었다.
+   */
+  eq(n.apps[0].id === o.apps[0].id, false,
+    '모양이 바뀌면 안정키가 달라진다 — 학년 중간에 바꾸지 않는다');
+}
+
 /* ── 실제 시트 ───────────────────────────────────────────────────── */
 const files = process.argv.slice(2);
 if (!files.length) {
-  console.log('\n시트 픽스처를 넘기지 않아 단위 확인만 했습니다.');
+  console.log('\n실제 시트를 넘기지 않아 지어낸 두 벌만 읽었습니다.');
   process.exit(fails ? 1 : 0);
 }
 

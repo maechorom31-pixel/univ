@@ -430,9 +430,18 @@ export function detailPanel(app, student, onClose) {
   const minText = app.minReqText || (mo && mo.minReq) || '';
   const min = el('div', 'detail-block');
   min.appendChild(el('h3', '', '수능 최저학력 기준'));
+  /*
+   * 기준 글이 없을 때 **「없다」와 「모른다」를 가른다.**
+   * 관심대학 리스트는 기준 글 없이 Y/N 만 준다. N 이면 최저가 없는 것이지
+   * 자료를 못 찾은 것이 아니라, 「모집요강을 확인해 주세요」라고 하면 안 된다.
+   */
   min.appendChild(minText
     ? el('p', 'longtext', String(minText).replace(/^\s*\*\s*/, ''))
-    : el('p', 'hint', '즐겨찾기와 모집요강에 최저 기준이 적혀 있지 않습니다. 모집요강을 확인해 주세요.'));
+    : el('p', 'hint', app.minReq === false
+      ? '이 전형은 수능 최저가 없습니다 (즐겨찾기 기준).'
+      : app.minReq === true
+        ? '즐겨찾기는 최저가 있다고만 하고 기준 글은 주지 않았습니다. 모집요강을 확인해 주세요.'
+        : '즐겨찾기와 모집요강에 최저 기준이 적혀 있지 않습니다. 모집요강을 확인해 주세요.'));
   body.appendChild(min);
 
   /* 6. 지원 자격 */

@@ -79,18 +79,38 @@ var HEADERS = {
  * 여기에 없는 컬럼은 버리지 않고 Application.unknown 에 남긴다.
  * ==================================================================== */
 
+/*
+ * 칸 이름 사전. **순서가 아니라 이름으로 읽는다.**
+ *
+ * 대교협 파일은 해마다 칸이 바뀐다 — 2022 시트는 36열, 2026 시트는 82열이고
+ * 「후보순위」가 「최초후보순위」로, 「합격자발표」가 「최종발표일」로 바뀌었다.
+ * 그래서 자리를 세지 않고 이름을 본다. 사전에 없는 칸은 버리지 않고
+ * `Application.unknown` 에 남겨, 새 칸이 생겨도 자료가 사라지지 않게 한다.
+ *
+ * 이름은 `head_` 로 다듬어 견준다 — 사이 공백과 줄바꿈을 지운 꼴이다.
+ * 그래서 여기 키에도 공백을 넣지 않는다.
+ *
+ * 아래 묶음이 **「관심대학 리스트」에서 새로 온 이름**이다. 같은 것을 다르게
+ * 부르는 것뿐이라 사전에 한 줄씩 더하면 나머지 코드는 그대로 돈다.
+ */
 var FIELD = {
   '학년': 'grade', '반': 'cls', '번호': 'no', '이름': 'name', '성명': 'name',
-  '학교유형': 'univType', '지역': 'region', '대학명': 'univ', '대학': 'univ',
-  '모집시기': 'period', '전형유형': 'typeCat',
+  '학교유형': 'univType', '설립구분': 'univType',
+  '지역': 'region', '대학명': 'univ', '대학': 'univ',
+  '모집시기': 'period', '시기': 'period', '전형유형': 'typeCat',
   '전형명(대)': 'typeName', '전형명': 'typeName', '전형': 'typeName',
   '세부유형': 'typeSub', '계열': 'track',
   '모집단위': 'dept', '학과': 'dept',
   '모집인원': 'quotaText', '선발유형': 'selectType',
   '최저학력기준': 'minReqText', '수능최저학력기준': 'minReqText',
+  // 관심대학 리스트는 최저를 「있다/없다」로만 준다. 기준 글은 모집요강에 있다.
+  '수능최저유무': 'minReqYN',
+  // 1단계에서 무엇을 보는가 — 「서류 100%」 꼴. 단계별인지 가리는 데 쓸 수 있다.
+  '1단계반영요소': 'stage1Rule',
   '1단계': 'stage1', '최종단계': 'final', '불합격사유': 'reason',
   '최초후보순위': 'waitNo', '후보순위': 'waitNo', '예비번호': 'waitNo',
   '등록여부': 'enrolled', '비고': 'memo',
+  '접수일자': 'd접수',
   '면접일자': 'd면접', '실기일자': 'd실기', '논술일자': 'd논술', '적성일자': 'd적성',
   '최종발표일': 'd최종발표', '합격자발표': 'd최종발표', '1단계발표': 'd1단계발표'
 };
@@ -98,8 +118,17 @@ var FIELD = {
 /** (9등급)/(5등급) 아래에 붙는 하위 헤더 */
 var SCORE_FIELD = {
   '내점수(환산)': 'myScore',
-  '내등급(환산)': 'myGrade'
+  '내등급(환산)': 'myGrade',
+  // 관심대학 리스트는 괄호 없이 준다. 아직 안 적었으면 0 으로 오므로 뒤에서 건다.
+  '내점수': 'myScore',
+  '내등급': 'myGrade'
 };
+
+/*
+ * 자료가 아닌 칸. 「알아보지 못한 칸」에 올리지 않는다.
+ * 관심대학 리스트의 `No` 는 줄 번호라 파일을 열 때마다 경고가 뜨면 소음이다.
+ */
+var SKIP_COL = { 'No': true, 'NO': true, '연번': true, '순번': true };
 
 var SUNEUNG_HEAD = '한국사';   // 이 컬럼부터 오른쪽은 수능 블록
 var SUNEUNG_SUB = { '과목': 'subject', '표점': 'std', '백분위': 'pct', '등급': 'grade' };
@@ -226,18 +255,90 @@ function now_() {
  * 병합 헤더라 위 줄이 비어 있으면 왼쪽 값을 이어받는다.
  * @return {{main:string[], sub:string[], suneungAt:number, dataFrom:number}}
  */
+/**
+ * 머리글 이름을 견주기 좋게 다듬는다.
+ *
+ * 대교협이 내려 주는 파일은 칸 이름 안에 줄바꿈이 들어 있다 — 「모집\n인원」·
+ * 「수능\n최저\n유무」. 눈으로는 두 줄이지만 글자로는 `모집\n인원` 이라
+ * `FIELD['모집인원']` 에 안 걸린다. 사이 공백을 다 지우고 견준다.
+ *
+ * 화면에 보여 줄 때는 원본 이름을 쓴다 — 「알아보지 못한 칸」에 `모집인원` 이라
+ * 적으면 선생님이 파일에서 그 칸을 못 찾는다.
+ */
+function head_(v) {
+  return String(v == null ? '' : v).replace(/\s+/g, '');
+}
+
+/**
+ * 머리글이 몇 째 줄인지 **찾는다.** 첫 줄이라고 못 박지 않는다.
+ * =====================================================================
+ * 대교협 파일이 해마다 모양이 다르다. 여태 쓰던 즐겨찾기는 첫 줄이 머리글이고
+ * 둘째 줄이 내신·수능 블록의 아래 머리글이었는데, 이번에 받은 「관심대학 리스트」는
+ * 다르다.
+ *
+ *     1행  (비어 있음)
+ *     2행  관심대학 리스트          ← 제목
+ *     3행  (비어 있음)
+ *     4행  No 학년 반 번호 이름 …   ← 머리글
+ *     5행~ 자료
+ *
+ * 첫 줄을 머리글로 박아 두면 이 파일은 **모든 칸이 미인식**이 되어 통째로 빈다.
+ *
+ * 그래서 줄 번호를 정하지 않고 **아는 이름이 가장 많이 맞는 줄**을 머리글로 본다.
+ * 자료가 바뀌어도 이름만 알아보면 따라간다. 두 벌을 따로 짜서 「이 파일은 A형」
+ * 하고 가르는 것보다 낫다 — 내년에 또 다른 모양이 와도 그대로 걸린다.
+ *
+ * 아래 머리글(`sub`)은 **머리글과 자료 사이에 줄이 있을 때만** 있는 것으로 본다.
+ * 즐겨찾기는 있고(내신 조합·수능 과목), 관심대학 리스트는 없다.
+ */
 function readHeader_(values) {
+  var scan = Math.min(values.length, 30);
+  var at = 0, best = -1;
+  for (var r = 0; r < scan; r++) {
+    var row = values[r] || [], hits = 0;
+    for (var c = 0; c < row.length; c++) {
+      var n = head_(row[c]);
+      if (n && (FIELD[n] || SCORE_FIELD[n])) hits++;
+    }
+    if (hits > best) { best = hits; at = r; }
+  }
+
+  // 학번을 만드는 칸(학년)이 몇 째인가. 자료 줄을 가리는 데 쓴다.
+  var gradeCol = 0;
+  var hrow = values[at] || [];
+  for (var g = 0; g < hrow.length; g++) {
+    if (FIELD[head_(hrow[g])] === 'grade') { gradeCol = g; break; }
+  }
+
+  // 자료 첫 줄 = 머리글 뒤에서 학년 칸이 숫자인 첫 줄
+  var dataFrom = at + 1;
+  for (var d = at + 1; d < values.length; d++) {
+    if (/^\d+$/.test(String((values[d] || [])[gradeCol] || '').trim())) { dataFrom = d; break; }
+  }
+
   var main = [], sub = [], carry = '';
-  var row0 = values[0] || [], row1 = values[1] || [];
+  var subRow = (dataFrom > at + 1) ? (values[at + 1] || []) : [];
+  /*
+   * **머리글이 한 줄뿐이면 앞 이름을 물려주지 않는다.**
+   *
+   * 즐겨찾기는 내신·수능 블록의 머리글이 가로로 합쳐져 있어서, 빈 칸은 「왼쪽과
+   * 같은 칸」이라는 뜻이다(그래서 `carry`). 그런데 관심대학 리스트는 머리글이 한
+   * 줄이고 실기일자와 논술일자 사이에 **이름 없는 빈 열**이 하나 있다. 물려주면
+   * 그 열이 「실기일자」가 되어, 나중에 거기 무엇이 들어오면 실기 날짜로 읽힌다.
+   * 지금은 502줄 모두 비어 있어 아무 일도 안 일어나지만, 조용히 틀릴 자리다.
+   *
+   * 합쳐진 머리글은 아래 머리글 줄이 있을 때만 생긴다. 그걸 조건으로 삼는다.
+   */
+  var merged = subRow.length > 0;
   var width = 0;
-  for (var i = 0; i < values.length && i < 3; i++) {
+  for (var i = at; i < values.length && i <= at + 2; i++) {
     width = Math.max(width, (values[i] || []).length);
   }
-  for (var c = 0; c < width; c++) {
-    var top = String(row0[c] == null ? '' : row0[c]).trim();
+  for (var c2 = 0; c2 < width; c2++) {
+    var top = head_(hrow[c2]);
     if (top) carry = top;
-    main.push(top ? top : carry);
-    sub.push(String(row1[c] == null ? '' : row1[c]).trim());
+    main.push(top ? top : (merged ? carry : ''));
+    sub.push(head_(subRow[c2]));
   }
 
   // 수능 블록의 시작
@@ -245,13 +346,10 @@ function readHeader_(values) {
   for (var k = 0; k < main.length; k++) {
     if (main[k] === SUNEUNG_HEAD) { suneungAt = k; break; }
   }
-
-  // 데이터 첫 줄 = 학년 칸이 숫자인 첫 줄
-  var dataFrom = 2;
-  for (var r = 1; r < values.length; r++) {
-    if (/^\d+$/.test(String((values[r] || [])[0] || '').trim())) { dataFrom = r; break; }
-  }
-  return { main: main, sub: sub, suneungAt: suneungAt, dataFrom: dataFrom };
+  return {
+    main: main, sub: sub, suneungAt: suneungAt, dataFrom: dataFrom,
+    headerAt: at, gradeCol: gradeCol, known: best
+  };
 }
 
 /** "2025-11-29 ~ 2025-11-30" · "11.25(수)~11.27(금)" · "2025.12.12.(금) 14:00" 등 */
@@ -312,6 +410,28 @@ function num_(v) {
 function txt_(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); }
 
 /**
+ * 성적 칸. **0 은 값이 아니라 「아직 안 적음」이다.**
+ *
+ * 관심대학 리스트는 내등급·내점수를 안 넣은 줄에 빈칸이 아니라 0 을 준다.
+ * 그대로 두면 카드에 「내 환산 등급 0.00」이 떠서 1등급보다 좋은 성적이 된다.
+ * 등급은 1~9, 점수는 양수라 0 이 진짜 값인 자리가 없다.
+ */
+function score_(v) {
+  if (v == null || v === '') return null;
+  var n = Number(v);
+  return (isNaN(n) || n === 0) ? null : n;
+}
+
+/** 「Y」·「있음」 → true, 「N」·「없음」 → false, 그 밖에는 null(모른다). */
+function yn_(v) {
+  var t = String(v == null ? '' : v).trim().toUpperCase();
+  if (!t) return null;
+  if (t === 'Y' || t === 'O' || t === '있음' || t === '유') return true;
+  if (t === 'N' || t === 'X' || t === '없음' || t === '무') return false;
+  return null;
+}
+
+/**
  * 즐겨찾기 시트(2차원 배열)를 학생·지원 레코드로 바꾼다.
  * @return {{students:Object[], apps:Object[], unknownCols:string[], skipped:number}}
  */
@@ -331,6 +451,7 @@ function parseFavorites_(values, opts) {
       var raw = row[c];
       if (raw == null || raw === '') continue;
       var mainName = H.main[c], subName = H.sub[c];
+      var shownName = String((values[H.headerAt] || [])[c] || mainName).replace(/\s+/g, ' ').trim();
 
       if (H.suneungAt >= 0 && c >= H.suneungAt) {          // ── 수능 블록
         var slot = suneung[mainName] || (suneung[mainName] = {});
@@ -350,12 +471,15 @@ function parseFavorites_(values, opts) {
         continue;
       }
 
+      // 줄 번호처럼 자료가 아닌 칸은 「알아보지 못한 칸」으로도 알리지 않는다
+      if (SKIP_COL[mainName]) continue;
+
       // 남은 것 중 이름이 조합처럼 생겼으면 내신, 아니면 미인식
       if (isNaesinName_(mainName)) {
         var nk = mainName + (subName && subName !== '100' ? '(' + subName + ')' : '');
         naesin[nk] = num_(raw);
       } else {
-        var label = mainName + (subName ? '/' + subName : '');
+        var label = (shownName || mainName) + (subName ? '/' + subName : '');
         unknown[label] = txt_(raw);
         unknownCols[label] = true;
       }
@@ -392,9 +516,20 @@ function parseFavorites_(values, opts) {
       typeSub: f.typeSub || '', track: f.track || '', dept: f.dept || '',
       quotaText: f.quotaText || '', quota: parseQuota_(f.quotaText),
       selectType: f.selectType || '', minReqText: f.minReqText || '',
-      myScore: (f.myScore != null || f.myGrade != null)
-        ? { score: f.myScore == null ? null : f.myScore,
-            grade: f.myGrade == null ? null : f.myGrade }
+      /*
+       * 최저가 있는가. 즐겨찾기는 기준 글을 주고, 관심대학 리스트는 Y/N 만 준다.
+       * **N 을 그냥 `minReqText` 에 넣으면 안 된다** — 글자가 있으니 참이 되어
+       * 최저가 없는 전형에 「최저 있음」이 붙는다. 셋으로 가른다(있다/없다/모른다).
+       */
+      minReq: f.minReqText ? true : yn_(f.minReqYN),
+      stage1Rule: f.stage1Rule || '',
+      /*
+       * **0 은 「안 적음」이다.** 관심대학 리스트는 내등급·내점수를 아직 안 넣었을 때
+       * 빈칸이 아니라 0 으로 준다. 그대로 두면 카드에 「내 환산 등급 0.00」이 떠서
+       * 1등급보다 좋은 성적으로 읽힌다.
+       */
+      myScore: (score_(f.myScore) != null || score_(f.myGrade) != null)
+        ? { score: score_(f.myScore), grade: score_(f.myGrade) }
         : null,
       dates: dates,
       result: {

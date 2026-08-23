@@ -732,7 +732,8 @@ function pills(app) {
 
   // 셋 다 **성적 말고 따로 걸리는 것**이다. 같은 무게로 칠한다.
   if (s.stages > 1) add(`${s.stages}단계`, 'mark');
-  if (app.minReqText) add('최저 있음', 'mark');
+  // 관심대학 리스트는 기준 글 없이 Y/N 만 준다 — 그때도 표시가 나와야 한다
+  if (app.minReqText || app.minReq === true) add('최저 있음', 'mark');
 
   /*
    * 가야 하는 날. 「최저 있음」과 같은 종류다 — 내신이 닿아도 그날 못 가면 끝난다.
