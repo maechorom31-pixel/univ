@@ -110,9 +110,16 @@ var FIELD = {
   '1단계': 'stage1', '최종단계': 'final', '불합격사유': 'reason',
   '최초후보순위': 'waitNo', '후보순위': 'waitNo', '예비번호': 'waitNo',
   '등록여부': 'enrolled', '비고': 'memo',
-  '접수일자': 'd접수',
-  '면접일자': 'd면접', '실기일자': 'd실기', '논술일자': 'd논술', '적성일자': 'd적성',
-  '최종발표일': 'd최종발표', '합격자발표': 'd최종발표', '1단계발표': 'd1단계발표'
+  /*
+   * 일정 칸은 `날짜:` 를 앞에 붙인다. 예전에는 `d` 한 글자였는데 **`dept`(모집단위)와
+   * 부딪혔다** — 「d 로 시작하는 칸은 일정」이라 학과 이름이 날짜로 읽혔고,
+   * 못 읽으니 지원마다 `unknown['일정/ept'] = '영어영문학과'` 가 붙었다.
+   * 요약에는 안 나와서(미인식 칸은 열 단위로만 센다) 오래 안 보였다.
+   */
+  '접수일자': '날짜:접수',
+  '면접일자': '날짜:면접', '실기일자': '날짜:실기',
+  '논술일자': '날짜:논술', '적성일자': '날짜:적성',
+  '최종발표일': '날짜:최종발표', '합격자발표': '날짜:최종발표', '1단계발표': '날짜:1단계발표'
 };
 
 /** (9등급)/(5등급) 아래에 붙는 하위 헤더 */
@@ -292,7 +299,12 @@ function head_(v) {
  * 즐겨찾기는 있고(내신 조합·수능 과목), 관심대학 리스트는 없다.
  */
 function readHeader_(values) {
-  var scan = Math.min(values.length, 30);
+  /*
+   * 앞에서 200줄까지 훑는다. 머리글이 4행인 파일을 봤으니 첫 줄로 못 박을 수 없고,
+   * 그렇다고 시트 전체를 훑을 까닭도 없다 — 자료 줄은 아는 이름이 한둘이라 머리글을
+   * 이길 수 없어서, 넉넉히 잡아도 엉뚱한 줄을 고르지 않는다.
+   */
+  var scan = Math.min(values.length, 200);
   var at = 0, best = -1;
   for (var r = 0; r < scan; r++) {
     var row = values[r] || [], hits = 0;
@@ -353,9 +365,20 @@ function readHeader_(values) {
 }
 
 /** "2025-11-29 ~ 2025-11-30" · "11.25(수)~11.27(금)" · "2025.12.12.(금) 14:00" 등 */
+/**
+ * 날짜 칸이 **비었다는 뜻**인가.
+ *
+ * 「-」·「미정」은 못 읽은 날짜가 아니라 「아직 없다」는 표시다. 안 가르면
+ * 지원마다 「알아보지 못한 일정: -」이 붙는다 — 실제 파일 502줄이 다 그랬다.
+ */
+function noDate_(v) {
+  var s = txt_(v);
+  return !s || /^[-–—.·]+$/.test(s) || /^(미정|추후|해당없음|없음)/.test(s);
+}
+
 function parseDates_(text, hintYear) {
-  var s = String(text == null ? '' : text).trim();
-  if (!s) return null;
+  var s = txt_(text);
+  if (noDate_(s)) return null;
   var parts = s.split(/[~∼〜–—]/);
   var got = [];
   for (var i = 0; i < parts.length; i++) {
@@ -407,7 +430,22 @@ function num_(v) {
   return isNaN(n) ? null : n;
 }
 
-function txt_(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); }
+/*
+ * 칸 하나를 글자로. **시트는 날짜 칸을 Date 객체로 준다.**
+ *
+ * `getValues()` 는 날짜 서식이 걸린 칸을 문자열이 아니라 Date 로 돌려준다.
+ * 그냥 `String()` 하면 「Sun Nov 29 2026 00:00:00 GMT+0900 …」이 되어 날짜
+ * 파서가 못 읽고, 면접일이 통째로 사라진다. 여기서 `YYYY-MM-DD` 로 편다.
+ *
+ * `toISOString()` 을 안 쓴다 — 그건 UTC 로 옮기느라 한국 시간 0시가 전날이 된다.
+ * 시트에 보이는 날짜 그대로 읽으려면 지역 시각 게터를 써야 한다.
+ */
+function txt_(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return v.getFullYear() + '-' + pad2_(v.getMonth() + 1) + '-' + pad2_(v.getDate());
+  }
+  return String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+}
 
 /**
  * 성적 칸. **0 은 값이 아니라 「아직 안 적음」이다.**
@@ -440,9 +478,32 @@ function parseFavorites_(values, opts) {
   var H = readHeader_(values);
   var students = {}, order = [], apps = [], unknownCols = {}, skipped = 0;
 
+  /*
+   * **머리글을 못 찾았으면 읽지 않는다.**
+   *
+   * 엉뚱한 파일(원본 탭이 아닌 것, 빈 시트, 딴 문서)을 가리키고 있으면 아는 칸이
+   * 거의 없다. 그대로 밀고 나가면 「학생 0명」이라고만 나와서, 선생님은 자료가
+   * 없는 것인지 파일을 잘못 짚은 것인지 알 길이 없다. 무엇이 문제인지 말한다.
+   *
+   * 넷으로 잡았다 — 학년·반·번호·이름만 알아봐도 넷이라, 진짜 즐겨찾기라면
+   * 이 문턱에 걸릴 수 없다. 반대로 아무 문서나 열면 0~1 이다.
+   */
+  if (H.known < 4) {
+    return {
+      students: [], apps: [], unknownCols: [], skipped: 0,
+      problem: '이 시트에서 즐겨찾기 머리글을 찾지 못했습니다'
+        + ' (알아본 칸 ' + H.known + '개). 원본 탭이 맞는지 확인해 주세요.'
+    };
+  }
+
   for (var r = H.dataFrom; r < values.length; r++) {
     var row = values[r] || [];
-    var g = txt_(row[0]);
+    /*
+     * **학년 칸을 본다. 첫 칸이 아니다.**
+     * 관심대학 리스트의 첫 칸은 줄 번호(`No`)라 여태 우연히 맞았을 뿐이다.
+     * 그 칸이 비거나 「A-1」 같은 글자면 그 줄이 통째로 사라졌다.
+     */
+    var g = txt_(row[H.gradeCol]);
     if (!/^\d+$/.test(g)) { if (row.join('')) skipped++; continue; }
 
     var f = {}, naesin = {}, suneung = {}, unknown = {}, dates = {};
@@ -502,11 +563,11 @@ function parseFavorites_(values, opts) {
 
     // 일정
     for (var fk in f) {
-      if (fk.charAt(0) !== 'd' || fk.length < 2) continue;
-      var kind = fk.slice(1);
+      if (fk.indexOf('날짜:') !== 0) continue;
+      var kind = fk.slice(3);
       var parsed = parseDates_(f[fk], opts.year);
       if (parsed) dates[kind] = parsed;
-      else if (f[fk]) unknown['일정/' + kind] = f[fk];
+      else if (!noDate_(f[fk])) unknown['일정/' + kind] = f[fk];
     }
 
     var app = {
@@ -726,6 +787,8 @@ function loadAll_(me) {
     sourceWarn: book.why || '',
     students: parsed.students, apps: parsed.apps,
     unknownCols: parsed.unknownCols, skipped: parsed.skipped,
+    // 머리글을 못 찾았으면 왜인지 — 조용히 「0명」이 되지 않게 한다
+    parseProblem: parsed.problem || '',
     state: rows_(SHEET.state), notes: rows_(SHEET.note),
     results: rows_(SHEET.result), dates: rows_(SHEET.date),
     fields: rows_(SHEET.field),

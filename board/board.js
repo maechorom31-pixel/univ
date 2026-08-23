@@ -175,6 +175,13 @@ function render() {
       true,
     ));
   }
+  /*
+   * **머리글을 못 찾았으면 그 사실이 먼저다.** 조용히 「0명」이 되면 선생님은
+   * 자료가 없는 것인지 파일을 잘못 짚은 것인지 알 수 없다.
+   */
+  if (store.state.parseProblem) {
+    main.appendChild(banner(store.state.parseProblem, true));
+  }
   if (store.state.unknownCols.length) {
     main.appendChild(banner(
       `엑셀에서 알아보지 못한 칸이 ${store.state.unknownCols.length}개 있습니다 — `

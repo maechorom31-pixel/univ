@@ -36,6 +36,7 @@ export const state = {
   fields: new Map(),
   source: { name: '', known: true },   // 어느 탭을 읽었나
   unknownCols: [],
+  parseProblem: '',
   error: '',
 };
 
@@ -93,6 +94,8 @@ function apply(data) {
     warn: data.sourceWarn || '',      // 딴 파일을 열지 못했으면 그 사유
   };
   state.unknownCols = data.unknownCols || [];
+  // 파서가 머리글을 못 찾았으면 그 사유. 화면이 그대로 띄운다.
+  state.parseProblem = data.parseProblem || '';
   state.students = new Map((data.students || []).map((s) => [s.hak, s]));
   state.apps = new Map((data.apps || []).map((a) => [a.id, a]));
   state.notes = data.notes || [];
