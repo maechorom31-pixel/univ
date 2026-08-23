@@ -749,9 +749,37 @@ function studentAction_(action, p) {
     });
     return { ok: true };
   }
-  if (action === 'studentAsk') {
+  /*
+   * 학생 메모. 선생님 메모와 **같은 탭에 같은 모양으로** 쌓인다.
+   *
+   * 학생이 적은 것은 늘 `visible: 'Y'` 다 — 자기가 적은 것을 자기가 못 보면
+   * 안 된다. 누가 적었는지는 `by` 가 「3201 학생」으로 지고 있어서, 선생님
+   * 화면이 그걸로 갈라 보여 준다.
+   *
+   * `studentAsk` 는 예전 이름이다. 화면에서 부른 적은 없지만 남겨 둔다.
+   */
+  if (action === 'studentNote' || action === 'studentAsk') {
     if (!String(p.text || '').trim()) return { ok: false, error: '내용을 적어 주세요.' };
     return addNote_({ hak: hak, id: p.id, text: p.text, visible: 'true' }, who);
+  }
+  /*
+   * 지우는 것은 **자기가 적은 것만.** 학번이 같은지(`hak`)와 적은 사람이
+   * 자기인지(`by`)를 둘 다 본다. 학번만 보면 선생님이 그 학생에게 적어 둔
+   * 메모까지 학생이 지울 수 있다.
+   */
+  if (action === 'studentNoteRemove') {
+    var all = rows_(SHEET.note);
+    for (var i = 0; i < all.length; i++) {
+      var n = all[i];
+      if (String(n.noteId) !== String(p.noteId)) continue;
+      if (String(n.hak) !== hak || String(n.by) !== who) {
+        return { ok: false, error: '본인이 적은 메모만 지울 수 있습니다.' };
+      }
+      tab_(SHEET.note).deleteRow(n._row);
+      log_(who, 'studentNoteRemove', String(p.noteId));
+      return { ok: true, removed: true };
+    }
+    return { ok: true, removed: false };
   }
   if (action === 'studentField') return setField_(p, who, 'student');
   if (action === 'studentResult') {

@@ -354,10 +354,62 @@ function waitingFields() {
   return wrap;
 }
 
+/**
+ * **학생이 적어 놓고 아직 답을 못 받은 메모.**
+ *
+ * 날짜·칸·결과와 달리 메모에는 「맞습니다」로 누를 것이 없다. 그렇다고 그냥
+ * 두면 학생이 적은 것을 카드를 열기 전까지 모른다.
+ *
+ * 「안 읽음」을 따로 기록하는 대신 **대화로 읽는다** — 그 지원의 메모 가운데
+ * 마지막 말이 학생 것이면 아직 답이 안 간 것이다(`store.unansweredNotes`).
+ * 선생님이 메모를 하나 달면 저절로 빠진다. 그래서 단추가 「열기」 하나다.
+ */
+function waitingNotes() {
+  const wrap = el('div');
+  const list = store.unansweredNotes(store.selection.cls);
+  if (!list.length) return wrap;
+
+  const box = el('section', 'panel todo-panel');
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '학생이 적은 메모'));
+  head.appendChild(el('span', 'count num', `${list.length}건`));
+  box.appendChild(head);
+  box.appendChild(el('p', 'section-label',
+    '학생이 마지막으로 적은 것입니다. 카드를 열어 메모를 하나 달면 목록에서 빠집니다.'));
+
+  const stack = el('div', 'stack');
+  for (const x of list) {
+    const row = el('div', 'row todo-row');
+    const txt = el('div', 'txt');
+    txt.appendChild(el('div', 'univ', `${x.student.hak} ${tidy(x.student.name)}`
+      + (x.app ? ` — ${shortName(x.app)}` : '')));
+    txt.appendChild(el('div', 'dept', [
+      x.note.text,
+      x.n > 1 ? `외 ${x.n - 1}건` : '',
+      String(x.note.at || '').slice(0, 10),
+    ].filter(Boolean).join(' · ')));
+    row.appendChild(txt);
+
+    const go = el('button', 'btn', '열기');
+    go.type = 'button';
+    go.onclick = () => {
+      store.select({ hak: x.student.hak });
+      renderRoster();
+      if (x.app) openDetail(x.app, go);
+    };
+    row.appendChild(go);
+    stack.appendChild(row);
+  }
+  box.appendChild(stack);
+  wrap.appendChild(box);
+  return wrap;
+}
+
 function waitingPanel() {
   const wrap = el('div');
   wrap.appendChild(waitingDates());
   wrap.appendChild(waitingFields());
+  wrap.appendChild(waitingNotes());
   const list = store.pendingResults(store.selection.cls);
   if (!list.length) return wrap;
 
@@ -476,10 +528,12 @@ function dropTarget(box, where) {
  * 한눈에 보이고, 안 훑을 때는 눈에 안 걸린다.
  */
 function markMemo(box, app) {
-  const n = store.notesOf(app.hak, app.id).length;
-  if (!n) return;
+  const list = store.notesOf(app.hak, app.id);
+  if (!list.length) return;
   box.classList.add('memoed');
-  box.title = `상담 메모 ${n}건`;
+  // 학생이 적은 것이 섞여 있으면 몇 건인지 같이 적는다 — 열기 전에 알 수 있게
+  const mine = list.filter(store.byStudent).length;
+  box.title = `상담 메모 ${list.length}건${mine ? ` (학생이 적은 것 ${mine}건)` : ''}`;
 }
 
 /**

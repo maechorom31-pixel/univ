@@ -318,6 +318,22 @@ function isPass(app) {
   return !!(v && v.passed);
 }
 
+/**
+ * 대장 「특이사항」에 실을 메모.
+ *
+ * **선생님이 적은 것만이다.** 메모 탭에는 세 가지가 같이 쌓인다 —
+ * 선생님 메모, 학생이 적은 메모, 그리고 접수번호(칸이지만 저장하는 자리가
+ * 메모 탭이다). 그대로 이으면 결재로 올라가는 대장에 「면접 준비 중 막히는
+ * 게 있어요」와 「접수번호 0021170267」이 특이사항으로 찍힌다.
+ *
+ * 학생 메모는 상담에 쓰는 것이지 문서에 남길 것이 아니다. 화면에서는 카드를
+ * 열면 다 보인다.
+ */
+function ledgerNotes(hak) {
+  return store.notesOf(hak).filter((n) => !store.byStudent(n)
+    && !String(n.text || '').startsWith('접수번호'));
+}
+
 /** 등록한 대학. 예년 서식의 「등록 대학」 칸은 대학과 학과를 두 줄로 적는다. */
 function enrolledOf(hak) {
   for (const app of ordered(hak)) {
@@ -354,7 +370,7 @@ function ledger() {
       '대학', '학과(모집인원)', '전형', '결과', '등록 대학', '특이사항']];
     for (const s of students) {
       const enr = enrolledOf(s.hak);
-      const memo = store.notesOf(s.hak).map((n) => n.text).join(' / ');
+      const memo = ledgerNotes(s.hak).map((n) => n.text).join(' / ');
       for (const app of ordered(s.hak)) {
         rows.push([s.cls, s.no, s.name, naesinOf(s),
           ledgerCell(app, 'univ'), ledgerCell(app, 'dept'),
@@ -480,7 +496,7 @@ function ledgerBlock(student) {
         tr.appendChild(reg);
 
         const memo = el('td', 'fix memo');
-        const notes = store.notesOf(student.hak);
+        const notes = ledgerNotes(student.hak);
         if (notes.length) {
           const ul = el('ul');
           for (const n of notes) ul.appendChild(el('li', null, tidy(n.text)));

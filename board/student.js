@@ -7,7 +7,9 @@
  * 학생이 넣는 것
  *   면접 확정일 — 대학에서 배정을 받는 사람이 학생이다. 모집요강은 기간만 주는
  *                경우가 41%라, 확정일은 통보받은 학생이 넣는 게 가장 정확하다.
- *   접수번호 · 질문
+ *   접수번호
+ *   메모 — 선생님이 「학생도 보게」로 적어 둔 것과 한 줄에 섞여 보인다.
+ *          자기가 적은 것만 지울 수 있다.
  * 넣으면 곧바로 확정되지 않고 **확인 대기**로 들어간다. 담임이 눌러야 확정된다.
  * 잘못 적은 날짜로 겹침 판정이 틀어지면 안 되기 때문이다.
  *
@@ -517,7 +519,81 @@ function card(app) {
     for (const spec of CARD_FIELDS) box.appendChild(fieldRow(app, spec));
   }
   box.appendChild(resultRow(app));
+  box.appendChild(memoRow(app));
   return box;
+}
+
+/**
+ * 메모 — **학생과 담임이 같은 자리에 적는다.**
+ * =====================================================================
+ * 선생님 화면에는 「학생도 보게」 표시가 있었는데, 표시해도 학생 화면에 나오는
+ * 곳이 없었다. 시트에는 `visible: 'Y'` 로 잘 들어가고 서버도 내려 주는데
+ * 화면이 안 그렸다. 그 자리를 여기서 메운다.
+ *
+ * 학생이 적은 것과 선생님이 적은 것을 한 줄로 늘어놓되 **누가 적었는지 적는다.**
+ * 나눠 놓으면 주고받은 이야기가 두 덩이로 갈려서 흐름이 안 읽힌다.
+ *
+ * 접수번호는 이 목록에서 뺀다. 저장하는 자리가 메모 탭이라 같이 섞이는데,
+ * 그건 메모가 아니라 칸이고 바로 위에 제 줄이 따로 있다.
+ */
+const isApplyNo = (n) => String(n.text || '').startsWith('접수번호');
+/** 이 메모를 학생이 적었나. 서버가 `by` 에 「3201 학생」으로 적어 둔다. */
+const byMe = (n) => /학생$/.test(String(n.by || ''));
+
+function memoRow(app) {
+  const wrap = el('div', 'field memo');
+  const id = `m-${app.id}`;
+  const lab = el('label', '', '메모');
+  lab.htmlFor = id;
+  wrap.appendChild(lab);
+
+  const list = state.notes
+    .filter((n) => String(n.id) === String(app.id) && !isApplyNo(n))
+    .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+
+  if (list.length) {
+    const ul = el('ul', 'memo-list');
+    for (const n of list) ul.appendChild(memoItem(app, n));
+    wrap.appendChild(ul);
+  } else {
+    wrap.appendChild(el('p', 'hint',
+      '궁금한 것이나 기억해 둘 것을 적어 두면 선생님도 함께\u00A0봅니다.'));
+  }
+
+  const ta = document.createElement('textarea');
+  ta.rows = 2;
+  ta.id = id;
+  ta.placeholder = '면접 준비 중 막히는 것, 물어보고 싶은 것';
+  ta.disabled = state.busy;
+  wrap.appendChild(ta);
+
+  const btn = el('button', 'btn', '메모 저장');
+  btn.type = 'button';
+  btn.disabled = state.busy;
+  btn.onclick = () => saveNote(app, ta.value);
+  wrap.appendChild(btn);
+  return wrap;
+}
+
+function memoItem(app, n) {
+  const li = document.createElement('li');
+  li.appendChild(el('p', 'memo-text', n.text));
+
+  const foot = el('p', 'memo-foot');
+  const who = byMe(n) ? '내가 적음' : '선생님';
+  foot.appendChild(el('span', '', [who, String(n.at || '').slice(0, 10)]
+    .filter(Boolean).join(' · ')));
+
+  // 지우는 것은 **내가 적은 것만.** 선생님이 적어 준 것은 남는다.
+  if (byMe(n) && n.noteId) {
+    const del = el('button', 'btn', '지우기');
+    del.type = 'button';
+    del.disabled = state.busy;
+    del.onclick = () => removeNote(app, n.noteId);
+    foot.appendChild(del);
+  }
+  li.appendChild(foot);
+  return li;
 }
 
 /** 면접 확정일을 넣는 줄. 넣으면 확인 대기로 들어간다. */
@@ -860,6 +936,51 @@ async function saveField(app, field, value) {
       ? `${field}을(를) 보냈습니다. 선생님도 함께 봅니다.`
       : `${field}을(를) 지웠습니다.`;
   } catch (err) {
+    state.notice = `오류: ${err.message}`;
+  } finally {
+    state.busy = false; render();
+  }
+}
+
+/**
+ * 메모를 보낸다.
+ *
+ * 서버가 준 `noteId` 를 받아 두어야 바로 지울 수 있다. 못 받으면 목록에는
+ * 남되 「지우기」가 안 나온다 — 새로고침하면 서버 것으로 다시 그려진다.
+ */
+async function saveNote(app, value) {
+  const text = String(value || '').trim();
+  if (!text) { state.notice = '메모 내용을 적어 주세요.'; render(); return; }
+  state.busy = true; state.notice = ''; render();
+  try {
+    let noteId = `tmp-${Date.now()}`;
+    if (!offline) {
+      const res = await api.call('studentNote', { token: state.token, id: app.id, text });
+      if (res && res.noteId) noteId = String(res.noteId);
+    }
+    state.notes.push({
+      noteId, id: app.id, hak: state.student.hak, text,
+      visible: 'Y', by: `${state.student.hak} 학생`, at: new Date().toISOString(),
+    });
+    state.notice = '메모를 저장했습니다. 선생님도 함께 봅니다.';
+  } catch (err) {
+    state.notice = `오류: ${err.message}`;
+  } finally {
+    state.busy = false; render();
+  }
+}
+
+async function removeNote(app, noteId) {
+  state.busy = true; state.notice = ''; render();
+  const before = state.notes;
+  state.notes = state.notes.filter((n) => String(n.noteId) !== String(noteId));
+  try {
+    if (!offline) {
+      await api.call('studentNoteRemove', { token: state.token, id: app.id, noteId });
+    }
+    state.notice = '메모를 지웠습니다.';
+  } catch (err) {
+    state.notes = before;             // 서버가 거절하면 화면도 되돌린다
     state.notice = `오류: ${err.message}`;
   } finally {
     state.busy = false; render();

@@ -1082,11 +1082,19 @@ function memo(app, student) {
       const li = document.createElement('li');
       li.appendChild(el('p', 'memo-text', n.text));
       const foot = el('p', 'memo-foot');
-      foot.appendChild(el('span', '', [
-        String(n.at || '').slice(0, 10),
-        n.by || '',
-        String(n.visible) === 'Y' ? '학생도 봄' : '선생님만',
-      ].filter(Boolean).join(` ${MID} `)));
+      /*
+       * **누가 적었는지 먼저 적는다.** 학생도 같은 자리에 메모를 쌓는데,
+       * 날짜부터 나오면 선생님이 자기가 적은 것으로 읽고 지나간다.
+       * 서버가 `by` 에 「3201 학생」으로 적어 둔다.
+       */
+      const mine = /학생$/.test(String(n.by || ''));
+      const who = el('span', '');
+      if (mine) who.appendChild(el('b', null, '학생이 적음'));
+      else who.appendChild(document.createTextNode(n.by || '선생님'));
+      who.appendChild(document.createTextNode(` ${MID} ${String(n.at || '').slice(0, 10)}`
+        // 학생이 적은 것은 늘 학생에게 보인다. 굳이 되풀이하지 않는다.
+        + (mine ? '' : ` ${MID} ${String(n.visible) === 'Y' ? '학생도 봄' : '선생님만'}`)));
+      foot.appendChild(who);
       const del = el('button', 'btn', '지우기');
       del.type = 'button';
       del.onclick = async () => {

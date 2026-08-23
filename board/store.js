@@ -645,6 +645,48 @@ export function pendingFields(cls) {
 
 /* ── 메모 ───────────────────────────────────────────────────────── */
 
+/** 이 메모를 학생이 적었나. 서버가 `by` 를 「3201 학생」으로 적어 둔다. */
+export const byStudent = (n) => /학생$/.test(String((n && n.by) || ''));
+
+/**
+ * **학생이 적어 놓고 아직 답을 못 받은 메모.**
+ *
+ * 메모는 날짜·결과와 달라서 「확인」을 누를 것이 없다. 그렇다고 그냥 두면
+ * 학생이 적은 것을 선생님이 영영 모른다 — 카드를 열어야만 보인다.
+ *
+ * 그래서 「안 읽음」을 따로 기록하지 않고 **대화로 읽는다.** 그 지원의 메모를
+ * 시간순으로 놓고, 학생이 적은 것 뒤에 선생님이 적은 것이 없으면 아직 답이
+ * 안 간 것이다. 선생님이 메모를 하나 달면 저절로 목록에서 빠진다.
+ *
+ * 새 칸을 만들지 않아 시트가 그대로고, 쌓이기만 하는 목록이 되지 않는다.
+ */
+export function unansweredNotes(cls) {
+  const byApp = new Map();
+  for (const n of state.notes) {
+    // 접수번호도 메모 탭에 「3201 학생」 이름으로 쌓인다. 그건 칸이지 할 말이 아니다.
+    if (String(n.text || '').startsWith('접수번호')) continue;
+    const k = `${n.hak}|${n.id || ''}`;
+    if (!byApp.has(k)) byApp.set(k, []);
+    byApp.get(k).push(n);
+  }
+  const out = [];
+  for (const [, list] of byApp) {
+    list.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    const last = list[list.length - 1];
+    if (!byStudent(last)) continue;                 // 마지막 말이 선생님 것이면 답한 것이다
+    const student = state.students.get(String(last.hak));
+    if (!student || (cls && String(student.cls) !== String(cls))) continue;
+    // 학생이 잇달아 여러 개 적었으면 마지막 것만 보여 준다. 셋은 따로 센다.
+    const mine = list.filter(byStudent);
+    out.push({
+      app: last.id ? state.apps.get(String(last.id)) : null,
+      student, note: last, n: mine.length,
+    });
+  }
+  return out.sort((a, b) =>
+    String(b.note.at || '').localeCompare(String(a.note.at || '')));
+}
+
 /**
  * 이 지원(또는 이 학생)에 달린 메모.
  * `id` 를 주면 그 지원에 달린 것만, 안 주면 학생에게 달린 것까지 모두.

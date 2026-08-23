@@ -574,6 +574,26 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 }
 .memo-bar input[type='checkbox'] { width: 18px; height: 18px; margin: 0 var(--s2) 0 0; }
 
+/*
+ * 학생 화면의 메모.
+ *
+ * 선생님 화면과 **같은 목록 모양**(`.memo-list`)을 쓴다. 같은 자리에 같이 쌓이는
+ * 것을 두 화면이 다르게 그리면 같은 것인 줄 모른다.
+ *
+ * 다만 학생 쪽은 메모 글이 본문이라 12px 로 두지 않는다. 선생님 화면에서는
+ * 카드 안의 여러 구역 가운데 하나지만, 학생 화면에서는 이게 읽을 거리다.
+ */
+.field.memo .memo-text { font-size: var(--t-sm); }
+.field.memo textarea {
+  font: inherit; font-size: 16px;   /* 16px 미만이면 iOS가 포커스 시 화면을 확대한다 */
+  width: 100%; line-height: 1.6; resize: vertical;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
+}
+/* 단추는 글상자 너비를 다 먹지 않게 왼쪽에 세운다 — 누를 자리는 44px 로 지킨다 */
+.field.memo > .btn { justify-self: start; min-height: 44px; }
+.field.memo .memo-foot .btn { min-height: 44px; padding: 0 var(--s3); }
+
 @media (min-width: 560px) {
   .overlay { padding: var(--s6) var(--s4); }
 }
