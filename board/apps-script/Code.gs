@@ -259,14 +259,34 @@ function handle_(p) {
  * 잠그는 것 자체는 그대로 둔다 — 열어 주는 쪽으로 봐주면 그건 잠금이 아니다.
  * 되돌리는 길은 시트 주인에게 늘 있다(설정 탭 A열을 비우면 된다).
  */
-/** 시트 `설정` 탭 C2 에 적어 둔 교사 열쇠. 안 적었으면 빈 값(잠그지 않음). */
+/*
+ * 기본 교사 열쇠. **`board/api.js` 의 `DEFAULT_KEY` 와 같아야 한다.**
+ *
+ * 시트 `설정` 탭 C2 를 비워 두면 이 값을 쓴다. 설치할 때 손댈 곳이 하나 줄고,
+ * 3학년실 컴퓨터 여러 대에서 따로 넣을 것도 없다.
+ *
+ * **이 값은 공개 저장소에 적혀 있다.** 저장소를 찾아본 사람은 그대로 읽을 수 있다.
+ * 그러니 이건 잠금이 아니라 **빗장**이다 — 학생이 제 링크에서 주소만 떼어
+ * `?action=students` 를 불러 보는 것은 막지만, 저장소까지 뒤지는 사람은 못 막는다.
+ * 진짜로 잠그려면 C2 에 **다른 글자**를 적고 보드 설정에도 같은 글자를 넣는다.
+ * 그러면 저장소에 없는 값이라 아무도 모른다.
+ */
+var DEFAULT_KEY = '84348434';
+
+/** 교사 열쇠. 시트 `설정` 탭 C2 에 적어 두면 그것, 비어 있으면 기본값. */
 function teacherKey_() {
   try {
     var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.config);
-    return sh ? String(sh.getRange('C2').getValue() || '').trim() : '';
+    var own = sh ? String(sh.getRange('C2').getValue() || '').trim() : '';
+    return own || DEFAULT_KEY;
   } catch (err) {
-    return '';
+    return DEFAULT_KEY;
   }
+}
+
+/** 지금 쓰는 열쇠가 저장소에 적힌 기본값인가 — 그러면 보드가 알린다. */
+function usingDefaultKey_() {
+  return teacherKey_() === DEFAULT_KEY;
 }
 
 function access_() {
@@ -830,8 +850,8 @@ function loadAll_(me) {
     unknownCols: parsed.unknownCols, skipped: parsed.skipped,
     // 머리글을 못 찾았으면 왜인지 — 조용히 「0명」이 되지 않게 한다
     parseProblem: parsed.problem || '',
-    // 열쇠를 안 걸어 뒀으면 보드가 붉게 알린다. 지금 누구나 볼 수 있는 상태다.
-    openToAll: !teacherKey_(),
+    // 저장소에 적힌 기본 열쇠를 쓰고 있으면 보드가 알린다 — 빗장이지 잠금이 아니다
+    openToAll: usingDefaultKey_(),
     state: rows_(SHEET.state), notes: rows_(SHEET.note),
     results: rows_(SHEET.result), dates: rows_(SHEET.date),
     fields: rows_(SHEET.field),

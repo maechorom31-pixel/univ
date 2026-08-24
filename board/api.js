@@ -18,6 +18,28 @@ const CONFIG_KEY = 'board.apiUrl';
  * `?action=students` 를 불러 전교생 자료를 통째로 가져갈 수 있다.
  */
 const KEY_KEY = 'board.teacherKey';
+
+/*
+ * 기본 교사 열쇠. **`board/apps-script/Code.gs` 의 `DEFAULT_KEY` 와 같아야 한다.**
+ * 선생님이 따로 안 넣으면 이걸 보낸다 — 설치할 때 손댈 곳이 하나 줄어든다.
+ * 저장소에 적혀 있는 값이라 잠금이 아니라 빗장이다(Code.gs 의 설명 참고).
+ */
+const DEFAULT_KEY = '84348434';
+
+/**
+ * 토큰으로 여는 경로. **`Code.gs` 의 `STUDENT_ACTION` 과 같아야 한다.**
+ *
+ * 이름 앞자리로 가르지 않는다. 예전에는 `action.startsWith('student')` 였는데
+ * 교사 화면의 자료 적재인 **`students` 가 여기 걸려서**(`'students'` 는
+ * `'student'` 로 시작한다) 열쇠를 안 붙였고, 서버는 「열쇠가 맞지 않습니다」로
+ * 돌려보냈다. 서버에서 똑같은 함정을 고쳐 놓고 여기에 새로 심은 것이다.
+ *
+ * 두 목록이 어긋나면 `board/auth.test.mjs` 가 잡는다.
+ */
+const STUDENT_ACTION = new Set([
+  'student', 'studentDate', 'studentApplyNo', 'studentField', 'studentResult',
+  'studentNote', 'studentNoteRemove', 'studentAsk',
+]);
 let apiUrl = '';
 let teacherKey = '';
 let seq = 0;
@@ -67,6 +89,11 @@ export function key() {
   return teacherKey;
 }
 
+/** 지금 저장소에 적힌 기본 열쇠를 쓰고 있나. 설정 화면이 안내에 쓴다. */
+export function usingDefaultKey() {
+  return !teacherKey || teacherKey === DEFAULT_KEY;
+}
+
 export function url() {
   return apiUrl;
 }
@@ -84,7 +111,7 @@ function once(action, params, timeoutMs) {
     const cb = `__board_cb_${Date.now()}_${seq += 1}`;
     const query = new URLSearchParams({ action, callback: cb });
     // 학생 경로에는 안 붙인다 — 링크를 받은 사람이 열쇠까지 갖게 되면 안 된다
-    if (teacherKey && !String(action).startsWith('student')) query.set('key', teacherKey);
+    if (!STUDENT_ACTION.has(action)) query.set('key', teacherKey || DEFAULT_KEY);
     for (const [k, v] of Object.entries(params || {})) {
       if (v !== undefined && v !== null) query.set(k, String(v));
     }

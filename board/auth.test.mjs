@@ -94,24 +94,25 @@ sheets['메모'] = mkSheet([
   ['m1', '3101', '', '최저 못 맞출 것 같음. 하향 권유 필요.', 'N', '담임', '2026-08-20'],
 ]);
 
-console.log('열쇠를 안 걸었을 때 — 예전처럼 열려 있되 그렇다고 말한다');
+console.log('C2 를 비워 두면 — 저장소에 적힌 기본 열쇠를 쓴다');
 sheets['설정'] = mkSheet([G.HEADERS['설정']]);
 {
-  const r = G.handle_({ action: 'students' });
-  eq(r.ok, true, '열쇠가 없으면 그대로 열린다 (옛 시트가 갑자기 막히면 더 나쁘다)');
-  eq(r.openToAll, true, '「누구나 볼 수 있다」고 알린다');
-  eq(r.students.length, 2, '자료 적재가 학생 경로에 안 먹힌다 (students ↔ student)');
+  eq(G.handle_({ action: 'students' }).ok, false, '기본 열쇠도 열쇠다 — 안 보내면 막는다');
+  const r = G.handle_({ action: 'students', key: '84348434' });
+  eq([r.ok, r.students.length], [true, 2],
+    '기본 열쇠로 통과 (자료 적재가 학생 경로에 안 먹힌다)');
+  eq(r.openToAll, true, '기본 열쇠를 쓰는 중이라고 알린다 — 저장소에 적혀 있다');
 }
 
-console.log('\n열쇠를 걸었을 때');
-sheets['설정'] = mkSheet([G.HEADERS['설정'], ['', '', '열쇠글자']]);
+console.log('\nC2 에 다른 글자를 적으면 — 저장소에 없는 값이라 진짜로 잠긴다');
+sheets['설정'] = mkSheet([G.HEADERS['설정'], ['', '', '우리반만아는글자']]);
 {
   eq(G.handle_({ action: 'students' }).ok, false, '열쇠 없이 부르면 막는다');
-  eq(G.handle_({ action: 'students', key: '틀린것' }).ok, false, '틀린 열쇠도 막는다');
-  eq(G.handle_({ action: 'addNote', key: '틀린것', hak: '3101', text: 'x' }).ok, false,
+  eq(G.handle_({ action: 'students', key: '84348434' }).ok, false, '기본 열쇠도 더는 안 통한다');
+  eq(G.handle_({ action: 'addNote', key: '84348434', hak: '3101', text: 'x' }).ok, false,
     '읽기만이 아니라 쓰기도 막는다');
-  const r = G.handle_({ action: 'students', key: '열쇠글자' });
-  eq([r.ok, r.students.length, r.openToAll], [true, 2, false], '맞는 열쇠는 통과');
+  const r = G.handle_({ action: 'students', key: '우리반만아는글자' });
+  eq([r.ok, r.students.length, r.openToAll], [true, 2, false], '적어 둔 열쇠는 통과');
 }
 
 console.log('\n학생 경로는 열쇠와 무관하게 토큰으로만');
@@ -132,12 +133,38 @@ console.log('\n학생 경로는 열쇠와 무관하게 토큰으로만');
  */
 console.log('\n서버와 화면이 같은 이름을 쓰나');
 {
+  /*
+   * 학생 경로 목록이 서버(`Code.gs`)와 통신(`api.js`) 양쪽에 있다. 어긋나면
+   * 조용히 틀린다 — 교사 경로가 학생 목록에 잘못 들어가 있으면 열쇠를 안 붙여
+   * 보내서 「열쇠가 맞지 않습니다」가 되고, 반대면 학생 링크에 열쇠가 샌다.
+   * 실제로 `students` 가 `startsWith('student')` 에 걸려 그렇게 됐었다.
+   */
+  const pick = (text, re) => {
+    const m = text.match(re);
+    return m ? m[1].match(/[A-Za-z]+/g).sort().join(',') : null;
+  };
+  const gsA = pick(readFileSync(resolve(HERE, 'apps-script/Code.gs'), 'utf8'),
+    /var STUDENT_ACTION = \{([^}]*)\}/);
+  const jsA = pick(readFileSync(resolve(HERE, 'api.js'), 'utf8'),
+    /const STUDENT_ACTION = new Set\(\[([^\]]*)\]/);
+  eq(gsA, jsA, '학생 경로 목록이 서버·통신에서 같다');
+  eq(gsA && gsA.indexOf('students') < 0, true, '교사 자료 적재(students)가 학생 목록에 없다');
+{
   const gs = readFileSync(resolve(HERE, 'apps-script/Code.gs'), 'utf8')
     .match(/var FIELDS = (\[[^\]]*\])/);
   const js = readFileSync(resolve(HERE, 'store.js'), 'utf8')
     .match(/export const FIELDS = (\[[^\]]*\])/);
   const norm = (m) => (m ? m[1].replace(/[\s'"]/g, '') : null);
   eq(norm(gs), norm(js), '원서 뒤 채우는 칸 이름이 서버·화면에서 같다');
+
+  // 기본 열쇠가 어긋나면 설치하자마자 「열쇠가 맞지 않습니다」가 된다
+  const one = (t, re) => { const m = t.match(re); return m ? m[1] : null; };
+  eq(one(readFileSync(resolve(HERE, 'apps-script/Code.gs'), 'utf8'),
+    /var DEFAULT_KEY = '([^']*)'/),
+  one(readFileSync(resolve(HERE, 'api.js'), 'utf8'),
+    /const DEFAULT_KEY = '([^']*)'/),
+  '기본 열쇠가 서버·통신에서 같다');
+}
 }
 
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');
