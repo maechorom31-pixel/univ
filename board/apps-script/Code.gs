@@ -537,7 +537,7 @@ function yn_(v) {
 function parseFavorites_(values, opts) {
   opts = opts || {};
   var H = readHeader_(values);
-  var students = {}, order = [], apps = [], unknownCols = {}, skipped = 0;
+  var students = {}, order = [], apps = [], unknownCols = {}, skipped = 0, dropped = {};
 
   /*
    * **머리글을 못 찾았으면 읽지 않는다.**
@@ -661,7 +661,21 @@ function parseFavorites_(values, opts) {
       unknown: unknown
     };
     app.id = appId_(app);
-    if (!app.univ || !app.dept) { skipped++; continue; }
+    /*
+     * **버릴 때는 누구 줄을 왜 버렸는지 남긴다.**
+     *
+     * 학생은 위에서 이미 만들어졌고 여기서 지원만 버린다. 그래서 대학이나 학과
+     * 칸이 빈 줄뿐인 학생은 **명단에는 있는데 보드가 텅 비는** 꼴이 된다.
+     * 여태 `skipped` 를 세기만 하고 화면에 안 냈더니, 선생님은 그 학생이 원래
+     * 지원이 없는 건지 자료가 샌 건지 알 길이 없었다.
+     */
+    if (!app.univ || !app.dept) {
+      skipped++;
+      var why = !app.univ ? '대학명이 비었습니다' : '모집단위가 비었습니다';
+      if (!dropped[hak]) dropped[hak] = { hak: hak, n: 0, why: why, row: r + 1 };
+      dropped[hak].n += 1;
+      continue;
+    }
     apps.push(app);
     students[hak].apps.push(app.id);
   }
@@ -670,7 +684,12 @@ function parseFavorites_(values, opts) {
   for (var i = 0; i < order.length; i++) list.push(students[order[i]]);
   var cols = [];
   for (var u in unknownCols) cols.push(u);
-  return { students: list, apps: apps, unknownCols: cols, skipped: skipped };
+  var lost = [];
+  for (var h in dropped) lost.push(dropped[h]);
+  return {
+    students: list, apps: apps, unknownCols: cols, skipped: skipped,
+    dropped: lost                 // 어느 학생의 줄이 몇 개 왜 빠졌나
+  };
 }
 
 /** 안정키 — 원본을 갈아끼워도 메모·순위가 붙어 있게 한다. CONTRACT.md §3 */
@@ -848,6 +867,7 @@ function loadAll_(me) {
     sourceWarn: book.why || '',
     students: parsed.students, apps: parsed.apps,
     unknownCols: parsed.unknownCols, skipped: parsed.skipped,
+    dropped: parsed.dropped || [],
     // 머리글을 못 찾았으면 왜인지 — 조용히 「0명」이 되지 않게 한다
     parseProblem: parsed.problem || '',
     // 저장소에 적힌 기본 열쇠를 쓰고 있으면 보드가 알린다 — 빗장이지 잠금이 아니다

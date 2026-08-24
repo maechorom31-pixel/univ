@@ -194,6 +194,20 @@ function render() {
       + ' 보드 설정 화면에 같은 글자를 넣어 주세요.',
     ));
   }
+  /*
+   * **버린 줄이 있으면 말한다.** 여태 세기만 하고 안 냈다.
+   * 대학이나 학과 칸이 빈 줄은 지원으로 못 세는데, 그 학생은 명단에 이미 올라가
+   * 있어서 보드만 텅 빈다 — 자료가 없는 건지 샌 건지 알 수 없는 상태가 된다.
+   */
+  if (store.state.skipped) {
+    const who = (store.state.dropped || []).slice(0, 4)
+      .map((d) => `${d.hak}(${d.n}줄)`).join(' · ');
+    main.appendChild(banner(
+      `대학이나 학과 칸이 비어 ${store.state.skipped}줄을 못 읽었습니다`
+      + `${who ? ` — ${who}` : ''}. 시트에서 그 줄을 확인해 주세요.`,
+      true,
+    ));
+  }
   if (store.state.unknownCols.length) {
     main.appendChild(banner(
       `엑셀에서 알아보지 못한 칸이 ${store.state.unknownCols.length}개 있습니다 — `
@@ -212,6 +226,20 @@ function render() {
   main.appendChild(header(student));
 
   const apps = store.appsOf(student.hak);
+  /*
+   * **지원이 하나도 없으면 빈 화면 대신 사유를 적는다.**
+   * 명단에는 있는데 보드가 텅 비면 무엇이 잘못된 건지 알 수 없다.
+   */
+  if (!apps.length) {
+    const lost = (store.state.dropped || [])
+      .find((d) => String(d.hak) === String(student.hak));
+    main.appendChild(hint(lost
+      ? `즐겨찾기에 이 학생 줄이 ${lost.n}개 있는데 ${lost.why}.`
+        + ' 그래서 지원으로 세지 못했습니다 — 시트에서 그 줄을 확인해 주세요.'
+      : '즐겨찾기에 이 학생의 지원 줄이 없습니다.'
+        + ' 원본을 새로 받으셨다면 다시 불러와 주세요.'));
+    return;
+  }
   const general = apps.filter((a) => a.univType !== '전문대' && a.univType !== '특수대');
   const others = apps.filter((a) => a.univType === '전문대' || a.univType === '특수대');
   const at = (r) => general.find((a) => {
@@ -886,7 +914,19 @@ function mover(app) {
   const current = now.slot === 'rank' ? `rank:${now.rank}` : now.slot;
   for (const [value, text] of options) {
     const o = document.createElement('option');
-    o.value = value; o.textContent = text;
+    /*
+     * **차 있는 칸은 「맞바꿈」이라고 적는다.**
+     *
+     * 고르면 실제로 둘이 자리를 바꾼다 — 예전부터 그랬다. 그런데 목록에는
+     * 「2순위」라고만 적혀 있어서, 누르면 거기 있던 카드가 밀려날 것처럼 보인다.
+     * 「교체 기능이 없는 것 같다」는 이야기를 들었다. 있는데 안 보였던 것이다.
+     */
+    let label = text;
+    if (value.indexOf('rank:') === 0 && value !== current) {
+      const taken = store.occupant(app.hak, Number(value.slice(5)));
+      if (taken) label = `${text} ⇄ ${shortName(taken)}`;
+    }
+    o.value = value; o.textContent = label;
     if (value === current) o.selected = true;
     sel.appendChild(o);
   }

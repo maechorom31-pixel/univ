@@ -38,6 +38,8 @@ export const state = {
   fields: new Map(),
   source: { name: '', known: true },   // 어느 탭을 읽었나
   unknownCols: [],
+  skipped: 0,
+  dropped: [],
   parseProblem: '',
   openToAll: false,
   error: '',
@@ -97,6 +99,9 @@ function apply(data) {
     warn: data.sourceWarn || '',      // 딴 파일을 열지 못했으면 그 사유
   };
   state.unknownCols = data.unknownCols || [];
+  // 대학·학과 칸이 비어 버린 줄. 명단에는 있는데 보드가 비는 학생이 여기 걸린다.
+  state.skipped = Number(data.skipped) || 0;
+  state.dropped = data.dropped || [];
   // 파서가 머리글을 못 찾았으면 그 사유. 화면이 그대로 띄운다.
   state.parseProblem = data.parseProblem || '';
   // 교사 열쇠를 안 걸어 뒀나 — 지금 주소를 아는 사람은 누구나 볼 수 있다
