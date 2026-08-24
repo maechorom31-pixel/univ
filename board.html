@@ -37,6 +37,13 @@
     <input id="api-url" type="url" inputmode="url" autocomplete="off"
            placeholder="https://script.google.com/macros/s/…/exec">
     <div>
+      <label for="api-key">교사 열쇠</label>
+      <p class="hint">시트 <b>설정</b> 탭 <b>C2</b> 에 적어 둔 글자입니다.
+        학생 링크에는 안 들어가므로, 이걸 걸어야 학생이 주소만 떼어 전교생 자료를
+        가져가는 것을 막습니다. 비워 두면 주소를 아는 사람은 모두 들어옵니다.</p>
+    </div>
+    <input id="api-key" type="password" autocomplete="off" placeholder="설정 탭 C2 에 적은 글자">
+    <div>
       <button class="btn btn-primary" id="save-url" type="button">저장하고 연결</button>
       <button class="btn" id="try-demo" type="button">보기용 자료로 열기</button>
     </div>
@@ -95,6 +102,7 @@ const conn = document.getElementById('conn');
 const who = document.getElementById('who');
 const setup = document.getElementById('setup');
 const input = document.getElementById('api-url');
+const keyInput = document.getElementById('api-key');
 
 function setConn(text, kind) {
   conn.textContent = text;
@@ -110,6 +118,7 @@ document.getElementById('toggle-setup').onclick = () => showSetup(setup.hidden);
 
 document.getElementById('save-url').onclick = async () => {
   api.configure(input.value);
+  api.setKey(keyInput.value);
   showSetup(false);
   await connect();
 };
@@ -180,6 +189,7 @@ startVerify();
 startExport();
 applyStage(stage, true);
 input.value = api.url();
+keyInput.value = api.key();
 if (new URLSearchParams(location.search).has('demo')) {
   document.getElementById('try-demo').click();
 } else {

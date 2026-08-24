@@ -37,6 +37,7 @@ export const state = {
   source: { name: '', known: true },   // 어느 탭을 읽었나
   unknownCols: [],
   parseProblem: '',
+  openToAll: false,
   error: '',
 };
 
@@ -96,6 +97,8 @@ function apply(data) {
   state.unknownCols = data.unknownCols || [];
   // 파서가 머리글을 못 찾았으면 그 사유. 화면이 그대로 띄운다.
   state.parseProblem = data.parseProblem || '';
+  // 교사 열쇠를 안 걸어 뒀나 — 지금 주소를 아는 사람은 누구나 볼 수 있다
+  state.openToAll = Boolean(data.openToAll);
   state.students = new Map((data.students || []).map((s) => [s.hak, s]));
   state.apps = new Map((data.apps || []).map((a) => [a.id, a]));
   state.notes = data.notes || [];
@@ -584,6 +587,14 @@ export async function approveResult(app) {
  * 학생이 적고 담임이 확인한다. 일정·결과와 같은 흐름이다.
  *
  * `생년월일` 은 학생 한 명에 하나라 지원과 상관없이 학번으로만 건다.
+ */
+/**
+ * 원서를 낸 뒤에 채워지는 칸 이름. **`Code.gs` 의 `FIELDS` 와 같아야 한다** —
+ * 서버가 모르는 이름으로 부르면 「모르는 칸입니다」로 거절한다.
+ *
+ * 화면에서 직접 쓰지는 않는다(카드는 이름을 하나씩 적는다). 그런데 지우면
+ * 이 목록이 서버에만 남아서, 칸을 더할 때 어디를 같이 고쳐야 하는지 알 길이
+ * 없어진다. 여기 두고 시험이 서버와 맞는지 본다.
  */
 export const FIELDS = ['수험번호', '최종경쟁률', '생년월일'];
 const perStudent = (field) => field === '생년월일';

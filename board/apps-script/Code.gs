@@ -47,7 +47,7 @@ var SHEET = {
 
 var HEADERS = {
   // B2 에 원본 시트 주소를 적으면 즐겨찾기를 딴 파일에서 읽는다 (sourceBook_ 참고)
-  설정:  ['이메일', '원본 즐겨찾기 시트 주소 — 아래 한 칸에만'],
+  설정:  ['이메일', '원본 즐겨찾기 시트 주소 — 아래 한 칸에만', '교사 열쇠 — 아래 한 칸에만'],
   배치:  ['id', 'hak', 'slot', 'rank', 'by', 'at'],
   메모:  ['noteId', 'hak', 'id', 'text', 'visible', 'by', 'at'],
   // status: 'student' 학생이 적음 · 'confirmed' 선생님이 확인함
@@ -164,8 +164,39 @@ function doPost(e) { return doGet(e); }
 function handle_(p) {
   var action = p.action || 'ping';
 
-  // 학생용 경로는 토큰으로만 연다 — 자기 것만 보이고, 자기 것만 고칠 수 있다
-  if (action.indexOf('student') === 0) return studentAction_(action, p);
+  /*
+   * 학생용 경로는 토큰으로만 연다 — 자기 것만 보이고, 자기 것만 고칠 수 있다.
+   *
+   * **이름 앞자리로 가르지 않는다.** 예전에는 `action.indexOf('student') === 0` 이었는데
+   * 교사 화면의 자료 적재인 **`students` 가 여기 걸렸다**(`'students'.indexOf('student')`
+   * 는 0 이다). 토큰이 없으니 늘 「만료되었거나 잘못된 주소입니다」로 떨어졌고,
+   * `case 'students'` 는 닿을 수 없는 코드였다. 보드를 실제 시트에 붙이면 자료가
+   * 통째로 안 올라온다 — 보기용 자료(`?demo=1`)는 서버를 안 불러서 안 드러났다.
+   *
+   * 이름을 **또박또박 적어** 가른다. 새 경로를 더할 때 여기 한 줄을 같이 적어야 하고,
+   * 그 대가로 교사 경로가 실수로 학생 쪽에 먹히는 일이 없어진다.
+   */
+  if (STUDENT_ACTION[action]) return studentAction_(action, p);
+
+  /*
+   * **교사 경로는 열쇠를 요구한다.**
+   *
+   * 학생 링크에는 이 배포 주소가 `?api=` 로 그대로 들어 있다. 「액세스: 모든 사용자」로
+   * 배포해야 학생이 열 수 있는데, 그러면 구글이 접속자 계정을 안 알려 줘서
+   * `access_()` 가 아무나 통과시킨다. 학생이 제 링크에서 주소만 떼어
+   * `?action=students` 를 부르면 **전교생 이름·내신·지원 목록에 교사 비공개 메모까지**
+   * 그대로 나온다. 실제로 돌려 봤다.
+   *
+   * 그래서 시트 `설정` 탭 C2 에 아무 글자나 적어 두고, 보드만 그걸 함께 보낸다.
+   * 학생 링크에는 안 들어간다. 열쇠를 안 적어 두면 예전처럼 열려 있고 —
+   * 옛 시트를 쓰던 분이 갑자기 못 들어오면 그게 더 나쁘다 — 대신 보드가
+   * 「지금 아무나 볼 수 있습니다」라고 붉게 알린다.
+   */
+  var key = teacherKey_();
+  if (key && String(p.key || '') !== key) {
+    return { ok: false, error: '교사 열쇠가 맞지 않습니다.'
+      + ' 보드 설정 화면에서 시트 「설정」 탭 C2 에 적은 열쇠를 넣어 주세요.' };
+  }
 
   var me = access_();
   if (me && me.blind) {
@@ -228,6 +259,16 @@ function handle_(p) {
  * 잠그는 것 자체는 그대로 둔다 — 열어 주는 쪽으로 봐주면 그건 잠금이 아니다.
  * 되돌리는 길은 시트 주인에게 늘 있다(설정 탭 A열을 비우면 된다).
  */
+/** 시트 `설정` 탭 C2 에 적어 둔 교사 열쇠. 안 적었으면 빈 값(잠그지 않음). */
+function teacherKey_() {
+  try {
+    var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.config);
+    return sh ? String(sh.getRange('C2').getValue() || '').trim() : '';
+  } catch (err) {
+    return '';
+  }
+}
+
 function access_() {
   var email = '';
   try { email = Session.getActiveUser().getEmail() || ''; } catch (err) { email = ''; }
@@ -789,6 +830,8 @@ function loadAll_(me) {
     unknownCols: parsed.unknownCols, skipped: parsed.skipped,
     // 머리글을 못 찾았으면 왜인지 — 조용히 「0명」이 되지 않게 한다
     parseProblem: parsed.problem || '',
+    // 열쇠를 안 걸어 뒀으면 보드가 붉게 알린다. 지금 누구나 볼 수 있는 상태다.
+    openToAll: !teacherKey_(),
     state: rows_(SHEET.state), notes: rows_(SHEET.note),
     results: rows_(SHEET.result), dates: rows_(SHEET.date),
     fields: rows_(SHEET.field),
@@ -925,6 +968,12 @@ function ownsApp_(hak, id) {
   }
   return false;
 }
+
+/** 토큰으로 여는 경로. 여기 적힌 것만 학생이 부를 수 있다. */
+var STUDENT_ACTION = {
+  student: 1, studentDate: 1, studentApplyNo: 1, studentField: 1, studentResult: 1,
+  studentNote: 1, studentNoteRemove: 1, studentAsk: 1
+};
 
 function studentAction_(action, p) {
   if (action === 'student') return studentView_(p.token);

@@ -10,13 +10,24 @@
  */
 
 const CONFIG_KEY = 'board.apiUrl';
+/*
+ * 교사 열쇠. **보드만 갖고 학생 링크에는 안 들어간다.**
+ *
+ * 학생 링크에는 배포 주소가 `?api=` 로 그대로 들어 있고, 「액세스: 모든 사용자」
+ * 배포라 서버가 접속자를 못 알아본다. 열쇠가 없으면 학생이 주소만 떼어
+ * `?action=students` 를 불러 전교생 자료를 통째로 가져갈 수 있다.
+ */
+const KEY_KEY = 'board.teacherKey';
 let apiUrl = '';
+let teacherKey = '';
 let seq = 0;
 
 try {
   apiUrl = localStorage.getItem(CONFIG_KEY) || '';
+  teacherKey = localStorage.getItem(KEY_KEY) || '';
 } catch (err) {
   apiUrl = '';        // 사생활 보호 모드 등에서 막히면 그냥 빈 값으로 둔다
+  teacherKey = '';
 }
 
 /**
@@ -40,6 +51,22 @@ export function configured() {
   return Boolean(apiUrl);
 }
 
+/**
+ * 교사 열쇠를 정한다. 학생 화면은 이걸 부르지 않는다 —
+ * `configure` 와 달리 링크에서 오는 값이 아니라 선생님이 손으로 넣는 값이다.
+ */
+export function setKey(value) {
+  teacherKey = String(value || '').trim();
+  try {
+    if (teacherKey) localStorage.setItem(KEY_KEY, teacherKey);
+    else localStorage.removeItem(KEY_KEY);
+  } catch (err) { /* 저장이 막혀도 이번 세션 동안은 쓸 수 있다 */ }
+}
+
+export function key() {
+  return teacherKey;
+}
+
 export function url() {
   return apiUrl;
 }
@@ -56,6 +83,8 @@ function once(action, params, timeoutMs) {
     }
     const cb = `__board_cb_${Date.now()}_${seq += 1}`;
     const query = new URLSearchParams({ action, callback: cb });
+    // 학생 경로에는 안 붙인다 — 링크를 받은 사람이 열쇠까지 갖게 되면 안 된다
+    if (teacherKey && !String(action).startsWith('student')) query.set('key', teacherKey);
     for (const [k, v] of Object.entries(params || {})) {
       if (v !== undefined && v !== null) query.set(k, String(v));
     }

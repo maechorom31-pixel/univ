@@ -182,6 +182,19 @@ function render() {
   if (store.state.parseProblem) {
     main.appendChild(banner(store.state.parseProblem, true));
   }
+  /*
+   * **열쇠를 안 걸어 뒀으면 그 사실을 말한다.**
+   * 학생 링크에 배포 주소가 들어 있어서, 열쇠가 없으면 학생이 주소만 떼어
+   * 전교생 이름·내신·지원 목록과 교사 비공개 메모까지 가져갈 수 있다.
+   */
+  if (store.state.openToAll) {
+    main.appendChild(banner(
+      '교사 열쇠가 걸려 있지 않습니다 — 지금은 이 주소를 아는 사람이면 누구나'
+      + ' 전교생 자료와 비공개 메모를 볼 수 있습니다.'
+      + ' 시트 「설정」 탭 C2 에 아무 글자나 적고, 설정 화면에 같은 글자를 넣어 주세요.',
+      true,
+    ));
+  }
   if (store.state.unknownCols.length) {
     main.appendChild(banner(
       `엑셀에서 알아보지 못한 칸이 ${store.state.unknownCols.length}개 있습니다 — `
