@@ -248,28 +248,26 @@ function render() {
   });
 
   /*
-   * **아직 한 칸도 안 정했으면 빈 상자 여섯을 안 그린다.**
+   * **여섯 칸은 늘 그린다 — 비어 있어도.**
    *
-   * 9월 초에는 모든 학생이 이 상태다. 여섯 칸이 화면을 통째로 먹고 정작 봐야 하는
-   * 지원 목록은 스크롤 아래로 밀린다 — 열자마자 「아무것도 없다」로 읽힌다.
-   * 실제로 그렇게 보인다는 이야기를 들었다.
+   * 한때 한 칸도 안 정했으면 격자를 감췄다. 화면을 아낀다는 뜻이었는데, 정작
+   * 상담을 시작할 때 **채울 자리가 안 보였다.** 여섯 칸은 수시가 여섯 장이라는
+   * 사실 그 자체고, 빈 칸 여섯은 「아직 아무것도 안 정했다」를 한눈에 말한다.
+   * 놓을 자리가 먼저 있고, 카드를 거기에 옮기는 것이 순서다.
    *
-   * 한 칸이라도 정해지면 그때부터 격자를 그린다. 그때는 여섯 칸이 주역이 맞다.
+   * 대신 비었을 때는 칸을 낮게 그려(`slots thin`) 아래 후보 목록을 가리지 않는다.
    */
   const placed = RANKS.map(at).filter(Boolean);
-  if (placed.length) {
-    main.appendChild(label('지원 6칸'));
-    const slots = el('div', 'slots');
-    for (const r of RANKS) {
-      const app = at(r);
-      slots.appendChild(app ? card(app, r, student) : emptySlot(r));
-    }
-    main.appendChild(slots);
-  } else {
-    const line = el('p', 'section-label', '지원 6칸');
-    main.appendChild(line);
+  main.appendChild(label('지원 6칸'));
+  const slots = el('div', placed.length ? 'slots' : 'slots thin');
+  for (const r of RANKS) {
+    const app = at(r);
+    slots.appendChild(app ? card(app, r, student) : emptySlot(r));
+  }
+  main.appendChild(slots);
+  if (!placed.length) {
     main.appendChild(el('p', 'hint',
-      '아직 순위를 정하지 않았습니다. 아래 지원을 카드째 끌어다 놓으면 칸이 채워집니다.'));
+      '아래 지원을 카드째 끌어다 놓거나, 카드의 순위 고르개로 칸을 채웁니다.'));
   }
 
   // 보관도 순위도 아닌 것은 전부 후보로 본다.
@@ -711,13 +709,22 @@ function figures(app, student) {
       ['70%컷', g2(s.cut)],
       comp,
     ]);
-    if (s.type) head.title = `입결 전형 ${s.type}`;
     /*
-     * 이름으로 맞춘 게 아니라 유형만 보고(cat) 또는 전형이 하나뿐이라(only) 고른 것이면
-     * 마우스를 올려야 보이는 곳에 숨기지 않는다. 전체의 3% 라 시끄럽지도 않다.
+     * **묶음이 통째로 비어 있을 수 있다.** 입결에는 이어졌는데 70%컷도 경쟁률도
+     * 안 적힌 전형이 있다(올해 새로 묶인 광역모집·자유전공에서 나온다).
+     * 그러면 group() 이 null 을 주는데, 여기서 곧장 title 을 달면 카드 하나가
+     * 터지면서 render() 가 멈춘다. 그 학생의 보드가 **통째로 빈다.**
+     * 명단에는 이름이 있는데 보드만 텅 빈 학생이 그래서 나왔다.
      */
-    if (s.typeFit === 'cat' || s.typeFit === 'only') {
-      head.appendChild(el('div', 'fig-note', `${s.type} · 전형을 이름으로 맞추지 못했습니다`));
+    if (head) {
+      if (s.type) head.title = `입결 전형 ${s.type}`;
+      /*
+       * 이름으로 맞춘 게 아니라 유형만 보고(cat) 또는 전형이 하나뿐이라(only) 고른 것이면
+       * 마우스를 올려야 보이는 곳에 숨기지 않는다. 전체의 3% 라 시끄럽지도 않다.
+       */
+      if (s.typeFit === 'cat' || s.typeFit === 'only') {
+        head.appendChild(el('div', 'fig-note', `${s.type} · 전형을 이름으로 맞추지 못했습니다`));
+      }
     }
     left = head;
   } else if (s.before && s.before.line.g70) {
@@ -979,22 +986,45 @@ function group(title, apps, help, student, slot) {
   if (help) box.appendChild(el('p', 'section-label', help));
   const stack = el('div', 'stack');
   for (const app of apps) {
-    const row = el('div', 'row');
-    markMemo(row, app);
-    markEnrolled(row, app);
-    dragSource(row, app);
-    openable(row, app);
-    const txt = el('div', 'txt');
-    txt.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
-    txt.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
-    txt.appendChild(figures(app, student));
-    txt.appendChild(pills(app));
-    row.appendChild(txt);
-    row.appendChild(mover(app));
-    stack.appendChild(row);
+    /*
+     * **카드 하나가 터져도 보드는 살아 있어야 한다.**
+     *
+     * 예전에는 숫자 한 칸을 그리다 난 오류가 render() 를 통째로 멈춰서, 명단에는
+     * 이름이 있는데 보드는 텅 빈 학생이 생겼다. 선생님 쪽에서는 그 학생만 자료가
+     * 없는 것처럼 보인다 — **상담 도구에서 가장 나쁜 실패다.** 못 그린 카드는
+     * 못 그렸다고 적어 두고 나머지 여덟 장은 그대로 낸다.
+     */
+    try {
+      stack.appendChild(cardRow(app, student));
+    } catch (err) {
+      const row = el('div', 'row broken');
+      row.appendChild(el('div', 'univ', tidy(app.univ || '대학 없음')));
+      row.appendChild(el('div', 'dept', tidy(app.dept || '학과 없음')));
+      row.appendChild(el('p', 'warn', '이 카드를 그리지 못했습니다. 선생님께 알려 주세요.'));
+      row.title = String((err && err.message) || err);
+      stack.appendChild(row);
+    }
   }
   box.appendChild(stack);
   return box;
+}
+
+/** 카드 한 장. group() 이 이걸 try 로 감싸 부른다. */
+function cardRow(app, student) {
+  const row = el('div', 'row');
+  row.dataset.id = app.id;        // 자리를 옮길 때 어느 카드가 어디서 왔는지 짚는다
+  markMemo(row, app);
+  markEnrolled(row, app);
+  dragSource(row, app);
+  openable(row, app);
+  const txt = el('div', 'txt');
+  txt.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
+  txt.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
+  txt.appendChild(figures(app, student));
+  txt.appendChild(pills(app));
+  row.appendChild(txt);
+  row.appendChild(mover(app));
+  return row;
 }
 
 /* ── 상세 ─────────────────────────────────────────────────────── */
@@ -1056,57 +1086,107 @@ function renderDetail() {
 
 /* ── 옮기기 ───────────────────────────────────────────────────── */
 
+/*
+ * **움직임을 보여 준다 (FLIP).**
+ *
+ * 순위를 바꾸면 화면을 새로 그린다. 새로 그리기만 하면 카드가 순간이동해서,
+ * 두 장이 맞바뀐 건지 한 장이 사라지고 다른 게 나타난 건지 눈이 못 따라간다.
+ * 「부드럽지 않다」의 정체가 이것이다.
+ *
+ * 그래서 그리기 **전에** 카드가 있던 자리를 재 두고, 그린 **뒤에** 그 차이만큼
+ * 되돌려 놓았다가 제자리로 미끄러뜨린다. 자리를 계산하는 것은 브라우저고
+ * 우리는 `transform` 만 건드린다 — 레이아웃을 다시 잡지 않으니 끊기지 않는다.
+ *
+ * 집에서 정한 것을 지킨다. 200ms · `transform` 만 · 움직임을 줄여 달라고
+ * 해 둔 기기에서는 아예 안 움직인다. `el.animate` 가 없는 브라우저에서도
+ * 그냥 조용히 건너뛴다 — 애니메이션은 있으면 좋은 것이지 없으면 안 되는 게 아니다.
+ */
+const MOTION_MS = 200;
+
+function cardRects() {
+  const seen = new Map();
+  for (const node of document.querySelectorAll('#board [data-id]')) {
+    seen.set(node.dataset.id, node.getBoundingClientRect());
+  }
+  return seen;
+}
+
+function glide(before) {
+  if (!before || !before.size) return;
+  if (typeof document.body.animate !== 'function') return;
+  let still = false;
+  try {
+    still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch (err) { still = false; }
+  if (still) return;
+
+  for (const node of document.querySelectorAll('#board [data-id]')) {
+    const was = before.get(node.dataset.id);
+    if (!was) continue;
+    const now = node.getBoundingClientRect();
+    const dx = was.left - now.left;
+    const dy = was.top - now.top;
+    // 1px 미만은 눈에 안 보이는데 애니메이션만 걸린다. 안 움직인 것으로 친다.
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+    node.animate(
+      [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+      { duration: MOTION_MS, easing: 'cubic-bezier(0.2, 0, 0, 1)' },
+    );
+  }
+}
+
 async function move(app, value) {
   if (busy) return;
   const [slot, rankText] = value.split(':');
   const rank = rankText ? Number(rankText) : null;
   const before = store.placementOf(app.id);
 
-  // 그 순위를 이미 쓰고 있으면 밀어낸다. 사라지지 않도록 무엇이 밀렸는지 남긴다.
-  let pushed = null;
-  if (slot === 'rank') {
-    const taken = store.occupant(app.hak, rank);
-    if (taken && taken.id !== app.id) pushed = taken;
+  // 그 순위를 이미 쓰고 있으면 자리를 맞바꾼다.
+  const taken = slot === 'rank' ? store.occupant(app.hak, rank) : null;
+  const pushed = taken && taken.id !== app.id ? taken : null;
+
+  /*
+   * **한 번에 옮기고 한 번만 그린다.**
+   *
+   * 예전에는 `place` 를 두 번 불렀다. 밀려난 카드가 먼저 움직이고, 서버 왕복을
+   * 기다린 뒤에 누른 카드가 움직였다 — 그 사이에 두 카드가 같은 칸에 겹치거나
+   * 한 칸이 잠깐 비는 화면이 보였다. 게다가 화면을 네 번 다시 그렸다.
+   * 이제 자리를 한꺼번에 바꾸고(`placeMany`) 그 움직임만 애니메이션한다.
+   */
+  const moves = [{ id: app.id, slot, rank }];
+  if (pushed) {
+    moves.push(before.slot === 'rank'
+      ? { id: pushed.id, slot: 'rank', rank: before.rank }
+      : { id: pushed.id, slot: 'pool', rank: null });
   }
 
   busy = true;
-  render();
-  let movedPushed = null;                 // 밀어낸 것을 어디서 옮겼는지 (되돌리려고)
-  try {
-    if (pushed) {
-      const to = before.slot === 'rank' ? before.rank : null;
-      movedPushed = store.placementOf(pushed.id);
-      await store.place(pushed.id, to ? 'rank' : 'pool', to);
-    }
-    /*
-     * 맞바꾸기는 쓰기가 **둘**이다. 앞은 되고 뒤가 실패하면 같은 순위에 두 건이 남아
-     * 한 카드가 새로고침 전까지 화면에서 사라진다. 그래서 뒤가 실패하면 앞을 되돌린다.
-     * 반쯤 옮겨진 채로 두느니 아무것도 안 옮긴 편이 낫다.
-     */
-    try {
-      await store.place(app.id, slot, rank);
-    } catch (err) {
-      if (movedPushed) {
-        await store.place(pushed.id, movedPushed.slot, movedPushed.rank).catch(() => {});
-      }
-      throw err;
-    }
-    if (pushed) {
-      const name = shortName(pushed);
-      const eul = josa(pushed.dept, '을', '를');
-      notice = before.slot === 'rank'
-        ? `${name}${eul} ${before.rank}순위로 맞바꿨습니다.`
-        : `${name}${eul} 후보로 옮겼습니다.`;
-    } else {
-      notice = '';
-    }
-  } catch (err) {
-    notice = `오류: ${err.message}`;
-  } finally {
-    busy = false;
-    renderRoster();
-    render();
+  let failed = null;
+  // 그리기 전에 자리를 재 둔다. `placeMany` 는 서버를 기다리기 전에 먼저
+  // 자리를 바꾸고 알리므로, 이 줄이 끝나면 화면은 이미 새로 그려져 있다.
+  const was = cardRects();
+  const write = store.placeMany(moves).catch((err) => { failed = err; });
+  glide(was);
+
+  /*
+   * 자리는 이미 바뀌었다(`placeMany` 가 먼저 바꾸고 알린다). 서버 응답을 기다리지
+   * 않고 바로 그려서, 누른 순간 카드가 움직이게 한다. 실패하면 되돌아온다.
+   */
+  if (pushed) {
+    const name = shortName(pushed);
+    const eul = josa(pushed.dept, '을', '를');
+    notice = before.slot === 'rank'
+      ? `${name}${eul} ${before.rank}순위로 맞바꿨습니다.`
+      : `${name}${eul} 후보로 옮겼습니다.`;
+  } else {
+    notice = '';
   }
+
+  await write;
+  busy = false;
+  if (failed) notice = `오류: ${failed.message}`;
+  renderRoster();
+  render();
 }
 
 /* ── 조각 ─────────────────────────────────────────────────────── */

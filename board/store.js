@@ -370,6 +370,39 @@ export function summary(app) {
  * 배치를 바꾼다. 화면을 먼저 바꾸고 서버에 보낸 뒤, 실패하면 되돌린다.
  * 상담 중에는 반응이 느린 것보다 되돌아가는 편이 낫다.
  */
+/**
+ * 자리를 **한꺼번에** 옮긴다. 맞바꾸기에 쓴다.
+ * =====================================================================
+ * 예전에는 `place` 를 두 번 불렀다. 화면은 그때마다 바뀌므로
+ *
+ *     밀려난 카드가 먼저 움직인다 → 서버 왕복 → 누른 카드가 움직인다
+ *
+ * 가 되어, 그 사이에 **반쯤 바뀐 화면**이 보였다. 두 카드가 같은 칸에 겹치거나
+ * 한 칸이 잠깐 비었다. 「부드럽지 않다」의 정체가 이것이다.
+ *
+ * 여기서는 **자리부터 다 바꾸고 한 번만 알린다.** 서버 쓰기는 그 뒤에 나란히
+ * 보내고, 하나라도 실패하면 둘 다 되돌린다 — 반쯤 옮겨진 채로 두느니 아무것도
+ * 안 옮긴 편이 낫다.
+ */
+export async function placeMany(moves) {
+  const before = moves.map(({ id }) => [String(id), placementOf(id)]);
+  for (const { id, slot, rank } of moves) {
+    if (!state.apps.get(String(id))) throw new Error('지원 내역을 찾지 못했습니다.');
+    state.placement.set(String(id), { slot, rank: slot === 'rank' ? rank : null });
+  }
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await Promise.all(moves.map(({ id, slot, rank }) => api.setState({
+      id, hak: state.apps.get(String(id)).hak, slot, rank: slot === 'rank' ? rank : '',
+    })));
+  } catch (err) {
+    for (const [id, was] of before) state.placement.set(id, was);
+    emit('change', 'state');
+    throw err;
+  }
+}
+
 export async function place(id, slot, rank) {
   const before = placementOf(id);
   const app = state.apps.get(id);

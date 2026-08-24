@@ -520,13 +520,27 @@ function ledgerBlock(student) {
 
 /* ── 지원 결과 보고서 ───────────────────────────────────────────── */
 
+/*
+ * 보고서에 셀 지원 — **대장과 똑같이 6칸에 넣은 것만.**
+ *
+ * 즐겨찾기에는 한 학생이 스무 곳 넘게 담아 두기도 한다. 그걸 다 세면
+ * 「우리 학교가 서울시립대에 8명 넣었다」 같은 숫자가 나오는데, 실제로 원서를
+ * 낸 것은 그중 한둘이다. 보고서는 **낸 것**을 세는 자리다. 후보와 보관은
+ * 상담하며 견주던 목록이지 지원이 아니다.
+ *
+ * 순위를 함께 넘긴다 — 명단에 「3순위」를 적을 수 있어야 한다.
+ */
 function rowsForReport() {
   const out = [];
   for (const student of store.studentsOf('')) {          // 보고서는 늘 학년 전체다
-    for (const app of store.appsOf(student.hak)) {
+    for (const app of ordered(student.hak)) {
       // 선생님이 시트에 적은 결과를 얹어서 넘긴다. 통계는 그걸 봐야 한다 —
       // 예비번호와 등록 여부는 즐겨찾기에 없거나 늦다.
-      out.push({ app: { ...app, result: store.resultOf(app) }, student });
+      out.push({
+        app: { ...app, result: store.resultOf(app) },
+        student,
+        rank: store.placementOf(app.id).rank || null,
+      });
     }
   }
   return out;
@@ -817,7 +831,7 @@ function report() {
   box.appendChild(head);
 
   if (!rows.length) {
-    box.appendChild(el('p', 'empty-state', '아직 지원 내역이 없습니다.'));
+    box.appendChild(el('p', 'empty-state', '1~6순위에 넣은 지원이 아직 없습니다. 보드에서 순위를 정하면 여기에 실립니다.'));
     return box;
   }
   if (!history) {
@@ -1580,7 +1594,7 @@ function finalReport() {
   box.appendChild(head);
 
   if (!rows.length) {
-    box.appendChild(el('p', 'empty-state', '아직 지원 내역이 없습니다.'));
+    box.appendChild(el('p', 'empty-state', '1~6순위에 넣은 지원이 아직 없습니다. 보드에서 순위를 정하면 여기에 실립니다.'));
     return box;
   }
   const t = tally(rows);
