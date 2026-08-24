@@ -51,3 +51,20 @@ export function josa(word, withBatchim, without) {
   }
   return withBatchim;
 }
+
+/**
+ * 경쟁률 한 줄 — **소수 첫째 자리로 못박는다.**
+ *
+ * 입결의 경쟁률 칸이 원본에서 이미 나눗셈 결과로 들어와 있는 줄이 있다.
+ * 75,592줄 가운데 528줄이 `7.333333333333333` 꼴이라, 그대로 찍으면 카드에
+ * 「경쟁률 5.490566037735849:1」이 나온다. 좁은 칸을 밀어내고 무엇보다
+ * 읽을 수가 없다 — 상담에서 필요한 것은 「5.5 대 1」이지 그 뒤가 아니다.
+ *
+ * 실질경쟁률(명목 × 모집 ÷ (모집+추합))과 학생이 적는 최종 경쟁률도 같은 꼴이
+ * 될 수 있어서, **경쟁률을 찍는 자리는 전부 여기를 지난다.**
+ */
+export function rate1(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(1) : null;
+}

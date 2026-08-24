@@ -15,7 +15,7 @@
 import * as store from './store.js';
 import { realRate, normType, typeGroups } from './match.js';
 import { confidence, pctText } from './confidence.js';
-import { josa } from './text.js';
+import { josa, rate1 } from './text.js';
 
 export { realRate };
 
@@ -303,8 +303,8 @@ export function detailPanel(app, student, onClose) {
       ? `${quotaNow}명${diff ? ` (작년 ${quotaPrev}명, ${diff > 0 ? '+' : ''}${diff})` : ''}`
       : app.quotaText || null, '즐겨찾기 + 모집요강'],
     ['작년 모집 인원', !diff && quotaPrev != null ? `${quotaPrev}명` : null, '모집요강'],
-    [yr('경쟁률'), s && s.rate != null ? `${s.rate}:1` : null, isCollege ? '전문대 자료' : ipSrc],
-    ['작년 실질 경쟁률', real.value != null ? `${one(real.value)}:1` : null,
+    [yr('경쟁률'), s && s.rate != null ? `${rate1(s.rate)}:1` : null, isCollege ? '전문대 자료' : ipSrc],
+    ['작년 실질 경쟁률', real.value != null ? `${rate1(real.value)}:1` : null,
       real.why || '명목 × 모집 ÷ (모집 + 추합)'],
     ['작년 추가 합격', mo && mo.filled26 != null ? `${mo.filled26}명` : null, '모집요강'],
     ['충원율', isCollege && s.linked && s.rows[0] && s.rows[0].fill != null
@@ -373,7 +373,7 @@ export function detailPanel(app, student, onClose) {
   if (paperwork.some(([, v]) => v && v.value)) {
     body.appendChild(rows('원서를 낸 뒤', paperwork.map(([k, v]) => [
       k,
-      v && v.value ? (k === '최종 경쟁률' ? `${v.value}:1` : v.value) : null,
+      v && v.value ? (k === '최종 경쟁률' ? `${rate1(v.value) ?? v.value}:1` : v.value) : null,
       v && v.status === 'student' ? '학생 입력 · 확인 대기' : '학생 입력 · 확인됨',
     ])));
   }
@@ -585,7 +585,7 @@ function nearbyBlock(s, app) {
       const line = document.createElement('tr');
       line.appendChild(el('td', 'num', String(row.year)));
       line.appendChild(el('td', 'num', row.quota != null ? String(row.quota) : '—'));
-      line.appendChild(el('td', 'num', row.rate != null ? `${row.rate}:1` : '—'));
+      line.appendChild(el('td', 'num', row.rate != null ? `${rate1(row.rate)}:1` : '—'));
       line.appendChild(el('td', 'num', g2(row.g70) || '—'));
       line.appendChild(el('td', 'num', g2(row.g50) || '—'));
       tbody.appendChild(line);
@@ -649,7 +649,7 @@ function bundled(s) {
     const tr = document.createElement('tr');
     tr.appendChild(el('td', null, f.dept));
     tr.appendChild(el('td', 'num', g2(f.g70) || '—'));
-    tr.appendChild(el('td', 'num', f.rate != null ? `${one(f.rate)}:1` : '—'));
+    tr.appendChild(el('td', 'num', f.rate != null ? `${rate1(f.rate)}:1` : '—'));
     tr.appendChild(el('td', 'num', f.quota != null ? String(f.quota) : '—'));
     tbody.appendChild(tr);
   }
@@ -722,7 +722,7 @@ function trend(s) {
     [2026, 2025, 2024].forEach((year, i) => {
       const tr = document.createElement('tr');
       tr.appendChild(el('td', 'num', String(year)));
-      tr.appendChild(el('td', 'num', d.comp[i] != null ? `${d.comp[i]}:1` : '—'));
+      tr.appendChild(el('td', 'num', d.comp[i] != null ? `${rate1(d.comp[i])}:1` : '—'));
       tr.appendChild(el('td', 'num', g2(d.avg[i]) || '—'));
       tr.appendChild(el('td', 'num', g2(d.min[i]) || '—'));
       tbody.appendChild(tr);
@@ -780,7 +780,7 @@ function trend(s) {
         const tr = document.createElement('tr');
         tr.appendChild(el('td', 'num', String(row.year)));
         tr.appendChild(el('td', 'num', row.quota != null ? String(row.quota) : '—'));
-        tr.appendChild(el('td', 'num', row.rate != null ? `${row.rate}:1` : '—'));
+        tr.appendChild(el('td', 'num', row.rate != null ? `${rate1(row.rate)}:1` : '—'));
         tr.appendChild(el('td', 'num', g2(row.g70) || '—'));
         tr.appendChild(el('td', 'num', g2(row.g50) || '—'));
         tbody.appendChild(tr);

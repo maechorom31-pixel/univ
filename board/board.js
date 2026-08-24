@@ -18,7 +18,7 @@
 import * as store from './store.js';
 import { detailPanel } from './card.js';
 import { normType } from './match.js';
-import { josa } from './text.js';
+import { josa, rate1 } from './text.js';
 
 const RANKS = [1, 2, 3, 4, 5, 6];
 const SLOT_LABEL = { rank: '순위', pool: '후보', archive: '보관', tray: '전문대' };
@@ -168,13 +168,12 @@ function render() {
   else if (src.book) {
     main.appendChild(banner(`즐겨찾기 원본을 「${src.book}」에서 읽었습니다.`));
   }
-  if (src.name && !src.known) {
-    main.appendChild(banner(
-      `「${src.name}」 탭을 읽었습니다. 즐겨찾기 원본이 이 탭이 아니라면,`
-      + ' 원본 탭 이름을 「다운로드 원본」·「원본」·「즐겨찾기」 중 하나로 바꿔 주세요.',
-      true,
-    ));
-  }
+  /*
+   * 예전에는 탭 이름이 「다운로드 원본」·「원본」·「즐겨찾기」가 아니면 붉은 줄로
+   * 알렸다. 이제 파서가 **머리글을 직접 찾아** 아는 칸이 넷보다 적으면 사유를
+   * 돌려주므로(`parseProblem`), 이름으로 짐작하던 이 줄은 겹치는 말이다.
+   * 탭 이름이 `Sheet1` 이어도 제대로 읽히면 아무 문제가 없다.
+   */
   /*
    * **머리글을 못 찾았으면 그 사실이 먼저다.** 조용히 「0명」이 되면 선생님은
    * 자료가 없는 것인지 파일을 잘못 짚은 것인지 알 수 없다.
@@ -659,8 +658,8 @@ function figures(app, student) {
   } else if (s.linked) {
     // 실질경쟁률이 나오면 그걸 쓴다. 명목만으로는 추합이 얼마나 돌았는지 안 보인다.
     const comp = s.real.value != null
-      ? ['실질', `${one(s.real.value)}:1`, `명목 ${s.rate != null ? s.rate + ':1' : '?'} · 모집과 추합을 반영한 값`]
-      : (s.rate != null ? ['경쟁률', `${s.rate}:1`, s.real.why || '추가합격 자료가 없어 명목값입니다'] : null);
+      ? ['실질', `${rate1(s.real.value)}:1`, `명목 ${s.rate != null ? `${rate1(s.rate)}:1` : '?'} · 모집과 추합을 반영한 값`]
+      : (s.rate != null ? ['경쟁률', `${rate1(s.rate)}:1`, s.real.why || '추가합격 자료가 없어 명목값입니다'] : null);
     // 어느 전형의 컷인지 제목에 달아 둔다. 학과의 73% 는 입결에 전형이 여럿이라
     // 「작년 26입결」만으로는 옆 전형의 컷과 구별이 안 된다.
     const head = group(s.year ? `작년 ${String(s.year).slice(2)}입결` : '작년', [

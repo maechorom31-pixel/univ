@@ -17,6 +17,7 @@
  */
 import * as api from './api.js';
 import { link as makeLink, indexIpgyeol, indexMojip, indexCollege, summarize } from './match.js';
+import { rate1 } from './text.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';
@@ -419,8 +420,8 @@ function figures(app) {
     left = group('작년', [['평균등급', g2(s.avg)], ['최저등급', g2(s.cut)]]);
   } else if (s && s.linked) {
     const comp = s.real.value != null
-      ? ['실질', `${Number(s.real.value).toFixed(1)}:1`]
-      : (s.rate != null ? ['경쟁률', `${s.rate}:1`] : null);
+      ? ['실질', `${rate1(s.real.value)}:1`]
+      : (s.rate != null ? ['경쟁률', `${rate1(s.rate)}:1`] : null);
     left = group(s.year ? `작년 ${String(s.year).slice(2)}입결` : '작년', [
       ['70%컷', g2(s.cut)], comp,
     ]);

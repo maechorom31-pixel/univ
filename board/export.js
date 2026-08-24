@@ -37,6 +37,12 @@ const el = (tag, cls, text) => {
 const tidy = (s) => String(s || '').replace(/ (?=[^ ]{1,4}$)/, ' ');
 const g2 = (n) => (n == null || n === '' ? '—' : Number(n).toFixed(2));
 const p1 = (n) => (n == null ? '—' : `${Number(n).toFixed(1)}%`);
+/*
+ * 경쟁률은 **소수 첫째 자리로 못박는다.** 화면(`board/text.js` 의 `rate1`)과
+ * 같은 규칙이다. 입결 원본에 `7.333333333333333` 꼴로 들어 있는 줄이 528개라
+ * 안 자르면 종이에서도 칸을 밀어낸다.
+ */
+const rt = (n) => (n == null || n === '' ? '' : Number(n).toFixed(1));
 const shortUniv = (s) => String(s || '').replace(/\s*[-–—]\s*.*$/, '');
 /**
  * 줄이 갈려야 한다면 괄호 앞에서 갈리게 한다.
@@ -946,7 +952,7 @@ function detailTable(key, rows) {
         ['num', rateText(app, sm)],
         ['num', score.grade != null ? Number(score.grade).toFixed(2) : ''],
         ['num', sm.quotaPrev ?? ''],
-        ['num', sm.linked && sm.rate != null ? Number(sm.rate).toFixed(2) : ''],
+        ['num', rt(sm.linked ? sm.rate : null)],
         ['num', sm.linked && sm.cut != null ? Number(sm.cut).toFixed(2) : ''],
       ].forEach(([cl, v]) => tr.appendChild(
         el('td', cl, v === '' || v == null ? '—' : String(v)),
@@ -1158,7 +1164,7 @@ function statusTable(names, byUniv) {
         ['num', sm.quotaPrev ?? ''],
         // 머리글이 이미 「경쟁률」이라 「:1」은 겹치는 말이고, 그 세 글자 때문에
         // 「14.13:1」이 칸을 넘쳐 테두리를 덮었다.
-        ['num', sm.linked && sm.rate != null ? Number(sm.rate).toFixed(2) : ''],
+        ['num', rt(sm.linked ? sm.rate : null)],
         ['num', sm.linked && sm.cut != null ? Number(sm.cut).toFixed(2) : ''],
       ].forEach(([cl, v]) => tr.appendChild(el('td', cl, v === '' || v == null ? '—' : String(v))));
       tbody.appendChild(tr);
@@ -1255,7 +1261,7 @@ function rateText(app, sm) {
     const n = Number(String(f.value).replace(/[^0-9.]/g, ''));
     if (Number.isFinite(n) && n > 0) return n.toFixed(2);
   }
-  return sm && sm.real && sm.real.rate != null ? Number(sm.real.rate).toFixed(2) : '';
+  return rt(sm && sm.real ? sm.real.rate : null);
 }
 
 function tally(rows) {
