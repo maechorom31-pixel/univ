@@ -705,7 +705,18 @@ function figures(app, student) {
       : (s.rate != null ? ['경쟁률', `${rate1(s.rate)}:1`, s.real.why || '추가합격 자료가 없어 명목값입니다'] : null);
     // 어느 전형의 컷인지 제목에 달아 둔다. 학과의 73% 는 입결에 전형이 여럿이라
     // 「작년 26입결」만으로는 옆 전형의 컷과 구별이 안 된다.
-    const head = group(s.year ? `작년 ${String(s.year).slice(2)}입결` : '작년', [
+    /*
+     * **「작년」은 정말 작년일 때만 단다.** 카드 상세(card.js)는 이미 그렇게 하는데
+     * 6칸 카드만 어느 해든 「작년 N입결」이라 적고 있었다. 전형이 한 해 쉬었거나
+     * 그해 컷 칸이 비어 앞 해를 쓴 카드가 7.3% 인데, 상담에서 3년 묵은 숫자를
+     * 작년 것으로 읽으면 안 된다.
+     */
+    const dataHi = s.rows && s.rows.length ? Math.max(...s.rows.map((r) => r.year)) : null;
+    const off = s.year != null && dataHi != null && s.year < dataHi;
+    const headName = s.year
+      ? (off ? `${s.year}년 입결` : `작년 ${String(s.year).slice(2)}입결`)
+      : '작년';
+    const head = group(headName, [
       ['70%컷', g2(s.cut)],
       comp,
     ]);

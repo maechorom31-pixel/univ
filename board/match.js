@@ -221,11 +221,21 @@ const ROMAN = { 'Ⅰ': '1', 'Ⅱ': '2', 'Ⅲ': '3', 'Ⅳ': '4', 'Ⅴ': '5', 'ⅰ
  * 대신 모집요강 전형 7가지가 비로소 입결과 맞는다 — 잠재능력 면접·서류 둘을 비롯해
  * `교과(지역인재(충북))` · `교과(일반[최저])` 따위다.
  */
+/*
+ * **쌍점도 지운다.** 즐겨찾기 export 가 「학생부교과:학교추천」처럼 쌍점으로 적는
+ * 대학이 있다(고려대). 그러면 정규화한 이름이 `교과:학교추천` 이 되어 입결의
+ * `교과학교장추천` 과 글자로 안 겹치고, `near` 도 못 잡아 카테고리로만 떨어진다.
+ * 맞는 줄을 골라 놓고도 카드에는 「전형을 이름으로 맞추지 못했습니다」가 붙었다.
+ *
+ * 입결·모집요강 쪽 전형 이름 전체를 `normType` 에 넣어 보면 구두점이 **하나도**
+ * 안 남는다. 즉 여기서 더 지워도 자료 쪽에서 새로 부딪힐 이름이 없다.
+ */
 export function normType(name) {
   return String(name || '')
     .replace(/[ⅠⅡⅢⅣⅤⅰⅱⅲ]/g, (c) => ROMAN[c])
     .replace(/[\s()[\]·・,／/]/g, '')
     .replace(/[‐‑‒–—―\-ㆍ•∙‧，⋅+_']/g, '')
+    .replace(/[:;~|.!?*#&=<>"“”‘’%@^`{}]/g, '')
     .replace(TYPE_NOISE, '')
     .trim();
 }
@@ -455,8 +465,8 @@ export function link(app, src) {
   }
 
   const k = key(univ, app.dept);
-  const rows = (src.ipgyeol.byKey.get(k) || []).slice()
-    .sort((a, b) => a.year - b.year);
+  const rows = narrowDept((src.ipgyeol.byKey.get(k) || []).slice()
+    .sort((a, b) => a.year - b.year), app);
 
   const mojipUniv = resolveUniv(app.univ, src.mojip.index);
   const mojip = pickMojip(
@@ -507,7 +517,76 @@ export function link(app, src) {
       };
     }
   }
+  /*
+   * **못 고른 것과 없는 것은 다르다.** `narrowDept` 가 갈래를 못 가려 비웠으면
+   * 어떤 갈래가 있었는지 그대로 적어 준다. 「입결이 없습니다」라고만 하면
+   * 선생님은 자료가 빠진 줄 알고 표를 처음부터 뒤진다 — 사실은 자료가 넘쳐서
+   * 못 고른 것이고, 점검 화면에서 하나 고르면 그만이다.
+   */
+  if (rows.dropped && rows.dropped.length) {
+    return none(
+      `「${app.dept}」가 입결에는 ${rows.dropped.length}갈래로 나뉘어 있어 어느 것인지`
+      + ` 가리지 못했습니다 — ${rows.dropped.slice(0, 4).join(' · ')}`
+      + `${rows.dropped.length > 4 ? ' 외' : ''}. 점검에서 골라 주세요`,
+      mojip,
+    );
+  }
   return none(`${univ}에 「${app.dept}」 입결이 없습니다`, mojip);
+}
+
+/*
+ * **괄호 안 세부전공을 지운 대가를 여기서 치른다.**
+ *
+ * `normDept` 는 괄호를 통째로 턴다. 「경영학과(주간)」의 군더더기를 지우려던 것인데,
+ * 진짜로 학과를 가르는 괄호까지 같이 지워졌다.
+ *
+ *     국민대  미래융합전공(A) 70컷 2.08 · 경쟁 8.7   ┐ 둘 다 키가 「미래융합」
+ *             미래융합전공(B) 70컷 2.12 · 경쟁 4.7   ┘
+ *     경북대  전자공학부            70컷 2.20        ┐ 둘 다 키가 「전자공」
+ *             전자공학부(인공지능전공) 70컷 3.42      ┘  — 1.2등급 차이다
+ *     한양대(E) LIONS자율전공학부(인문사회계열) 2.82  ┐ 「전계열」은 구분자 목록에
+ *              LIONS자율전공학부(전계열)      2.56  ┘  없어서 같은 키가 된다
+ *
+ * 재 보니 **같은 대학·연도·전형 안에서 숫자까지 다른 채 한 키로 뭉개진 자리가
+ * 961곳**이다(무해한 중복 1,565곳은 뺀 수다). 그중 하나가 아무 근거 없이 뽑혀
+ * 카드에 붙고 있었다 — 김담유의 미래융합전공(A)에 (B)의 숫자가 붙어 있었다.
+ *
+ * 고르는 규칙은 하나다. **괄호까지 그대로 같은 줄이 있으면 그것만 본다.**
+ * 없으면 **아무것도 안 고른다** — 오연결이 미연결보다 나쁘다. 못 고른 자리는
+ * `dropped` 로 남겨 점검 화면이 「이 셋 중 어느 것입니까」라고 물을 수 있게 한다.
+ *
+ * 해마다 따로 잰다. 국민대는 2025년엔 (인문)·(자연)으로, 2026년엔 (A)·(B)로
+ * 갈라 놓았다. 한 해에 갈래가 하나뿐이면 애초에 헷갈릴 것이 없어 그냥 둔다.
+ */
+function tightDept(name) {
+  return String(name || '')
+    .replace(/^\[[^\]]*\]/, '')
+    .replace(/[\s·，,／/‧・ㆍ•∙‐‑‒–—―\-()[\]]/g, '')
+    .toUpperCase();
+}
+
+function narrowDept(rows, app) {
+  if (rows.length < 2) return rows;
+  const want = tightDept(app.dept);
+  const bucket = new Map();
+  for (const r of rows) {
+    const b = `${r.year}\u0001${normType(r.type)}`;
+    if (!bucket.has(b)) bucket.set(b, []);
+    bucket.get(b).push(r);
+  }
+  const out = [];
+  const lost = [];
+  for (const group of bucket.values()) {
+    const names = [...new Set(group.map((r) => tightDept(r.dept)))];
+    if (names.length < 2) { out.push(...group); continue; }
+    const same = group.filter((r) => tightDept(r.dept) === want);
+    if (same.length) { out.push(...same); continue; }
+    // 갈래가 여럿인데 어느 것인지 말해 주는 것이 없다. 고르지 않는다.
+    for (const r of group) if (!lost.includes(r.dept)) lost.push(r.dept);
+  }
+  out.sort((a, b) => a.year - b.year);
+  if (lost.length) out.dropped = lost;
+  return out;
 }
 
 /**
@@ -544,6 +623,9 @@ export function link(app, src) {
  *         rows 는 연도 오름차순, name 은 **가장 최근 해의 표기**
  */
 const RENAME_SIM = 0.5;
+/** 전형 이름이 이만큼 닮으면 같은 전형으로 본다. 2등과는 이만큼 벌어져야 한다. */
+const SIM_TYPE = 0.65;
+const SIM_GAP = 0.1;
 
 /**
  * **이름 끝에 번호가 붙은 것은 이름이 바뀐 게 아니라 쪼개진 것이다.**
@@ -588,6 +670,22 @@ export function typeGroups(rows) {
       }];
     }));
     // 이어질 수 있는 짝을 모은 뒤, 앞뒤로 하나씩인 것만 남긴다
+    /*
+     * **쪼개진 흔적이 보이면 그 전형은 아무 데도 안 잇는다.**
+     *
+     * 예전에는 `isSplit` 인 짝만 건너뛰었다. 그런데 건너뛰는 순간 그 전형의
+     * **진짜 형제들이 후보에서 사라져서**, 남은 엉뚱한 하나가 1:1 로 보인다.
+     *
+     *     한서대 항공관광  교과(학생부교과) 2022
+     *       → 교과(학생부교과1) 2023~  쪼개진 것 → 건너뜀
+     *       → 교과(학생부교과2) 2023~  쪼개진 것 → 건너뜀
+     *       → 교과(지역인재)   2023~  **혼자 남아 이어졌다**
+     *
+     * 그래서 두 학생 카드에 4.3(학생부교과1) 대신 5.0·경쟁률 2.59(지역인재)가
+     * 붙어 있었다. 이름이 그럴듯해 아무도 못 알아챈다.
+     *
+     * 쪼개진 짝이 하나라도 있으면 그 이름은 잇는 후보에서 통째로 뺀다.
+     */
     const pairs = [];
     for (const a of keys) {
       for (const b of keys) {
@@ -596,15 +694,34 @@ export function typeGroups(rows) {
         const B = info.get(b);
         if (A.cat !== B.cat || A.hi + 1 !== B.lo) continue;
         if (similarity(a, b) < RENAME_SIM) continue;
-        if (isSplit(a, b)) continue;
         pairs.push([a, b]);
       }
     }
     const parent = new Map(keys.map((k) => [k, k]));
     const find = (x) => (parent.get(x) === x ? x : find(parent.get(x)));
+    /*
+     * **쪼개진 짝은 세기에는 넣고 잇기만 막는다.**
+     *
+     * 예전에는 `isSplit` 인 짝을 후보 목록에서 아예 뺐다. 그러면 그 전형의 진짜
+     * 형제가 사라져서 **남은 엉뚱한 하나가 1:1 로 보인다.**
+     *
+     *     한서대 항공관광  교과(학생부교과) 2022
+     *       → 교과(학생부교과1)  쪼개진 것이라 목록에서 빠짐
+     *       → 교과(학생부교과2)  쪼개진 것이라 목록에서 빠짐
+     *       → 교과(지역인재)    **혼자 남아 이어졌다** — 두 학생 카드에
+     *                          4.3 대신 5.0·경쟁률 2.59 가 붙어 있었다
+     *
+     * 그렇다고 쪼개진 이름을 통째로 못 잇게 막아도 안 된다. 이번엔 반대로,
+     * 충남대 소비자 `종합Ⅰ` 의 후보에서 `종합Ⅰ(일반)`·`종합Ⅰ[일반(300)]`
+     * 짝이 빠지는 바람에 `종합Ⅰ(서류)` 가 혼자 남아 이어졌다.
+     *
+     * 그래서 **후보로는 세고, 잇지만 않는다.** 형제가 몇인지는 그대로 보이고
+     * 쪼개진 곳에서는 아무것도 안 이어진다.
+     */
     for (const [a, b] of pairs) {
       if (pairs.filter(([x]) => x === a).length !== 1) continue;
       if (pairs.filter(([, y]) => y === b).length !== 1) continue;
+      if (isSplit(a, b)) continue;
       parent.set(find(a), find(b));
     }
     for (const k of keys) {
@@ -827,9 +944,31 @@ function staleOf(rows, mineRows, app, mojipRows) {
  */
 export function pickIpgyeol(rows, app) {
   const groups = typeGroups(rows);
-  const keys = [...groups.keys()];
+  let keys = [...groups.keys()];
   if (!keys.length) return { rows: [], fit: 'none', type: null };
   const take = (k, fit) => ({ rows: groups.get(k).rows, fit, type: groups.get(k).name });
+
+  /*
+   * **면접형에 서류형 컷을 붙이지 않는다 — 어느 갈래에서든.**
+   *
+   * 예전에는 이 가림이 `pickHeir`(쪼개진 전형) 에만 있었다. 그런데 충남대 소비자
+   * 「종합Ⅰ[면접(300)]」이 `near` 로 「종합Ⅰ(서류)」에 붙는 일이 있었다. 같은 대학
+   * 같은 학과 같은 종합인데 뽑는 방식이 아예 다르고, 컷도 3.54 대 3.74 로 갈린다.
+   *
+   * 이름에 「면접」만 있으면 면접형, 「서류」만 있으면 서류형이다. 둘 다 있거나
+   * 둘 다 없으면 아무 말도 안 한 것이라 가리지 않는다. 어긋나는 것만 뺀다 —
+   * 골라 주는 게 아니라 **아닌 것을 지우는** 규칙이다.
+   */
+  const myMark = mark(app.typeSub || app.typeName || '');
+  let markCut = false;
+  if (myMark) {
+    const fits = keys.filter((k) => {
+      const other = mark(groups.get(k).name);
+      return !(other && other !== myMark);
+    });
+    markCut = fits.length !== keys.length;
+    if (fits.length) keys = fits;
+  }
 
   const want = normType(app.typeSub) || normType(app.typeName);
   if (want) {
@@ -852,10 +991,57 @@ export function pickIpgyeol(rows, app) {
       }
     }
     if (hit.length === 1) return take(hit[0], 'near');
+
+    /*
+     * **글자가 안 겹쳐도 같은 전형인 것들.**
+     *
+     *     고려대   교과:학교추천        ↔  교과(학교장추천)     0.80   「장」 한 글자
+     *     광운대   종합광운참빛1면접형   ↔  종합(광운참빛-면접)   0.81
+     *     원광대   교과지역교과호남권    ↔  교과(지역-호남)      0.77
+     *     가천대   종합가천바람개비      ↔  종합(바람개비)       0.74
+     *     전북대   교과지역1유형        ↔  교과(지역1호남)      0.69
+     *
+     * `near` 는 한쪽이 다른 쪽을 통째로 감쌀 때만 잡는다. 위의 것들은 가운데
+     * 한두 글자가 다를 뿐인데 다 놓쳐서, 맞는 줄을 카테고리로 집어 놓고도
+     * 카드에는 「전형을 이름으로 맞추지 못했습니다」라는 붉은 줄이 붙었다.
+     * 선생님이 **맞은 것을 틀렸다고 읽게 되는** 자리다.
+     *
+     * 문턱 0.65 는 재서 잡았다. 실제 지원 502건에서 여기까지 내려오는 짝의
+     * 닮은 정도를 늘어놓으면 0.63 과 0.69 사이가 갈림목이다.
+     *
+     *     0.69 이상  전북대 지역1유형·가천대 바람개비·원광대 지역호남·고려대
+     *                학교추천·광운대 참빛면접 — 눈으로 봐도 같은 전형
+     *     0.63 이하  명지대 `명지인재면접` ↔ `명지인재서류`(0.63) ·
+     *                성균관대 `서류형기회균형` ↔ `융합형`(0.44) — 다른 전형이다
+     *
+     * 그래서 셋을 다 만족할 때만 고른다.
+     *   1. 유형(교과/종합/논술/실기)이 같다
+     *   2. 0.65 이상이 **하나뿐**이고 2등과 0.1 이상 벌어진다
+     *   3. 면접·서류 표시가 어긋나지 않는다 — 이것 하나로 명지대가 걸린다
+     *      (0.63 이라 이미 걸리지만, 문턱만 믿지 않는다)
+     */
+    const myCat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
+    const scored = keys
+      .filter((k) => !myCat || groups.get(k).rows
+        .some((r) => r.cat === myCat || String(r.type).includes(myCat)))
+      .map((k) => ({ k, s: Math.max(...groups.get(k).keys.map((alt) => similarity(want, alt))) }))
+      .sort((a, b) => b.s - a.s);
+    if (scored.length && scored[0].s >= SIM_TYPE
+      && (scored.length === 1 || scored[0].s - scored[1].s >= SIM_GAP)) {
+      return take(scored[0].k, 'sim');
+    }
   }
 
+  /*
+   * **표시가 어긋나 지운 게 있으면 유형만으로 고르지 않는다.**
+   *
+   * 면접형으로 넣었는데 이 학과 입결에 서류형밖에 없다면, 그건 「이름을 못 맞췄다」가
+   * 아니라 **면접형 자료가 없다**는 뜻이다. 그런데 서류형을 지우고 나면 남은 다른
+   * 종합 하나가 유형만 같다는 이유로 뽑힌다 — 명지대 자율전공 「명지인재면접」이
+   * 「종합(크리스천리더)」에 붙었다. 지운 자리를 옆 전형으로 메우면 안 된다.
+   */
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
-  if (cat) {
+  if (cat && !markCut) {
     const hit = keys.filter((k) => groups.get(k).rows
       .some((r) => r.cat === cat || String(r.type).includes(cat)));
     if (hit.length === 1) return take(hit[0], 'cat');
@@ -873,7 +1059,7 @@ export function pickIpgyeol(rows, app) {
    * 위의 `cat` 갈래가 이미 잡기 때문이다. 재 보니 예전 `only` 38건은 전부 유형이
    * 어긋난 것이었다 — 이 갈래는 여태 위험한 경우에만 도달하고 있었다.
    */
-  if (keys.length === 1) {
+  if (keys.length === 1 && !markCut) {
     const one = groups.get(keys[0]);
     if (!cat || one.rows.some((r) => r.cat === cat || String(r.type).includes(cat))) {
       return take(keys[0], 'only');
@@ -988,10 +1174,29 @@ const NO_RATE = { value: null, why: '' };
  * 올해 처음 뽑는 것이다. 전체의 12.2% 다. 다만 그 줄이 **지원한 전형의 줄일 때만**
  * 그렇게 말한다 — 이름도 못 맞춘 줄로 신설을 말하면 옆 전형 이야기를 하는 셈이다.
  */
-function isNewThisYear(mojipRows) {
+/*
+ * **「작년에 안 뽑았다」와 「올해 새로 만들었다」는 다른 말이다.**
+ *
+ * 모집요강은 작년(2026)까지만 안다. 그래서 작년 모집인원·경쟁률이 비었다는 것은
+ * 「작년에 이 전형이 없었다」까지만 말해 준다. 그 앞도 없었는지는 **입결이 안다.**
+ *
+ * 단국대(죽전) 정치외교 「학생부교과(지역균형선발)」이 그랬다. 2022~2025 내내
+ * 「교과(지역균형)」으로 뽑다가 2026 한 해를 건너뛰고 올해 다시 뽑는다. 모집요강만
+ * 보고 「올해 신설」이라 적었더니 네 해치 컷을 갖고도 카드가 텅 비었고, 화면에는
+ * 「신설이라 작년 값이 없습니다」와 「내가 넣은 전형(2022~2025)」이 나란히 떴다.
+ *
+ * 그래서 **입결에 같은 이름이 이미 있으면 신설이 아니다.** 이름이 같다(`exact`)는
+ * 조건은 일부러 좁게 뒀다 — 건국대(글로컬) 「지역의사제(광역권)」은 정말 신설인데
+ * 이름이 닮은 「교과(지역인재)」에 `near` 로 붙는다. 닮은 것까지 신설이 아니라고
+ * 하면 그 572건이 도로 남의 컷을 달게 된다.
+ */
+function isNewThisYear(mojipRows, picked) {
   if (!mojipRows || !mojipRows.length || !mojipRows.byName) return false;
   const r = mojipRows[0];
-  return r.quotaPrev == null && r.rate26 == null;
+  if (!(r.quotaPrev == null && r.rate26 == null)) return false;
+  // 입결에 같은 이름의 전형이 이미 있으면 신설이 아니라 **작년 한 해를 쉰 것**이다
+  if (picked && picked.fit === 'exact' && picked.rows && picked.rows.length) return false;
+  return true;
 }
 
 export function summarize(l, app) {
@@ -1005,7 +1210,7 @@ export function summarize(l, app) {
     const mo = (l.mojip && l.mojip[0]) || null;
     return {
       linked: false, kind: l.kind, rows: [], mine: [], before: null, why: l.why,
-      isNew: isNewThisYear(l.mojip), alias: l.alias || null, nearby: null, catMissing: null,
+      isNew: isNewThisYear(l.mojip, null), alias: l.alias || null, nearby: null, catMissing: null,
       mojip: mo,
       quotaNow: app && app.quota != null ? app.quota : (mo ? mo.quota : null),
       quotaPrev: mo ? mo.quotaPrev : null,
@@ -1035,7 +1240,7 @@ export function summarize(l, app) {
    * 못 가려내면 비운다 — 옆 전형의 숫자를 대신 앉히지 않는다. pickIpgyeol 참고.
    */
   const picked = pickIpgyeol(rows, app || {});
-  const isNew = isNewThisYear(l.mojip);
+  const isNew = isNewThisYear(l.mojip, picked);
 
   /*
    * **올해 신설이면 붙은 줄은 이 전형의 작년이 아니다.**

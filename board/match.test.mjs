@@ -176,7 +176,7 @@ eq(josa('경영학부', '을', '를'), '를', '부 도 받침 없음');
 eq(josa('건축학', '을', '를'), '을', '학 은 받침 있음');
 eq(josa('교과(지역인재)', '은', '는'), '는', '뒤 괄호는 떼고 본다');
 eq(josa('「종합(서류형)」', '은', '는'), '은', '형 은 받침 있음');
-eq(josa('AI', '을', '를'), '을', '영문은 보수적으로');
+eq(josa('AI', '을', '를'), '를', 'AI 는 「에이아이」라 받침이 없다');
 eq(josa('', '은', '는'), '은', '빈 값');
 
 console.log('쌍둥이 행 걸러내기');
@@ -386,6 +386,62 @@ console.log('지원한 전형의 입결 줄 고르기');
 
 
 const files = process.argv.slice(2);
+
+/* ── 오늘 고친 것들을 못 박는다 ──────────────────────────────────── */
+
+console.log('전형 이름 정규화');
+eq(normType('학생부교과:학교추천'), '교과학교추천', '쌍점을 지운다 (고려대)');
+eq(normType('학생부교과(지역균형선발)'), '교과지역균형', '꼬리를 턴다');
+
+console.log('괄호 안 세부전공을 가린다');
+{
+  const rows = [
+    { univ: '국민대', dept: '미래융합전공(A)', year: 2026, cat: '교과', type: '교과(교과성적)', g70: 2.08, rate: 8.74, quota: 70 },
+    { univ: '국민대', dept: '미래융합전공(B)', year: 2026, cat: '교과', type: '교과(교과성적)', g70: 2.12, rate: 4.74, quota: 70 },
+  ];
+  const src = {
+    ipgyeol: { index: buildUnivIndex(['국민대']), byKey: new Map([[key('국민대', '미래융합전공(A)'), rows]]) },
+    mojip: { index: buildUnivIndex([]), byKey: new Map() },
+    college: null, related: new Map(),
+  };
+  const app = { univ: '국민대학교(서울)', dept: '미래융합전공(A)', univType: '일반대',
+    typeSub: '학생부교과(교과우수자전형)', typeCat: '학생부위주(교과)' };
+  const s2 = summarize(link(app, src), app);
+  eq(s2.cut, 2.08, '(A)에는 (A)의 컷이 붙는다');
+  const app2 = { ...app, dept: '미래융합전공' };
+  const s3 = summarize(link(app2, src), app2);
+  eq(s3.cut ?? null, null, '괄호가 없으면 어느 갈래인지 몰라 고르지 않는다');
+  eq(/갈래로 나뉘어 있어/.test(s3.why), true, '몇 갈래가 있는지 말해 준다');
+}
+
+console.log('면접·서류가 어긋나면 안 잇는다');
+{
+  const rows = [
+    { univ: '충남대', dept: '소비자학과', year: 2026, cat: '종합', type: '종합Ⅰ(서류)', g70: 3.54, rate: 20.5, quota: 2 },
+  ];
+  const got = pickIpgyeol(rows, { typeSub: '학생부종합Ⅰ[면접(300)]', typeCat: '학생부위주(종합)' });
+  eq(got.fit, 'none', '면접형에 서류형 줄을 붙이지 않는다');
+}
+
+console.log('이름이 닮으면 잇는다 (sim)');
+{
+  const rows = [
+    { univ: '고려대', dept: '국제학부', year: 2026, cat: '교과', type: '교과(학교장추천)', g70: 1.42, rate: 6.14, quota: 7 },
+    { univ: '고려대', dept: '국제학부', year: 2026, cat: '종합', type: '종합(학업우수)', g70: 1.8, rate: 9, quota: 5 },
+  ];
+  const got = pickIpgyeol(rows, { typeSub: '학생부교과:학교추천', typeCat: '학생부위주(교과)' });
+  eq([got.fit, got.type], ['sim', '교과(학교장추천)'], '학교추천 ↔ 학교장추천');
+}
+
+console.log('쪼개진 전형은 세기에는 넣고 잇지는 않는다');
+{
+  const mk = (type, ys) => ys.map((y) => ({ univ: '한서대', dept: '항공관광학과', year: y, cat: '교과', type, g70: 4, rate: 10, quota: 10 }));
+  const rows = [...mk('교과(학생부교과)', [2022]), ...mk('교과(학생부교과1)', [2023, 2024]),
+    ...mk('교과(학생부교과2)', [2023, 2024]), ...mk('교과(지역인재)', [2023, 2024])];
+  const names = [...typeGroups(rows).values()].map((g) => g.name).sort();
+  eq(names.includes('교과(학생부교과)'), true, '2022 이름이 지역인재에 흡수되지 않는다');
+}
+
 if (!files.length) {
   console.log('\n시트 픽스처를 넘기지 않아 규칙 확인만 했습니다.');
   process.exit(fails ? 1 : 0);

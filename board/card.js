@@ -694,6 +694,7 @@ function ipgyeolSource(s) {
   switch (s.typeFit) {
     case 'exact': return `입결 · ${s.type}`;
     case 'near': return `입결 · ${s.type} · 이름이 조금 다르지만 같은 전형으로 봤습니다`;
+    case 'sim': return `입결 · ${s.type} · 이름이 닮아 같은 전형으로 봤습니다`;
     case 'cat': return `입결 · ${s.type} · 전형 이름은 못 맞추고 유형만 같습니다`;
     case 'only': return `입결 · ${s.type} · 이 학과 입결에 전형이 이것 하나뿐입니다`;
     case 'heir': return `입결 · ${s.type} · ${s.stale.was}에서 갈라져 나온 전형입니다`;
