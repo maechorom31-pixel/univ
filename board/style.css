@@ -360,6 +360,17 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 .slot-card .dept { color: var(--muted); font-size: var(--t-xs); word-break: keep-all; }
 .slots.thin .slot-card .dept { color: var(--muted); }
 
+/* 근거가 없어 날짜 칸이 안 선 카드의 접힌 줄. 평소에는 한 줄만 보인다. */
+.date-add > summary {
+  font-size: var(--t-xs); color: var(--amber-ink); cursor: pointer;
+  padding: var(--s2) 0; min-height: 44px; display: flex; align-items: center;
+  text-underline-offset: 3px; text-decoration: underline;
+}
+/* flex 로 그리면 브라우저가 기본 삼각형을 지운다. 눌러서 펴는 줄이라는 것이
+   보여야 해서 글자를 링크처럼 두고, 펴진 뒤에는 밑줄을 뗀다. */
+.date-add[open] > summary { color: var(--text-2); text-decoration: none; }
+.date-add > summary::-webkit-details-marker { display: none; }
+
 /* 순위 고르개. 학생 화면의 다른 입력칸과 같은 줄 모양을 쓴다. */
 .field.rank-pick select { font-size: 16px; }   /* iOS 가 확대하지 않는 최소 크기 */
 

@@ -16,7 +16,7 @@
  * 보이지 않는 것 — 다른 학생, 교사 비공개 메모, 발표 전 결과.
  */
 import * as api from './api.js';
-import { link as makeLink, indexIpgyeol, indexMojip, indexCollege, summarize } from './match.js';
+import { link as makeLink, indexIpgyeol, indexMojip, indexCollege, summarize, catOf } from './match.js';
 import { josa, rate1 } from './text.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
@@ -657,11 +657,47 @@ function card(app) {
       : `모의면접 ${mocks.map((m, i) => `${i + 1}차 ${label(m.from)}`).join(' · ')}`
         + ' — 학교에서 잡아 준 날짜입니다.'));
   }
+  /*
+   * **면접 날짜를 적을 칸이 아예 안 나오던 것.**
+   *
+   * 여태 조건이 「이미 날짜가 있을 때」였다. 즐겨찾기가 면접 기간을 주거나 학생이
+   * 이미 적었을 때만 줄이 섰다. 그런데 실제 관심대학 리스트에는 **일정 칸이 통째로
+   * 비어 있다** — 502건 중 0건이다. 그래서 「학생이 확정일을 넣는다」고 만들어 놓고
+   * 넣을 자리가 화면에 한 번도 안 나왔다. 서울시립대 종합처럼 대놓고 2단계인
+   * 카드에서도 그랬다.
+   *
+   * 이제 **볼 근거가 있으면 빈 칸이라도 세운다.**
+   *
+   *   면접   모집요강이 단계별전형이라고 말할 때 (전형단계 ≥ 2)
+   *   논술   전형 유형이 논술일 때
+   *   실기   전형 유형이 실기일 때
+   *
+   * 실제 502건으로 재 보니 모집요강이 전형단계를 아는 것이 87.6% 이고, 그중
+   * 단계별은 71건이다. 나머지는 일괄전형이라 면접이 없는 게 맞아서 칸도 안 선다.
+   * 근거 없이 다 세우면 면접 없는 카드마다 빈 날짜 칸이 붙어 시끄러워진다.
+   */
+  const s = summaryOf(app);
+  const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
+  const expects = (kind) => {
+    if (kind === '면접') return s ? s.stages > 1 : false;
+    if (kind === '논술') return cat === '논술';
+    if (kind === '실기') return cat === '실기';
+    return false;                       // 적성은 즐겨찾기가 줄 때만
+  };
+  let shown = 0;
   for (const kind of ATTEND) {
     const d = dateOf(app, kind);
-    if (!d && !(app.dates && app.dates[kind])) continue;
+    if (!d && !(app.dates && app.dates[kind]) && !expects(kind)) continue;
     box.appendChild(dateRow(app, kind, d));
+    shown += 1;
   }
+  /*
+   * **근거가 없어도 길은 열어 둔다.**
+   * 모집요강이 전형단계를 모르는 지원이 12% 있고, 알아도 틀릴 수 있다. 면접 통보를
+   * 받았는데 적을 자리가 없으면 그 학생에게는 이 기능이 없는 것과 같다.
+   * 접어 두어 평소에는 한 줄만 보인다.
+   */
+  if (!shown) box.appendChild(dateAdder(app));
   box.appendChild(applyNoRow(app));
 
   /*
@@ -751,6 +787,51 @@ function memoItem(app, n) {
   return li;
 }
 
+/**
+ * **날짜 칸이 안 선 카드에 두는 접힌 줄.**
+ *
+ * 모집요강이 전형단계를 모르거나(12%) 잘못 알고 있어도, 학생이 면접 통보를 받았으면
+ * 적을 수 있어야 한다. 종류를 고르게 하는 까닭 — 근거가 없는 카드는 면접인지
+ * 실기인지도 자료가 말해 주지 않아서다.
+ */
+function dateAdder(app) {
+  const fold = document.createElement('details');
+  fold.className = 'date-add';
+  const sum = document.createElement('summary');
+  sum.textContent = '면접·실기 날짜 적기';
+  fold.appendChild(sum);
+
+  const wrap = el('div', 'field');
+  wrap.appendChild(el('p', 'hint',
+    '대학에서 날짜를 받았는데 위에 칸이 없으면 여기에 넣어 주세요.'
+    + ' 선생님이 확인하면 일정에 잡힙니다.'));
+
+  const row = el('div', 'field-in');
+  const pick = document.createElement('select');
+  pick.disabled = state.busy;
+  for (const kind of ATTEND) {
+    const o = document.createElement('option');
+    o.value = kind;
+    o.textContent = kind;
+    pick.appendChild(o);
+  }
+  row.appendChild(pick);
+
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.disabled = state.busy;
+  row.appendChild(input);
+
+  const btn = el('button', 'btn btn-primary', '저장');
+  btn.type = 'button';
+  btn.disabled = state.busy;
+  btn.onclick = () => saveDate(app, pick.value, input.value);
+  row.appendChild(btn);
+  wrap.appendChild(row);
+  fold.appendChild(wrap);
+  return fold;
+}
+
 /** 면접 확정일을 넣는 줄. 넣으면 확인 대기로 들어간다. */
 function dateRow(app, kind, d) {
   const wrap = el('div', 'field');
@@ -760,7 +841,10 @@ function dateRow(app, kind, d) {
   wrap.appendChild(lab);
 
   const hint = el('p', 'hint');
-  if (!d) hint.textContent = '아직 공지된 날짜가 없습니다.';
+  // 빈 칸으로 서 있을 때가 이제 흔하다 — 무엇을 하라는 자리인지 말해 준다
+  if (!d) {
+    hint.textContent = `아직 날짜가 없습니다. 대학에서 ${kind} 날짜를 받으면 여기에 넣어 주세요.`;
+  }
   else if (d.status === 'pending') hint.textContent = `${label(d.from)} — 선생님 확인을 기다리는 중입니다.`;
   else if (d.status === 'confirmed') hint.textContent = `${label(d.from)} 로 확정되었습니다.`;
   else if (d.fixed) hint.textContent = `${label(d.from)} 로 공지되어 있습니다.`;
