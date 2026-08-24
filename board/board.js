@@ -219,13 +219,30 @@ function render() {
     return p.slot === 'rank' && p.rank === r;
   });
 
-  main.appendChild(label('지원 6칸'));
-  const slots = el('div', 'slots');
-  for (const r of RANKS) {
-    const app = at(r);
-    slots.appendChild(app ? card(app, r, student) : emptySlot(r));
+  /*
+   * **아직 한 칸도 안 정했으면 빈 상자 여섯을 안 그린다.**
+   *
+   * 9월 초에는 모든 학생이 이 상태다. 여섯 칸이 화면을 통째로 먹고 정작 봐야 하는
+   * 지원 목록은 스크롤 아래로 밀린다 — 열자마자 「아무것도 없다」로 읽힌다.
+   * 실제로 그렇게 보인다는 이야기를 들었다.
+   *
+   * 한 칸이라도 정해지면 그때부터 격자를 그린다. 그때는 여섯 칸이 주역이 맞다.
+   */
+  const placed = RANKS.map(at).filter(Boolean);
+  if (placed.length) {
+    main.appendChild(label('지원 6칸'));
+    const slots = el('div', 'slots');
+    for (const r of RANKS) {
+      const app = at(r);
+      slots.appendChild(app ? card(app, r, student) : emptySlot(r));
+    }
+    main.appendChild(slots);
+  } else {
+    const line = el('p', 'section-label', '지원 6칸');
+    main.appendChild(line);
+    main.appendChild(el('p', 'hint',
+      '아직 순위를 정하지 않았습니다. 아래 지원을 카드째 끌어다 놓으면 칸이 채워집니다.'));
   }
-  main.appendChild(slots);
 
   // 보관도 순위도 아닌 것은 전부 후보로 본다.
   // 시트에 예전 칸 이름이 남아 있거나 전문대로 잡혔던 지원이 일반대로 바뀌면

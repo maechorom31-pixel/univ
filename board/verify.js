@@ -120,9 +120,49 @@ function groupRow(g) {
   box.appendChild(el('p', 'hint', `해당 학생 — ${g.who.join(', ')}`));
 
   const cands = store.candidatesFor(g.apps[0], 8);
-  if (!cands.length) {
-    box.appendChild(el('p', 'empty-state',
-      '이 대학에서 닮은 이름을 찾지 못했습니다. 대학 이름부터 다를 수 있습니다.'));
+  /*
+   * **닮은 이름이 없다고 빈손으로 내밀지 않는다.**
+   *
+   * 예전에는 「닮은 이름을 찾지 못했습니다」 한 줄과 빈 글상자가 전부였다.
+   * 선생님은 자료에 어떤 학과가 있는지 모르는 채로 타자를 쳐야 했고, 「루마」라고
+   * 쳐 봐야 아무 일도 안 일어난다. **추천이 없으면 이을 수가 없다.**
+   *
+   * 글자가 안 닮았다고 학과가 없는 것은 아니다 — 단국대 「퇴계혁신칼리지(사회계열
+   * 광역)」의 작년 자리가 「사회과학대학」인 식이다. 목록을 내주고 고르게 한다.
+   */
+  const all = cands.length ? [] : store.deptsForUniv(g.apps[0]);
+  if (!cands.length && all.length) {
+    box.appendChild(el('p', 'section-label',
+      `닮은 이름은 없습니다 — 자료에 있는 ${shortUniv(g.univ)} 학과 ${all.length}개`));
+    box.appendChild(el('p', 'hint',
+      '이름이 아주 달라져도 같은 자리일 수 있습니다. 하나를 누르면 그 학과로 잇습니다.'));
+    const list = el('div', 'cands all-depts');
+    for (const c of all) {
+      const b = el('button', 'cand');
+      b.type = 'button';
+      b.disabled = busy === g.key;
+      b.appendChild(el('span', 'nm', tidy(c.dept)));
+      if (c.years.length) {
+        b.appendChild(el('span', 'mt', `${c.years[c.years.length - 1]}까지`));
+      }
+      b.onclick = () => join(g, c.dept);
+      list.appendChild(b);
+    }
+    box.appendChild(list);
+  } else if (!cands.length) {
+    /*
+     * 학과가 하나도 안 나오면 **대학부터 못 찾은 것**이다. 학과를 아무리 보여 줘도
+     * 소용없으니 가까운 대학 이름을 대신 내민다 — 표기가 다른 경우가 대부분이다.
+     */
+    const near = store.univCandidatesFor(g.apps[0], 6);
+    box.appendChild(el('p', 'empty-state', near.length
+      ? `자료에서 「${shortUniv(g.univ)}」를 찾지 못했습니다. 대학 이름부터 다릅니다.`
+      : '이 대학에서 닮은 이름을 찾지 못했습니다. 대학 이름부터 다를 수 있습니다.'));
+    if (near.length) {
+      box.appendChild(el('p', 'hint',
+        `자료에는 이런 이름이 있습니다 — ${near.map((u) => u.univ).join(' · ')}.`
+        + ' 아래 칸에 「대학 이름 / 학과 이름」처럼 적으면 대학도 함께 바꿉니다.'));
+    }
   } else {
     box.appendChild(el('p', 'section-label', '이 대학의 닮은 학과'));
     box.appendChild(el('p', 'hint',
@@ -195,6 +235,22 @@ function groupRow(g) {
   input.type = 'text';
   input.placeholder = '예) 자유전공학부';
   input.disabled = busy === g.key;
+  /*
+   * 자료에 있는 학과 이름을 글상자에 붙여 둔다. 「루마」까지만 쳐도 브라우저가
+   * 「루마니아어과」를 골라 준다 — 타자로 정확히 맞히라고 하면 못 맞힌다.
+   */
+  const bank = cands.length ? store.deptsForUniv(g.apps[0]) : all;
+  if (bank.length) {
+    const dl = document.createElement('datalist');
+    dl.id = `${id}-list`;
+    for (const c of bank) {
+      const o = document.createElement('option');
+      o.value = c.dept;
+      dl.appendChild(o);
+    }
+    input.setAttribute('list', dl.id);
+    field.appendChild(dl);
+  }
   line.appendChild(input);
   const save = el('button', 'btn', busy === g.key ? '잇는 중' : '잇기');
   save.type = 'button';

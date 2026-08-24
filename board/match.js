@@ -1224,10 +1224,16 @@ export function similarity(a, b) {
  * @param {number} n    몇 개까지
  * @return {Array<{dept, score, years, kind}>}
  */
-export function candidates(app, src, n = 6) {
+/**
+ * 이 지원의 대학을 자료에서 찾고, 그 대학의 학과를 **전부** 모은다.
+ *
+ * `candidates` 와 `deptsOf` 가 같은 것을 두 번 세지 않게 여기 한 곳에 둔다.
+ * 못 찾으면 `{ univ: null, list: [] }`.
+ */
+function deptBank(app, src) {
   const college = univKind(app.univType) === '전문대';
   let bank = college ? src.college : src.ipgyeol;
-  if (!bank) return [];
+  if (!bank) return { univ: null, list: [], kind: college ? 'college' : 'univ' };
 
   let univ = resolveUniv(app.univ, bank.index);
   // 학교유형을 못 알아봤으면 다른 쪽 자료도 본다 (link 와 같은 규칙)
@@ -1235,9 +1241,8 @@ export function candidates(app, src, n = 6) {
     bank = src.college;
     univ = resolveUniv(app.univ, bank.index);
   }
-  if (!univ) return [];
+  if (!univ) return { univ: null, list: [], kind: college ? 'college' : 'univ' };
 
-  // 이 대학의 학과 이름을 모은다
   const seen = new Map();
   for (const [k, rows] of bank.byKey) {
     if (!k.startsWith(`${univ}|`)) continue;
@@ -1248,17 +1253,61 @@ export function candidates(app, src, n = 6) {
       if (r.year) seen.get(name).add(r.year);
     }
   }
+  const kind = college || bank === src.college ? 'college' : 'univ';
+  const list = [...seen].map(([dept, years]) => ({
+    dept, years: [...years].sort(), kind,
+    score: similarity(app.dept, dept),
+  }));
+  return { univ, list, kind };
+}
 
+export function candidates(app, src, n = 6) {
+  const { list } = deptBank(app, src);
+  // 문턱을 낮게 둔다. 「화학공학과」와 「화공생명공학과」는 글자가 거의 안 겹치지만
+  // 같은 학과일 수 있다. 후보를 감추느니 점수를 함께 보여 주고 사람이 고르게 한다.
+  return list.filter((c) => c.score >= 0.15)
+    .sort((a, b) => b.score - a.score || a.dept.localeCompare(b.dept, 'ko'))
+    .slice(0, n);
+}
+
+/**
+ * **이 대학의 학과 전부.** 닮은 이름이 하나도 없을 때 쓴다.
+ *
+ * 문턱(0.15)을 못 넘으면 화면이 「닮은 이름을 찾지 못했습니다」만 띄우고 빈
+ * 글상자를 내밀었다. 선생님은 자료에 어떤 이름이 있는지 모르는 채로 타자를 쳐야
+ * 했고, 「루마」라고 쳐 봐야 아무 일도 안 일어난다. 이을 수가 없다.
+ *
+ * 글자가 안 닮았다고 학과가 없는 것은 아니다 — 「글로벌비즈니스대학」의 작년
+ * 자리가 「경영학부」인 식이다. **목록을 보여 주고 사람이 고르게 한다.**
+ * 가나다순으로 준다. 닮은 것부터 주면 위쪽이 다 헛것이라 훑기가 더 어렵다.
+ */
+export function deptsOf(app, src) {
+  return deptBank(app, src).list
+    .sort((a, b) => a.dept.localeCompare(b.dept, 'ko'));
+}
+
+/**
+ * 대학 이름이 안 닮은 것들 가운데 가까운 것.
+ *
+ * 대학 자체를 못 찾았으면 학과를 아무리 보여 줘도 소용없다. **먼저 대학부터**
+ * 맞아야 한다 — 「국립순천대」와 「순천대학교」처럼 표기가 다른 경우다.
+ */
+export function similarUnivs(app, src, n = 6) {
+  const college = univKind(app.univType) === '전문대';
+  const banks = [college ? src.college : src.ipgyeol, src.college, src.ipgyeol];
+  const seen = new Set();
   const out = [];
-  for (const [dept, years] of seen) {
-    const score = similarity(app.dept, dept);
-    // 문턱을 낮게 둔다. 「화학공학과」와 「화공생명공학과」는 글자가 거의 안 겹치지만
-    // 같은 학과일 수 있다. 후보를 감추느니 점수를 함께 보여 주고 사람이 고르게 한다.
-    if (score < 0.15) continue;
-    out.push({ dept, score, years: [...years].sort(), kind: college ? 'college' : 'univ' });
+  for (const bank of banks) {
+    if (!bank || !bank.index) continue;
+    for (const name of bank.index.keys()) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const score = similarity(univStem(app.univ), univStem(name));
+      if (score >= 0.4) out.push({ univ: name, score });
+    }
   }
-  out.sort((a, b) => b.score - a.score || a.dept.localeCompare(b.dept, 'ko'));
-  return out.slice(0, n);
+  return out.sort((a, b) => b.score - a.score || a.univ.localeCompare(b.univ, 'ko'))
+    .slice(0, n);
 }
 
 /* ── 전형일정 (PDF 에서 뽑은 것) ─────────────────────────────────── */

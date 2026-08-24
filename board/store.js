@@ -15,6 +15,8 @@ import * as api from './api.js';
 import {
   link as makeLink, summarize, examDate, examKindFits, paperDates,
   candidates as similarDepts,
+  deptsOf as allDepts,
+  similarUnivs as nearUnivs,
   indexIpgyeol, indexMojip, indexCollege, indexSchedule,
   splitDepts, referenceLine, resolveUniv, catOf, predecessor,
 } from './match.js';
@@ -271,6 +273,18 @@ export function renamedFrom(app) {
 export function candidatesFor(app, n) {
   if (!state.enriched) return [];
   return similarDepts(app, { ipgyeol, college }, n);
+}
+
+/** 이 대학의 학과 **전부**. 닮은 이름이 하나도 없을 때 목록으로 보여 준다. */
+export function deptsForUniv(app) {
+  if (!state.enriched) return [];
+  return allDepts(app, { ipgyeol, college });
+}
+
+/** 대학 자체를 못 찾았을 때, 자료에 있는 가까운 대학 이름. */
+export function univCandidatesFor(app, n) {
+  if (!state.enriched) return [];
+  return nearUnivs(app, { ipgyeol, college }, n);
 }
 
 /** 못 붙인 지원. 같은 (대학·학과)끼리 묶어서 돌려준다 — 한 번 이으면 다 붙는다. */

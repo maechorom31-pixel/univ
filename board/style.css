@@ -745,6 +745,14 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
 .miss-head .univ { font-weight: 700; }
 .miss-head .dept { font-size: var(--t-xs); color: var(--muted); margin-top: 2px; }
 .miss .hint + .hint { margin-top: 2px; }
+/*
+ * 닮은 이름이 없을 때 내미는 **대학의 학과 전부**. 수십 개가 될 수 있어서
+ * 제 안에서 세로로 구르게 두고 화면을 밀지 않는다.
+ */
+.cands.all-depts {
+  max-height: 15rem; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 8px; padding: var(--s2);
+}
 .miss .field { margin-top: var(--s4); }
 .miss > .btn { margin-top: var(--s2); }
 
