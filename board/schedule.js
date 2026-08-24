@@ -311,7 +311,7 @@ function month(ym, events) {
           : (e.fixed && settled ? '' : 'soft');
       const tag = el('span', `ev ${kind}`.trim(),
         `${shortUniv(e.app.univ)} ${e.kind}`);
-      const src = e.status === 'sched' || e.status === 'sched-loose' ? ' · 전형일정표'
+      const src = e.status === 'sched' ? ' · 전형일정표'
         : e.status === 'pending' ? ' · 학생 입력, 확인 대기' : '';
       tag.title = `${e.name} · ${e.app.dept} · ${span(e)}${src}`;
       cell.appendChild(tag);
@@ -533,7 +533,7 @@ function fixedRow(app, kind, d) {
   row.appendChild(txt);
   const tag = d.status === 'pending' ? '학생 입력 · 확인 대기'
     : d.status === 'confirmed' ? '확정'
-      : d.status === 'sched' || d.status === 'sched-loose' ? '전형일정표'
+      : d.status === 'sched' ? '전형일정표'
         : d.fixed ? '공지' : '기간';
   row.appendChild(el('span', `pill${d.fixed ? '' : ' wait'}`, tag));
 

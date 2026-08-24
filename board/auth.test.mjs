@@ -161,6 +161,14 @@ sheets['설정'] = mkSheet([G.HEADERS['설정']]);
   eq([r3.ok, r3.stale], [false, true], '한 발 늦은 화면은 되돌린다');
   eq(place('A').rank, 2, '되돌렸으니 자리도 그대로다');
 
+  // 첫 배치를 못 본 화면(seen='') 도 한 발 늦은 것이다 — 빈 글자로 못 빠져나간다
+  const r3b = G.handle_({ action: 'setRank', key: K, id: 'A', hak: '3101', slot: 'rank', rank: 3,
+    seen: '' });
+  eq([r3b.ok, r3b.stale], [false, true], 'seen 이 빈 글자여도 검사한다 (첫 배치 경합)');
+  // 옛 화면(seen 자체가 없음)은 검사 없이 통과한다 — 배포가 엇갈려도 멈추지 않는다
+  const r3c = G.handle_({ action: 'setRank', key: K, id: 'A', hak: '3101', slot: 'rank', rank: 2 });
+  eq(r3c.ok, true, 'seen 을 안 보내는 옛 화면은 그대로 동작한다');
+
   const r4 = G.handle_({ action: 'setRank', key: K, id: 'A', hak: '3101', slot: 'rank', rank: 9 });
   eq(r4.ok, false, '1~6 밖은 안 받는다');
 }

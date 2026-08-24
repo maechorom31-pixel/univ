@@ -456,21 +456,13 @@ export async function placeMany(moves) {
   }
 }
 
+/**
+ * 한 장만 옮긴다 — `placeMany` 의 낱장 꼴. **쓰기 길은 하나여야 한다.**
+ * 예전에는 이 함수가 setState 로 따로 썼는데, 그러면 잠금도 seen 검사도 없는
+ * 둘째 길이 남아서 언젠가 누가 그 길로 걸어 들어간다.
+ */
 export async function place(id, slot, rank) {
-  const before = placementOf(id);
-  const app = state.apps.get(id);
-  if (!app) throw new Error('지원 내역을 찾지 못했습니다.');
-
-  state.placement.set(String(id), { slot, rank: slot === 'rank' ? rank : null });
-  emit('change', 'state');
-  if (offline) return;         // 보기용 자료는 브라우저 안에서만 바뀐다
-  try {
-    await api.setState({ id, hak: app.hak, slot, rank: slot === 'rank' ? rank : '' });
-  } catch (err) {
-    state.placement.set(String(id), before);
-    emit('change', 'state');
-    throw err;
-  }
+  return placeMany([{ id, slot, rank }]);
 }
 
 /**

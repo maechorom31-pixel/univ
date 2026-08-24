@@ -533,7 +533,17 @@ function ledgerBlock(student) {
 function rowsForReport() {
   const out = [];
   for (const student of store.studentsOf('')) {          // 보고서는 늘 학년 전체다
-    for (const app of ordered(student.hak)) {
+    /*
+     * 6칸에 넣은 것 + **전문대·특수대.** 전문대는 수시 6회 제한 밖이라 순위를
+     * 안 매기고 `tray` 에 산다 — 그게 지원한 상태다. 순위만 세면 전문대에 붙어
+     * 등록까지 한 학생이 보고서 셋에서 통째로 사라진다. 보관(archive)은 여전히
+     * 뺀다 — 그건 올해 안 넣기로 한 것이다.
+     */
+    const others = store.appsOf(student.hak).filter((a) => {
+      const outside = a.univType === '전문대' || a.univType === '특수대';
+      return outside && store.placementOf(a.id).slot !== 'archive';
+    });
+    for (const app of [...ordered(student.hak), ...others]) {
       // 선생님이 시트에 적은 결과를 얹어서 넘긴다. 통계는 그걸 봐야 한다 —
       // 예비번호와 등록 여부는 즐겨찾기에 없거나 늦다.
       out.push({

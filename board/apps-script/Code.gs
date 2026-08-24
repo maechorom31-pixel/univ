@@ -934,7 +934,15 @@ function setRank_(p, who) {
       mine.push(all[i]);
       if (String(all[i].at) > newest) newest = String(all[i].at);
     }
-    if (p.seen && newest && String(p.seen) < newest) {
+    /*
+     * `seen` 이 **빈 글자여도 검사한다.** 화면은 「내가 마지막으로 본 시각」을
+     * 보내는데, 아직 배치가 하나도 없던 학생을 보고 있었다면 그 값이 빈 글자다.
+     * 그 사이에 저쪽이 첫 줄을 만들었으면 이 화면은 한 발 늦은 것이 맞다 —
+     * `p.seen &&` 로 거르면 하필 그 경우만 검사를 건너뛰어 조용히 덮어쓴다.
+     * 옛 화면(`seen` 을 아예 안 보내는)은 undefined 라 여전히 통과한다.
+     */
+    if (typeof p.seen !== 'undefined' && p.seen !== null
+      && newest && String(p.seen) < newest) {
       return {
         ok: false, stale: true,
         error: '그 사이에 순위가 바뀌었습니다. 새로 불러온 뒤 다시 해 주세요.'

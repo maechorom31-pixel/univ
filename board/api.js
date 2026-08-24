@@ -163,10 +163,22 @@ export async function call(action, params, opts = {}) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const data = await once(action, params, timeout);
-      if (data && data.ok === false) throw new Error(data.error || '요청이 거절되었습니다.');
+      if (data && data.ok === false) {
+        const err = new Error(data.error || '요청이 거절되었습니다.');
+        /*
+         * 서버가 **판단해서** 거절한 것은 다시 물어도 답이 같다. 특히 순위 충돌
+         * (`stale`)은 화면이 한 발 늦었다는 뜻이라, 재시도 두 번은 똑같이 거절될
+         * 왕복만 늘린다. 글자(/그 사이에/)가 아니라 값으로 넘긴다 — 서버 문구를
+         * 다듬는 순간 화면 쪽 판별이 조용히 죽는 함정을 만들지 않는다.
+         */
+        err.server = true;
+        if (data.stale) err.stale = true;
+        throw err;
+      }
       return data;
     } catch (err) {
       last = err;
+      if (err && err.stale) break;
       if (attempt < 2) await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
     }
   }
@@ -174,7 +186,7 @@ export async function call(action, params, opts = {}) {
 }
 
 export const students = () => call('students', {}, { timeout: 45000 });
-export const setState = (s) => call('setState', s);
+// setState 는 setRank 로 통일했다. 서버 쪽 setState_ 는 옛 화면을 위해 남아 있다.
 /** 순위 옮기기 — 맞바꾸기까지 서버가 한 번에 한다. board/CONTRACT.md §2.4 */
 export const setRank = (s) => call('setRank', s);
 export const addNote = (n) => call('addNote', n);

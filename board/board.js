@@ -262,7 +262,21 @@ function render() {
   const slots = el('div', placed.length ? 'slots' : 'slots thin');
   for (const r of RANKS) {
     const app = at(r);
-    slots.appendChild(app ? card(app, r, student) : emptySlot(r));
+    /*
+     * 6칸 카드도 후보 목록(cardRow)과 같이 한 장씩 감싼다. 목록만 감싸 놓으면
+     * 순위에 올라간 카드가 터지는 순간 render() 가 멈춰 보드가 통째로 빈다 —
+     * 막으려던 바로 그 실패가 제일 눈에 띄는 자리에서 다시 난다.
+     */
+    try {
+      slots.appendChild(app ? card(app, r, student) : emptySlot(r));
+    } catch (err) {
+      const box = el('div', 'card broken');
+      box.appendChild(el('div', 'rank', `${r}순위`));
+      box.appendChild(el('div', 'univ', tidy((app && app.univ) || '대학 없음')));
+      box.appendChild(el('p', 'warn', '이 카드를 그리지 못했습니다. 선생님께 알려 주세요.'));
+      box.title = String((err && err.message) || err);
+      slots.appendChild(box);
+    }
   }
   main.appendChild(slots);
   if (!placed.length) {

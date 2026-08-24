@@ -421,6 +421,14 @@ console.log('면접·서류가 어긋나면 안 잇는다');
   ];
   const got = pickIpgyeol(rows, { typeSub: '학생부종합Ⅰ[면접(300)]', typeCat: '학생부위주(종합)' });
   eq(got.fit, 'none', '면접형에 서류형 줄을 붙이지 않는다');
+  eq(got.among, ['종합Ⅰ(서류)'], '무엇이 있었는지는 말해 준다');
+
+  // 후보가 어긋나는 것 하나뿐이어도 마찬가지 — 이름이 0.65 넘게 닮아도 안 잇는다
+  const rows2 = [
+    { univ: '가톨릭대', dept: 'AI의공학과', year: 2026, cat: '종합', type: '종합(잠재능력우수자서류)', g70: 2.91, rate: 10, quota: 5 },
+  ];
+  const got2 = pickIpgyeol(rows2, { typeSub: '학생부종합(잠재능력우수자면접)', typeCat: '학생부위주(종합)' });
+  eq(got2.fit, 'none', '이름이 아무리 닮아도 면접↔서류는 안 잇는다 (sim 도)');
 }
 
 console.log('이름이 닮으면 잇는다 (sim)');

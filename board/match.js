@@ -1027,7 +1027,19 @@ export function pickIpgyeol(rows, app) {
       return !(other && other !== myMark);
     });
     markCut = fits.length !== keys.length;
-    if (fits.length) keys = fits;
+    /*
+     * **남은 것이 없으면 없는 것이다.** 예전에는 `if (fits.length)` 로, 후보가
+     * 전부 어긋나면 가림을 조용히 접고 원래 목록으로 계속 갔다 — 그러면 exact·
+     * near·sim 이 서류형 줄을 면접형 지원에 그대로 붙인다. 이 학과 입결에
+     * 면접형 자료가 없다는 것이 사실이고, 사실대로 비운다.
+     */
+    if (markCut && !fits.length) {
+      return {
+        rows: [], fit: 'none', type: null,
+        among: keys.map((k) => groups.get(k).name),
+      };
+    }
+    keys = fits.length ? fits : keys;
   }
 
   const want = normType(app.typeSub) || normType(app.typeName);

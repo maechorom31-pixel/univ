@@ -105,6 +105,7 @@ function apply(data) {
   state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
     from: String(r.from || ''), to: String(r.to || r.from || ''), status: r.status || 'pending',
   }]));
+  summaryCache.clear();
   state.aliases = new Map((data.aliases || []).map((r) => [
     `${r.univ}|${r.dept}`,
     { toUniv: String(r.toUniv || ''), toDept: String(r.toDept || ''), note: String(r.note || '') },
@@ -132,6 +133,7 @@ async function loadPublic() {
     grab('data/schedule2027.json', indexSchedule),
   ]);
   state.src = { ipgyeol, mojip, college, sched, related: new Map() };
+  summaryCache.clear();
   render();
 }
 
@@ -143,8 +145,11 @@ async function loadPublic() {
  * 학생 화면에는 「자료 없음」이었다. 규칙은 store.link 와 같다:
  * 하나로 이었으면 그 이름으로 바꿔 찾고, 여럿이면 이름을 안 바꾸고 참고선만 긋는다.
  */
+const summaryCache = new Map();
+
 function summaryOf(app) {
   if (!state.src) return null;
+  if (summaryCache.has(app.id)) return summaryCache.get(app.id);
   const alias = state.aliases.get(`${app.univ}|${app.dept}`);
   const to = splitDepts(alias && alias.toDept) || [];
   const one = to.length === 1 ? to[0] : (to.length ? null : (alias && alias.toDept) || '');
@@ -156,9 +161,21 @@ function summaryOf(app) {
   if (to.length > 1 && state.src.ipgyeol) {
     const univ = resolveUniv(alias.toUniv || app.univ, state.src.ipgyeol.index);
     const line = univ ? referenceLine(univ, to, state.src.ipgyeol, catOf(app.typeCat)) : null;
-    if (line) l.before = { type: '손으로 이음', parts: to, line, byHand: true };
+    if (line) {
+      l.before = { type: '손으로 이음', parts: to, line, byHand: true };
+      /*
+       * `confidence` 도 같이 바꿔야 한다. summarize 는 'none' 이면 before 를
+       * 버리므로(자료 없음 갈래), 여기서 안 바꾸면 참고선을 그려 놓고도 학생
+       * 카드에는 영영 안 나온다 — store.link 와 글자까지 같은 규칙이다.
+       */
+      l.confidence = 'loose';
+      l.why = `선생님이 이어 둔 학과 ${to.length}곳의 선을 참고로 봅니다`
+        + ` — ${to.slice(0, 3).join(' · ')}${to.length > 3 ? ' 외' : ''}`;
+    }
   }
-  return summarize(l, app);
+  const out = summarize(l, app);
+  summaryCache.set(app.id, out);
+  return out;
 }
 
 /**
@@ -558,7 +575,7 @@ async function moveRank(app, value) {
      * 「그 사이에 바뀌었다」면 **다시 불러온다.** 새로고침을 시키면 학생은
      * 자기가 무엇을 놓쳤는지 모른 채 같은 것을 다시 누른다.
      */
-    if (/그 사이에/.test(String(err.message))) {
+    if (err.stale) {
       state.notice = '선생님이 방금 순위를 바꾸셨습니다. 새로 불러왔습니다 — 다시 골라 주세요.';
       try {
         apply(await api.call('student', { token: state.token }, { timeout: 45000 }));
@@ -943,7 +960,12 @@ function dateRow(app, kind, d) {
    */
   input.value = d && (d.status !== 'source' || d.fixed) && d.fixed ? d.from
     : (d && d.status !== 'source' && d.status !== 'sched' ? d.from : '');
-  if (d) { input.min = d.from; input.max = d.to; }
+  /*
+   * min·max 는 **기간일 때만** 건다. 확정일 하루짜리에 걸면 min=max 가 되어
+   * 다른 날을 고를 수 없다 — 「다르면 고쳐서 저장하라」고 해 놓고 달력이
+   * 그 하루만 열리는 꼴이었다.
+   */
+  if (d && d.from !== d.to) { input.min = d.from; input.max = d.to; }
   input.disabled = state.busy;
   row.appendChild(input);
 
