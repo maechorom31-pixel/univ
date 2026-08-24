@@ -16,7 +16,10 @@
  * 보이지 않는 것 — 다른 학생, 교사 비공개 메모, 발표 전 결과.
  */
 import * as api from './api.js';
-import { link as makeLink, indexIpgyeol, indexMojip, indexCollege, summarize, catOf } from './match.js';
+import {
+  link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule,
+  summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
+} from './match.js';
 import { josa, rate1 } from './text.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
@@ -38,6 +41,7 @@ const state = {
   dates: new Map(),      // `${id}|${kind}` → { from, to, status }
   fields: new Map(),     // `${id}|${field}` → { value, status }. 생년월일은 id 가 빈 문자열
   notes: [],
+  aliases: new Map(),   // `${univ}|${dept}` → { toUniv, toDept } — 선생님이 이어 준 학과
   src: null,
   busy: false,
   notice: '',
@@ -101,6 +105,10 @@ function apply(data) {
   state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
     from: String(r.from || ''), to: String(r.to || r.from || ''), status: r.status || 'pending',
   }]));
+  state.aliases = new Map((data.aliases || []).map((r) => [
+    `${r.univ}|${r.dept}`,
+    { toUniv: String(r.toUniv || ''), toDept: String(r.toDept || ''), note: String(r.note || '') },
+  ]));
 }
 
 /** 입결은 공개 자료라 학생 화면에서도 그대로 받는다. */
@@ -112,28 +120,65 @@ async function loadPublic() {
       return build(await res.json());
     } catch (err) { return null; }
   };
-  const [ipgyeol, mojip, college] = await Promise.all([
+  /*
+   * 전형일정표도 받는다. 예전에는 안 받아서, 선생님 화면은 「면접 11/21~11/23」을
+   * 아는데 학생 화면은 같은 지원에 「아직 날짜가 없습니다」라고 말했다.
+   * 같은 지원이 두 화면에서 다른 말을 하면 안 된다.
+   */
+  const [ipgyeol, mojip, college, sched] = await Promise.all([
     grab('data/ipgyeol.json', indexIpgyeol),
     grab('data/mojip2027.json', indexMojip),
     grab('../College/data/departments.json', indexCollege),
+    grab('data/schedule2027.json', indexSchedule),
   ]);
-  state.src = { ipgyeol, mojip, college, related: new Map() };
+  state.src = { ipgyeol, mojip, college, sched, related: new Map() };
   render();
 }
 
-/** 선생님 화면과 **같은** 요약을 본다. 같은 지원이 두 화면에서 다르게 보이면 안 된다. */
+/**
+ * 선생님 화면과 **같은** 요약을 본다. 같은 지원이 두 화면에서 다르게 보이면 안 된다.
+ *
+ * 별칭도 여기서 탄다 — 선생님이 점검에서 이어 준 학과다. 예전에는 학생 화면이
+ * 별칭을 아예 못 받아서, 같은 지원이 선생님 화면에는 작년 참고선이 붙는데
+ * 학생 화면에는 「자료 없음」이었다. 규칙은 store.link 와 같다:
+ * 하나로 이었으면 그 이름으로 바꿔 찾고, 여럿이면 이름을 안 바꾸고 참고선만 긋는다.
+ */
 function summaryOf(app) {
   if (!state.src) return null;
-  return summarize(makeLink(app, state.src), app);
+  const alias = state.aliases.get(`${app.univ}|${app.dept}`);
+  const to = splitDepts(alias && alias.toDept) || [];
+  const one = to.length === 1 ? to[0] : (to.length ? null : (alias && alias.toDept) || '');
+  const target = alias && (alias.toUniv || one)
+    ? { ...app, univ: alias.toUniv || app.univ, dept: one || app.dept }
+    : app;
+  const l = makeLink(target, state.src);
+  if (alias) l.alias = alias;
+  if (to.length > 1 && state.src.ipgyeol) {
+    const univ = resolveUniv(alias.toUniv || app.univ, state.src.ipgyeol.index);
+    const line = univ ? referenceLine(univ, to, state.src.ipgyeol, catOf(app.typeCat)) : null;
+    if (line) l.before = { type: '손으로 이음', parts: to, line, byHand: true };
+  }
+  return summarize(l, app);
 }
 
-/** 이 지원의 일정 — 학생이 넣은 값이 있으면 그것이 우선한다. */
+/**
+ * 이 지원의 일정. **선생님 화면(store.dateOf)과 같은 차례**여야 한다 —
+ * 내가 넣은 값 → 즐겨찾기 확정일 → 전형일정표(이름까지 맞을 때만) → 즐겨찾기 기간.
+ */
 function dateOf(app, kind) {
   const mine = state.dates.get(`${app.id}|${kind}`);
   if (mine && mine.from) {
     return { from: mine.from, to: mine.to || mine.from, fixed: true, status: mine.status };
   }
-  const d = app.dates && app.dates[kind];
+  const d = (app.dates && app.dates[kind]) || null;
+  if (d && d.fixed) return { ...d, status: 'source' };
+  if (state.src && state.src.sched && examKindFits(app, kind)) {
+    const found = examDate(app, state.src.sched);
+    // 전형 이름을 못 맞춘 값(loose)은 이 지원의 날짜가 아니다 — 상세에서 참고로만
+    if (found && !found.loose) {
+      return { from: found.from, to: found.to, fixed: found.fixed, status: 'sched' };
+    }
+  }
   return d ? { ...d, status: 'source' } : null;
 }
 
@@ -361,7 +406,9 @@ function clashPanel() {
       const a = events[i]; const b = events[j];
       if (a.app.id === b.app.id) continue;
       if (a.from > b.to || b.from > a.to) continue;
-      hits.push({ a, b, sure: a.fixed && b.fixed && a.from === b.from });
+      // 일정표에서 온 날짜(sched)와 확인 대기(pending)로는 「겹침」을 확정하지 않는다
+      const settled = (e) => e.status === 'confirmed' || e.status === 'source';
+      hits.push({ a, b, sure: a.fixed && b.fixed && a.from === b.from && settled(a) && settled(b) });
     }
   }
   hits.sort((x, y) => y.sure - x.sure);
@@ -610,7 +657,11 @@ function figures(app) {
 function marks(app) {
   const s = summaryOf(app);
   const wrap = el('div', 'pills');
-  const add = (text, kind) => wrap.appendChild(el('span', `pill${kind ? ' ' + kind : ''}`, text));
+  const add = (text, kind) => {
+    const p = el('span', `pill${kind ? ' ' + kind : ''}`, text);
+    wrap.appendChild(p);
+    return p;
+  };
 
   const now = s ? s.quotaNow : app.quota;
   const prev = s ? s.quotaPrev : null;
@@ -621,6 +672,22 @@ function marks(app) {
     else add(`${now}명 뽑음`);
   }
   if (s && s.stages > 1) add(`${s.stages}단계`);
+  /*
+   * **가야 하는 날은 꼬리표로 단다.** 날짜를 넣고도 카드를 펼쳐야 보이면
+   * 여섯 장을 훑을 때 어느 면접이 잡혔는지 안 보인다. 선생님 보드의 노란
+   * 꼬리표와 같은 자리 — 놓치면 지원이 통째로 헛일이 되는 것들이다.
+   * 확인 대기는 점선(wait)으로 가른다. 아직 확정이 아니라는 뜻 그대로다.
+   */
+  for (const kind of ATTEND) {
+    const d = dateOf(app, kind);
+    if (!d) continue;
+    const day = d.fixed ? label(d.from) : `${label(d.from)}~${label(d.to)}`;
+    // 내가 잡은 날(확정·즐겨찾기)만 꽉 채운 칠. 일정표에서 온 것과 확인 대기는 점선.
+    const settled = d.status === 'confirmed' || d.status === 'source';
+    const p = add(`${kind} ${day}`, settled ? 'mark' : 'wait');
+    if (d.status === 'sched') p.title = '전형일정표의 날짜입니다. 배정받은 날이 다르면 카드에서 고쳐 주세요.';
+    if (d.status === 'pending') p.title = '선생님 확인을 기다리는 중입니다.';
+  }
   // 관심대학 리스트는 기준 글 없이 Y/N 만 준다 — 그때도 표시가 나와야 한다
   if (app.minReqText || app.minReq === true) add('수능 최저 있음', 'mark');
   /*
@@ -642,7 +709,17 @@ function card(app) {
   const box = el('article', 'mycard');
   const place = state.placement.get(String(app.id)) || {};
   if (place.slot === 'rank') box.appendChild(el('div', 'rank', `${place.rank}순위`));
-  box.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
+  /*
+   * 머리에 「자세히」를 둔다. 카드 전체를 누르게 하면 안 된다 — 카드 안이
+   * 온통 입력칸(순위·날짜·결과·메모)이라 누르려던 것과 열리는 것이 싸운다.
+   */
+  const head = el('div', 'mycard-head');
+  head.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
+  const more = el('button', 'btn', '자세히');
+  more.type = 'button';
+  more.onclick = () => openDetail(app);
+  head.appendChild(more);
+  box.appendChild(head);
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
 
   box.appendChild(figures(app));
@@ -847,6 +924,11 @@ function dateRow(app, kind, d) {
   }
   else if (d.status === 'pending') hint.textContent = `${label(d.from)} — 선생님 확인을 기다리는 중입니다.`;
   else if (d.status === 'confirmed') hint.textContent = `${label(d.from)} 로 확정되었습니다.`;
+  else if (d.status === 'sched') {
+    hint.textContent = d.fixed
+      ? `전형일정표에는 ${label(d.from)} 입니다. 받은 날짜가 다르면 고쳐서 저장해 주세요.`
+      : `전형일정표에는 ${label(d.from)}~${label(d.to)} 입니다. 배정을 받으면 넣어 주세요.`;
+  }
   else if (d.fixed) hint.textContent = `${label(d.from)} 로 공지되어 있습니다.`;
   else hint.textContent = `${label(d.from)}~${label(d.to)} 중 하루입니다. 배정을 받으면 아래에 넣어 주세요.`;
   wrap.appendChild(hint);
@@ -855,7 +937,12 @@ function dateRow(app, kind, d) {
   const input = document.createElement('input');
   input.type = 'date';
   input.id = id;
-  input.value = d && d.status !== 'source' ? d.from : '';
+  /*
+   * **파싱해 온 확정일은 입력칸에 미리 채운다.** 대개 그 날이 맞으니 저장 한 번이면
+   * 되고, 다르면 고쳐서 저장한다 — 고친 값이 파싱값을 덮는다(사람이 먼저다).
+   */
+  input.value = d && (d.status !== 'source' || d.fixed) && d.fixed ? d.from
+    : (d && d.status !== 'source' && d.status !== 'sched' ? d.from : '');
   if (d) { input.min = d.from; input.max = d.to; }
   input.disabled = state.busy;
   row.appendChild(input);
@@ -1240,6 +1327,176 @@ async function saveApplyNo(app, value) {
   } finally {
     state.busy = false; render();
   }
+}
+
+/* ── 카드 상세 ──────────────────────────────────────────────────── */
+
+/**
+ * 카드를 누르면 뜨는 상세 — **읽는 자리다.**
+ *
+ * 선생님 보드의 상세(card.js)를 그대로 가져오면 결과 저장·메모 확정 같은
+ * 교사 단추까지 딸려 오는데, 그 단추는 학생 링크로는 서버가 받지 않는다.
+ * 눌리는데 안 되는 단추는 없느니만 못하다. 그래서 학생 상세는 **보여 주기만**
+ * 한다 — 적는 것은 카드에 이미 다 있다(순위·날짜·접수번호·결과·메모).
+ *
+ * 담는 것: 연도별 추이 · 인원과 경쟁률 · 일정(원서 마감·발표 포함) ·
+ * 수능최저 원문 · 지원 자격. 숫자는 선생님 화면과 같은 요약(summaryOf)에서 온다.
+ */
+function openDetail(app) {
+  const host = document.getElementById('detail');
+  if (!host) return;
+  host.textContent = '';
+
+  const s = summaryOf(app);
+  const mo = (s && s.mojip) || null;
+
+  const box = el('section', 'panel detail');
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.setAttribute('aria-label', `${app.univ} ${app.dept} 자세히`);
+  box.tabIndex = -1;
+
+  const closeAll = () => { host.hidden = true; host.textContent = ''; };
+
+  const head = el('div', 'detail-head');
+  const title = el('div');
+  title.appendChild(el('div', 'univ', tidy(app.univ)));
+  title.appendChild(el('div', 'dept',
+    [tidy(app.dept), app.typeSub || app.typeName].filter(Boolean).join(' · ')));
+  head.appendChild(title);
+  const close = el('button', 'btn', '닫기');
+  close.type = 'button';
+  close.onclick = closeAll;
+  head.appendChild(close);
+  box.appendChild(head);
+
+  const body = el('div', 'detail-body');
+  box.appendChild(body);
+
+  const block = (name, node) => {
+    if (!node) return;
+    const b = el('div', 'detail-block');
+    b.appendChild(el('h3', '', name));
+    b.appendChild(node);
+    body.appendChild(b);
+  };
+
+  if (s && s.isNew) {
+    body.appendChild(el('p', 'note',
+      '올해 새로 생긴 전형이라 작년 값이 없습니다. 아래 표의 다른 전형은 참고일 뿐입니다.'));
+  }
+
+  /* 선생님 상세(card.js rows)와 같은 표 꼴 — CSS 도 그대로 탄다 */
+  const factTable = (list) => {
+    const have = list.filter((x) => x && x[1] != null && x[1] !== '');
+    if (!have.length) return null;
+    const tw = el('div', 'tw');
+    const table = document.createElement('table');
+    const tbody = document.createElement('tbody');
+    for (const [k, v] of have) {
+      const tr = document.createElement('tr');
+      tr.appendChild(el('th', 'rowhead', k));
+      tr.appendChild(el('td', /[0-9]/.test(String(v)) ? 'num' : null, String(v)));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tw.appendChild(table);
+    return tw;
+  };
+
+  block('인원과 경쟁률', factTable([
+    ['올해 모집', s && s.quotaNow != null ? `${s.quotaNow}명` : app.quotaText || null],
+    ['작년 모집', s && s.quotaPrev != null ? `${s.quotaPrev}명` : null],
+    [s && s.year ? `${s.year} 경쟁률` : '경쟁률', s && s.rate != null ? `${rate1(s.rate)}:1` : null],
+    ['작년 실질 경쟁률', s && s.real && s.real.value != null ? `${rate1(s.real.value)}:1` : null],
+    ['작년 추가 합격', mo && mo.filled26 != null ? `${mo.filled26}명` : null],
+  ]));
+
+  /* 연도별 추이 — 이 학과의 모든 전형·모든 해 */
+  if (s && s.rows && s.rows.length) {
+    const byType = new Map();
+    for (const r of s.rows) {
+      const k = r.type || '전형 미상';
+      if (!byType.has(k)) byType.set(k, []);
+      byType.get(k).push(r);
+    }
+    const tw = el('div', 'tw');
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    for (const h of ['연도', '모집', '경쟁률', '70%컷', '50%컷']) hr.appendChild(el('th', '', h));
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    // 내가 넣은 전형을 맨 위로
+    const names = [...byType.keys()].sort((a, b) =>
+      (b === (s.type || '')) - (a === (s.type || '')) || a.localeCompare(b, 'ko'));
+    for (const name of names) {
+      const grp = document.createElement('tr');
+      grp.className = 'group';
+      const th = el('th', '', name + (name === s.type ? ' — 내가 넣은 전형' : ''));
+      th.colSpan = 5;
+      grp.appendChild(th);
+      tbody.appendChild(grp);
+      for (const r of byType.get(name).slice().sort((a, b) => b.year - a.year)) {
+        const tr = document.createElement('tr');
+        tr.appendChild(el('td', 'num', r.year));
+        tr.appendChild(el('td', 'num', r.quota != null ? Math.round(r.quota) : '—'));
+        tr.appendChild(el('td', 'num', r.rate != null ? `${rate1(r.rate)}:1` : '—'));
+        tr.appendChild(el('td', 'num', r.g70 != null ? g2(r.g70) : '—'));
+        tr.appendChild(el('td', 'num', r.g50 != null ? g2(r.g50) : '—'));
+        tbody.appendChild(tr);
+      }
+    }
+    table.appendChild(tbody);
+    tw.appendChild(table);
+    block('연도별 추이', tw);
+  }
+
+  /* 일정 — 원서 마감과 발표일까지. 전형일정표가 준다. */
+  {
+    const list = [];
+    for (const kind of ATTEND) {
+      const d = dateOf(app, kind);
+      if (!d) continue;
+      list.push([`${kind}일`, d.fixed ? label(d.from) : `${label(d.from)}~${label(d.to)}`]);
+    }
+    const mocks = MOCKS.map((k) => dateOf(app, k)).filter(Boolean);
+    if (mocks.length) list.push(['모의면접', mocks.map((m, i) => `${i + 1}차 ${label(m.from)}`).join(' · ')]);
+    const paper = state.src && state.src.sched ? paperDates(app, state.src.sched) : null;
+    if (paper) {
+      const when = (x) => (x ? (x.from === x.to ? label(x.from) : `${label(x.from)}~${label(x.to)}`) : null);
+      list.push(['원서 접수 마감', paper.apply ? when(paper.apply) : null]);
+      list.push(['1단계 발표', when(paper.stage1)]);
+      list.push(['최종 발표', when(paper.final)]);
+    }
+    if (mo && mo.exam) list.push(['대학별 고사', mo.exam]);
+    // 전형 이름을 못 맞춰 카드 날짜로는 안 쓴 고사일 — 참고로만 (교사 상세와 같은 규칙)
+    if (state.src && state.src.sched) {
+      const near = examDate(app, state.src.sched);
+      const already = ATTEND.some((k) => dateOf(app, k));
+      if (near && near.loose && !already) {
+        list.push([`(참고) ${near.kind} 고사일`,
+          `${near.from === near.to ? label(near.from) : `${label(near.from)}~${label(near.to)}`}`
+          + ' — 이 대학 같은 유형의 날짜라 이 전형의 날짜가 아닐 수 있습니다']);
+      }
+    }
+    block('일정', factTable(list));
+  }
+
+  /* 수능최저 · 지원자격 — 원문 그대로. 요약하면 조건이 하나씩 빠진다. */
+  const minText = app.minReqText || (mo && mo.minReq) || '';
+  if (minText) block('수능 최저학력 기준', el('p', 'longtext', String(minText).replace(/^\s*\*\s*/, '')));
+  else if (app.minReq === false) block('수능 최저학력 기준', el('p', 'hint', '이 전형은 수능 최저가 없습니다.'));
+  if (mo && mo.eligibility) block('지원 자격', el('p', 'longtext', String(mo.eligibility)));
+
+  body.appendChild(el('p', 'hint',
+    '작년 자료는 참고값입니다. 최종 판단은 담임 선생님과 같이 해 주세요.'));
+
+  box.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+  host.appendChild(box);
+  host.hidden = false;
+  box.focus();
 }
 
 function note(text, isError) {

@@ -360,6 +360,13 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 .slot-card .dept { color: var(--muted); font-size: var(--t-xs); word-break: keep-all; }
 .slots.thin .slot-card .dept { color: var(--muted); }
 
+/* 학생 카드 머리 — 대학 이름과 「자세히」가 한 줄에 선다 */
+.mycard-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s3); align-items: start;
+}
+.mycard-head .univ { font-weight: 700; font-size: var(--t-md); line-height: 1.35; }
+
 /* 근거가 없어 날짜 칸이 안 선 카드의 접힌 줄. 평소에는 한 줄만 보인다. */
 .date-add > summary {
   font-size: var(--t-xs); color: var(--amber-ink); cursor: pointer;

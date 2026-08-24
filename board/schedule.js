@@ -20,6 +20,7 @@
  * 정해야 한다. 선생님이 넣은 날짜는 학생 화면에도 그대로 간다.
  */
 import * as store from './store.js';
+import { catOf } from './match.js';
 
 /** 가야 하는 것 — 겹치면 한 곳은 포기해야 한다 */
 const ATTEND = ['면접', '실기', '논술', '적성'];
@@ -112,7 +113,12 @@ export function clashes(events) {
        * pending 을 두는 까닭이 애초에 그것이다 — 잘못 적은 날짜 하나로 여섯 칸 판단이
        * 흔들리면 안 된다. 확인 전까지는 「겹칠 수 있음」까지만 말한다.
        */
-      const settled = (e) => e.status !== 'pending';
+      /*
+       * 전형일정표에서 온 날짜(sched)도 확정으로 안 친다. 대학 전체를 두고
+       * 한 말이지 이 학생이 잡은 날이 아니고, 전형 이름이 어긋난 채 붙었을
+       * 수도 있다. 사람이 넣거나 확인한 날짜만 「겹침」을 확정한다.
+       */
+      const settled = (e) => e.status === 'confirmed' || e.status === 'source';
       out.push({
         a, b,
         sure: a.fixed && b.fixed && a.from === b.from && settled(a) && settled(b),
@@ -190,18 +196,26 @@ function render() {
   head.appendChild(el('div', 'meta', bits.join(' · ') || '아직 일정이 없습니다'));
   main.appendChild(head);
 
-  if (!events.length) {
-    main.appendChild(el('p', 'empty-state',
-      '즐겨찾기에 면접·실기·논술 날짜가 들어오면 여기에 나옵니다.'));
-    return;
-  }
-
+  /*
+   * **날짜가 하나도 없어도 학생을 골랐으면 「면접 준비」는 그린다.**
+   *
+   * 예전에는 여기서 통째로 끊었다. 그런데 실제 관심대학 리스트는 일정 칸이
+   * 통째로 비어서(502건 중 0건), 이 탭이 늘 빈말 한 줄이었고 **날짜를 넣는
+   * 칸까지 같이 사라졌다.** 날짜가 없다는 것이 바로 넣어야 한다는 뜻인데,
+   * 없어서 못 넣는 꼴이었다. 겹침 판과 달력은 날짜가 있어야 뜻이 있으니
+   * 그때만 그린다.
+   */
   if (student) {
-    main.appendChild(clashPanel(clashes(events)));
-    main.appendChild(calendars(events));
+    if (events.length) {
+      main.appendChild(clashPanel(clashes(events)));
+      main.appendChild(calendars(events));
+    }
     main.appendChild(interviewPanel(student));
-  } else {
+  } else if (events.length) {
     main.appendChild(dayList(events));
+  } else {
+    main.appendChild(el('p', 'empty-state',
+      '아직 잡힌 날짜가 없습니다. 왼쪽에서 학생을 고르면 면접·실기 날짜를 넣을 수 있습니다.'));
   }
 }
 
@@ -285,12 +299,21 @@ function month(ym, events) {
        * 대학에 실제로 가는 날과 똑같이 칠해졌다 — 범례에 따로 두고도 구별이 안 됐다.
        * 학생이 이걸 보고 학교에 있어야 할 날을 대학 가는 날로 읽으면 큰일이다.
        */
+      /*
+       * **꽉 채운 칠은 사람이 잡은 날에만.** 전형일정표에서 온 날짜를 「가는 날」로
+       * 칠했더니, 학생이 잡지도 않은 숭실대 면접이 달력에 박혀 보였다. 사실이긴
+       * 하지만(그 전형의 고사일이다) 아직 이 학생의 확정이 아니다 — 점선으로 두고
+       * 어디서 온 날짜인지 제목에 적는다.
+       */
+      const settled = e.status === 'confirmed' || e.status === 'source';
       const kind = isMock(e.kind) ? 'mock'
         : NOTICE.includes(e.kind) ? 'tell'
-          : (e.fixed ? '' : 'soft');
+          : (e.fixed && settled ? '' : 'soft');
       const tag = el('span', `ev ${kind}`.trim(),
         `${shortUniv(e.app.univ)} ${e.kind}`);
-      tag.title = `${e.name} · ${e.app.dept} · ${span(e)}`;
+      const src = e.status === 'sched' || e.status === 'sched-loose' ? ' · 전형일정표'
+        : e.status === 'pending' ? ' · 학생 입력, 확인 대기' : '';
+      tag.title = `${e.name} · ${e.app.dept} · ${span(e)}${src}`;
       cell.appendChild(tag);
     }
     grid.appendChild(cell);
@@ -319,18 +342,44 @@ function month(ym, events) {
  * 전문대·특수대도 여기 들어온다. 즐겨찾기가 그쪽 면접일을 주지 않는 일이 많아서
  * **날짜가 없어도 덩이를 만들고** 선생님이 직접 넣을 수 있게 둔다.
  */
+/**
+ * 이 지원이 **가야 할 법한** 고사. 날짜가 아직 없어도 근거가 말해 준다.
+ * 학생 화면의 날짜 칸과 같은 규칙이다 — 두 화면이 다른 지원을 세우면 안 된다.
+ *
+ *   면접   모집요강이 단계별전형이라고 말할 때 (전형단계 ≥ 2)
+ *   논술   전형 유형이 논술
+ *   실기   전형 유형이 실기
+ */
+function expectedKinds(app) {
+  const s = store.summary(app);
+  const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
+  const out = [];
+  if (s && s.stages > 1) out.push('면접');
+  if (cat === '논술') out.push('논술');
+  if (cat === '실기') out.push('실기');
+  return out;
+}
+
 function interviewPanel(student) {
   const box = el('section', 'panel');
   const apps = store.appsOf(student.hak);
 
-  // 면접·실기·논술이 있거나, 있을 법한 지원. 전문대는 날짜가 없어도 넣는다 —
-  // 그게 바로 선생님이 손으로 채워야 하는 자리다.
+  /*
+   * 면접·실기·논술이 있거나, **있을 법한** 지원. 전문대는 날짜가 없어도 넣는다.
+   *
+   * 예전 조건은 「이미 날짜가 있을 때」뿐이었다. 그런데 실제 관심대학 리스트는
+   * 일정 칸이 통째로 비어서(502건 중 0건), 일반대 지원은 이 판에 **한 줄도 안
+   * 섰고 날짜를 넣을 칸도 없었다.** 학생 화면에서 잡았던 것과 똑같은 구멍이
+   * 교사 쪽에 그대로 있었다 — 단계별전형이면 날짜가 없어도 세운다.
+   */
   const rows = [];
+  const outside = [];              // 근거가 없어 안 세운 지원 — 접힌 줄로 길을 연다
   for (const app of apps) {
     const go = ATTEND.map((k) => ({ kind: k, d: store.dateOf(app, k) })).filter((x) => x.d);
     const other = app.univType === '전문대' || app.univType === '특수대';
-    if (!go.length && !other) continue;
-    rows.push({ app, go, other });
+    const expect = go.length ? [] : expectedKinds(app);
+    if (!go.length && !other && !expect.length) { outside.push(app); continue; }
+    rows.push({ app, go, other, expect });
   }
 
   const head = el('div', 'panel-head');
@@ -347,11 +396,68 @@ function interviewPanel(student) {
     '대학마다 묶어 두었습니다. 넣은 날짜는 학생 화면에도 그대로 보입니다.'));
 
   for (const r of rows) box.appendChild(univBlock(r));
+
+  /*
+   * **근거가 없어도 길은 열어 둔다.** 모집요강이 전형단계를 모르는 지원이 12%
+   * 있고, 알아도 틀릴 수 있다. 면접 통보를 받았는데 넣을 자리가 없으면
+   * 이 판이 없는 것과 같다. 접어 두어 평소에는 한 줄만 보인다.
+   */
+  if (outside.length) box.appendChild(outsideAdder(outside));
   return box;
 }
 
+/** 판에 안 선 지원에 날짜를 넣는 접힌 줄. */
+function outsideAdder(apps) {
+  const fold = document.createElement('details');
+  fold.className = 'date-add';
+  const sum = document.createElement('summary');
+  sum.textContent = `여기 없는 지원에 날짜 적기 (${apps.length}곳)`;
+  fold.appendChild(sum);
+
+  const wrap = el('div', 'field');
+  wrap.appendChild(el('p', 'hint',
+    '일괄전형이라 면접이 없는 것으로 본 지원들입니다. 그래도 고사가 잡혔으면 여기서 넣어 주세요.'));
+  const line = el('div', 'field-in');
+
+  const who = document.createElement('select');
+  who.setAttribute('aria-label', '지원 고르기');
+  for (const app of apps) {
+    const o = document.createElement('option');
+    o.value = app.id;
+    o.textContent = `${tidy(shortUniv(app.univ))} ${tidy(app.dept)}`;
+    who.appendChild(o);
+  }
+  line.appendChild(who);
+
+  const kindSel = document.createElement('select');
+  kindSel.setAttribute('aria-label', '고사 종류');
+  for (const k of ATTEND) {
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = k;
+    kindSel.appendChild(o);
+  }
+  line.appendChild(kindSel);
+
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.setAttribute('aria-label', '날짜');
+  line.appendChild(input);
+
+  const save = el('button', 'btn', '넣기');
+  save.type = 'button';
+  save.onclick = () => {
+    const app = apps.find((a) => a.id === who.value);
+    if (app) saveDate(app, kindSel.value, input.value);
+  };
+  line.appendChild(save);
+  wrap.appendChild(line);
+  fold.appendChild(wrap);
+  return fold;
+}
+
 /** 대학 한 덩이. */
-function univBlock({ app, go, other }) {
+function univBlock({ app, go, other, expect }) {
   const box = el('div', 'uni-block');
 
   const h = el('div', 'uni-head');
@@ -361,11 +467,13 @@ function univBlock({ app, go, other }) {
 
   const list = el('div', 'stack');
 
-  // 1. 대학이 정한 것
+  // 1. 대학이 정한 것 — 없으면 근거가 말한 종류마다 넣는 칸을 세운다
   if (go.length) {
     for (const x of go) list.appendChild(fixedRow(app, x.kind, x.d));
+  } else if (expect && expect.length) {
+    for (const kind of expect) list.appendChild(missingRow(app, other, kind));
   } else {
-    list.appendChild(missingRow(app, other));
+    list.appendChild(missingRow(app, other, '면접'));
   }
 
   // 2. 학교에서 잡는 모의면접. 여러 번 한다.
@@ -389,7 +497,7 @@ function univBlock({ app, go, other }) {
   return box;
 }
 
-/** 대학이 정한 날. 고치지 않는다 — 학생이 배정받으면 학생 화면에서 넣는다. */
+/** 대학이 정한 날 — 파싱해 온 값이면 선생님이 고칠 수 있다. */
 function fixedRow(app, kind, d) {
   const row = el('div', 'row ev-row');
   const txt = el('div', 'txt');
@@ -397,10 +505,36 @@ function fixedRow(app, kind, d) {
   txt.appendChild(el('div', 'dept', d.fixed
     ? label(d.from)
     : `${label(d.from)}~${label(d.to)} 중 하루`));
+  /*
+   * **파싱한 날짜는 고칠 수 있어야 한다.** 일정표·즐겨찾기에서 온 값은 대학 전체를
+   * 두고 한 말이라 이 학생의 실제 날짜와 다를 수 있는데, 여태 그 줄에는 아무
+   * 입력이 없어서 틀린 채로 두는 수밖에 없었다. 고치면 시트에 확정으로 남고
+   * 그 값이 파싱값을 덮는다(사람이 넣은 것이 언제나 먼저다).
+   */
+  if (d.status !== 'pending') {
+    const fix = document.createElement('details');
+    fix.className = 'date-add';
+    const sum = document.createElement('summary');
+    sum.textContent = '날짜 고치기';
+    fix.appendChild(sum);
+    const line = el('div', 'field-in');
+    const input = document.createElement('input');
+    input.type = 'date';
+    input.value = d.fixed ? d.from : '';
+    input.setAttribute('aria-label', `${shortUniv(app.univ)} ${kind}일 고치기`);
+    line.appendChild(input);
+    const save = el('button', 'btn', '넣기');
+    save.type = 'button';
+    save.onclick = () => saveDate(app, kind, input.value);
+    line.appendChild(save);
+    fix.appendChild(line);
+    txt.appendChild(fix);
+  }
   row.appendChild(txt);
   const tag = d.status === 'pending' ? '학생 입력 · 확인 대기'
     : d.status === 'confirmed' ? '확정'
-      : d.fixed ? '공지' : '기간';
+      : d.status === 'sched' || d.status === 'sched-loose' ? '전형일정표'
+        : d.fixed ? '공지' : '기간';
   row.appendChild(el('span', `pill${d.fixed ? '' : ' wait'}`, tag));
 
   /*
@@ -426,21 +560,21 @@ function fixedRow(app, kind, d) {
   return row;
 }
 
-/** 날짜가 없는 지원 — 선생님이 직접 넣는다. 전문대가 주로 여기다. */
-function missingRow(app, other) {
+/** 날짜가 없는 지원 — 선생님이 직접 넣는다. 종류는 부르는 쪽의 근거가 정한다. */
+function missingRow(app, other, kind) {
   const wrap = el('div', 'field');
-  wrap.appendChild(el('label', '', '면접일'));
+  wrap.appendChild(el('label', '', `${kind}일`));
   wrap.appendChild(el('p', 'hint', other
-    ? '전문대·특수대는 즐겨찾기에 면접일이 없는 일이 많습니다. 직접 넣어 주세요.'
-    : '즐겨찾기에 면접일이 없습니다. 아는 날짜가 있으면 넣어 주세요.'));
+    ? `전문대·특수대는 즐겨찾기에 ${kind}일이 없는 일이 많습니다. 직접 넣어 주세요.`
+    : `아직 ${kind} 날짜가 없습니다. 학생이 넣으면 여기로 오고, 아는 날짜가 있으면 직접 넣어도 됩니다.`));
   const line = el('div', 'field-in');
   const input = document.createElement('input');
   input.type = 'date';
-  input.setAttribute('aria-label', `${shortUniv(app.univ)} 면접일`);
+  input.setAttribute('aria-label', `${shortUniv(app.univ)} ${kind}일`);
   line.appendChild(input);
   const save = el('button', 'btn', '넣기');
   save.type = 'button';
-  save.onclick = () => saveDate(app, '면접', input.value);
+  save.onclick = () => saveDate(app, kind, input.value);
   line.appendChild(save);
   wrap.appendChild(line);
   return wrap;

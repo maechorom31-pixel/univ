@@ -415,6 +415,57 @@ export function detailPanel(app, student, onClose) {
   }
   body.appendChild(rows('일정', sched));
 
+  /*
+   * **면접·실기 날짜를 카드에서 바로 넣고 고친다.**
+   *
+   * 파싱해 온 날짜(일정표·즐겨찾기)는 대학 전체를 두고 한 말이라 이 학생의 실제
+   * 배정일과 다를 수 있다. 여태 고치려면 일정 탭까지 가야 했는데, 상담은 카드를
+   * 열어 놓고 한다 — 보이는 자리에서 고칠 수 있어야 한다.
+   * 넣으면 확정으로 남고 파싱값을 덮는다(사람이 넣은 것이 언제나 먼저다).
+   */
+  {
+    const fix = document.createElement('details');
+    fix.className = 'date-add';
+    const sum = document.createElement('summary');
+    sum.textContent = '면접·실기 날짜 넣기 · 고치기';
+    fix.appendChild(sum);
+    const line = el('div', 'field-in');
+    const kindSel = document.createElement('select');
+    kindSel.setAttribute('aria-label', '고사 종류');
+    for (const k of ['면접', '실기', '논술', '적성']) {
+      const o = document.createElement('option');
+      o.value = k;
+      o.textContent = k;
+      kindSel.appendChild(o);
+    }
+    const input = document.createElement('input');
+    input.type = 'date';
+    input.setAttribute('aria-label', '날짜');
+    const fill = () => {
+      const d = store.dateOf(app, kindSel.value);
+      input.value = d && d.fixed ? d.from : '';
+    };
+    kindSel.onchange = fill;
+    fill();
+    const save = el('button', 'btn', '저장');
+    save.type = 'button';
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        await store.setDate(app, kindSel.value, input.value, input.value);
+        sum.textContent = `${kindSel.value}일을 저장했습니다 — 면접·실기 날짜 넣기 · 고치기`;
+      } catch (err) {
+        window.alert(`저장하지 못했습니다 — ${err.message}`);
+      }
+      save.disabled = false;
+    };
+    line.appendChild(kindSel);
+    line.appendChild(input);
+    line.appendChild(save);
+    fix.appendChild(line);
+    body.appendChild(fix);
+  }
+
   // 일정표가 학과별로 나눠 적은 것은 원문 그대로 보여 준다. 어느 행에 속하는지
   // 기계가 못 가리는 자리라, 사람이 읽고 판단하는 편이 낫다.
   if (paper && paper.notes.length) {

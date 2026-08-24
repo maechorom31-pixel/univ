@@ -1353,6 +1353,12 @@ function studentView_(token) {
     // 시트에는 있는데 화면에서 없어지면 학생은 다시 적거나 도구를 안 믿게 된다.
     results: mine(rows_(SHEET.result)),
     fields: mine(rows_(SHEET.field)),
+    /*
+     * 별칭(선생님이 손으로 이어 준 학과)도 준다. 안 주면 같은 지원이
+     * 선생님 화면에는 작년 참고선이 붙고 학생 화면에는 아무것도 없다.
+     * 학번이 안 붙은 자료(대학·학과 이름뿐)라 통째로 줘도 새는 것이 없다.
+     */
+    aliases: rows_(SHEET.alias),
     notes: mine(rows_(SHEET.note)).filter(function (n) { return String(n.visible) === 'Y'; })
   };
 }

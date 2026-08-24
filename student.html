@@ -25,6 +25,8 @@
 
 <main class="wrap">
   <div id="me"></div>
+  <!-- 카드 상세 — 보드(board.html)와 같은 덮개를 쓴다 -->
+  <div class="overlay" id="detail" hidden></div>
   <p class="hint" id="foot">
     경쟁률과 작년 컷은 대학이 공개한 자료를 정리한 참고값입니다.
     최종 판단은 담임 선생님과 상의해 주세요.
@@ -37,6 +39,10 @@ import { start } from './board/student.js';
 
 // iOS 사파리는 터치 리스너가 없으면 :active 가 발화하지 않는다
 document.addEventListener('touchstart', () => {}, { passive: true });
+// 덮개의 빈 자리를 누르면 닫힌다 — 보드와 같은 버릇
+document.getElementById('detail').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) { e.currentTarget.hidden = true; e.currentTarget.textContent = ''; }
+});
 document.getElementById('print').onclick = () => window.print();
 
 const params = new URLSearchParams(location.search);
