@@ -55,7 +55,7 @@ function render() {
 
   const head = el('div', 'panel-head');
   head.appendChild(el('h2', '', cls ? `${cls}반 점검` : '학년 전체 점검'));
-  const left = groups.filter((g) => !g.skipped).length;
+  const left = groups.filter((g) => !g.skipped && !g.isNew).length;
   head.appendChild(el('span', 'count num', `못 붙인 학과 ${left}종`));
   main.appendChild(head);
 
@@ -69,7 +69,8 @@ function render() {
     return;
   }
 
-  const todo = groups.filter((g) => !g.skipped);
+  const todo = groups.filter((g) => !g.skipped && !g.isNew);
+  const fresh = groups.filter((g) => !g.skipped && g.isNew);
   const done = groups.filter((g) => g.skipped);
 
   main.appendChild(el('p', 'section-html section-label',
@@ -84,6 +85,26 @@ function render() {
   }
   for (const g of todo) list.appendChild(groupRow(g));
   main.appendChild(list);
+
+  /*
+   * **올해 신설인 학과는 접어 둔다.**
+   * 모집요강이 「작년에 이 학과로 아무도 안 뽑았다」고 말한 것들이다. 이을 자료가
+   * 애초에 없으니 목록에 세워 두면 선생님이 있지도 않은 것을 찾아 나선다.
+   * 그래도 지우지는 않는다 — 판정이 틀렸으면 여기서 직접 이을 수 있어야 한다.
+   */
+  if (fresh.length) {
+    const fold = document.createElement('details');
+    const sum = document.createElement('summary');
+    sum.textContent = `올해 신설이라 작년 자료가 없는 학과 ${fresh.length}종`;
+    fold.appendChild(sum);
+    const inner = el('div', 'stack');
+    inner.appendChild(el('p', 'section-label',
+      '모집요강이 작년 모집인원·경쟁률을 비워 둔 학과입니다.'
+      + ' 이을 작년 자료가 없는 것이 맞습니다 — 다만 판정이 틀렸다 싶으면 여기서 이어 주세요.'));
+    for (const g of fresh) inner.appendChild(groupRow(g));
+    fold.appendChild(inner);
+    main.appendChild(fold);
+  }
 
   /*
    * 「없음으로 표시」한 것은 접어 둔다. 지우면 잘못 눌렀을 때 되돌릴 길이 없고,

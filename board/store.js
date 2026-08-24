@@ -30,6 +30,7 @@ export const state = {
   students: new Map(),   // hak → Student
   apps: new Map(),       // id → Application
   placement: new Map(),  // id → { slot, rank }
+  seen: new Map(),       // hak → 그 학생 배치를 마지막으로 본 시각 (덮어쓰기 막이)
   notes: [],
   dates: new Map(),      // `${id}|${kind}` → { from, to, status }
   aliases: new Map(),    // `${univ}|${dept}` → { toUniv, toDept, note }
@@ -133,11 +134,18 @@ function apply(data) {
     status: r.status || 'pending',
   }]));
   state.placement = new Map();
+  // 배치를 마지막으로 본 시각. 학생과 담임이 같은 6칸을 동시에 만질 때
+  // 한 발 늦은 화면이 덮어쓰지 못하게 서버로 되돌려 보낸다. CONTRACT §2.4
+  state.seen = new Map();
   for (const row of data.state || []) {
     state.placement.set(String(row.id), {
       slot: row.slot || 'pool',
       rank: row.rank === '' || row.rank == null ? null : Number(row.rank),
     });
+    const hak = String(row.hak || '');
+    if (hak && String(row.at || '') > (state.seen.get(hak) || '')) {
+      state.seen.set(hak, String(row.at));
+    }
   }
   linkCache.clear();
 }
@@ -252,7 +260,24 @@ export function link(app) {
     const univ = resolveUniv(alias.toUniv || app.univ, ipgyeol.index);
     const line = univ ? referenceLine(univ, to, ipgyeol, catOf(app.typeCat)) : null;
     // 선생님이 고른 것이라 출처를 밝힌다 — 모집요강이 준 것과 섞이면 안 된다.
-    if (line) result.before = { type: '손으로 이음', parts: to, line, byHand: true };
+    if (line) {
+      result.before = { type: '손으로 이음', parts: to, line, byHand: true };
+      /*
+       * **이었으면 점검 목록에서 내려가야 한다.**
+       *
+       * 학과를 여럿 이으면 이름을 바꾸지 않으므로 `makeLink` 는 여전히
+       * 「못 찾았다」(`none`)를 준다. 그런데 점검 화면은 그 값 하나로 「아직 못
+       * 붙인 것」을 세서, **선생님이 이어 놓은 학과가 목록에 영영 남았다.**
+       * 이어도 안 사라지니 몇 번씩 다시 잇게 된다.
+       *
+       * 참고선이 그려졌으면 이건 붙은 것이다 — 다만 제 학과의 값이 아니라
+       * 참고 범위라 `loose` 다. 모집요강이 주는 「묶이기 전 참고」와 같은 등급이고
+       * 아래 코드도 그 자리를 이미 알고 있다(`linked` 는 그대로 false 다).
+       */
+      result.confidence = 'loose';
+      result.why = `선생님이 이어 둔 학과 ${to.length}곳의 선을 참고로 봅니다`
+        + ` — ${to.slice(0, 3).join(' · ')}${to.length > 3 ? ' 외' : ''}`;
+    }
   }
 
   linkCache.set(app.id, result);
@@ -312,9 +337,17 @@ export function unmatched(cls) {
          */
         const alias = state.aliases.get(key);
         const skipped = Boolean(alias) && !alias.toUniv && !alias.toDept;
+        /*
+         * **올해 신설인 학과는 이을 것이 없다.**
+         *
+         * 모집요강이 이 학과로 내놓은 전형이 하나도 빠짐없이 작년 칸이 비었으면
+         * 작년에 이 학과로 아무도 안 뽑은 것이다. 그런 학과가 「아직 못 붙인 것」
+         * 목록에 섞여 있으면 선생님은 있지도 않은 작년 자료를 찾아 나선다.
+         * 목록에서 내리되 지우지는 않는다 — 접힌 자리에서 확인할 수 있다.
+         */
         groups.set(key, {
           key, univ: app.univ, dept: app.dept, why: l.why, apps: [], who: [],
-          skipped, note: (alias && alias.note) || '',
+          skipped, isNew: Boolean(summary(app).isNew), note: (alias && alias.note) || '',
         });
       }
       groups.get(key).apps.push(app);
@@ -322,6 +355,7 @@ export function unmatched(cls) {
     }
   }
   return [...groups.values()].sort((a, b) => (a.skipped - b.skipped)
+    || (a.isNew - b.isNew)
     || b.apps.length - a.apps.length
     || a.univ.localeCompare(b.univ, 'ko'));
 }
@@ -384,6 +418,20 @@ export function summary(app) {
  * 보내고, 하나라도 실패하면 둘 다 되돌린다 — 반쯤 옮겨진 채로 두느니 아무것도
  * 안 옮긴 편이 낫다.
  */
+/*
+ * **자리를 한꺼번에 바꾼다 — 그리고 서버에는 한 번만 쓴다.**
+ *
+ * `moves` 의 첫째가 누른 카드, 둘째가 밀려난 카드다. 화면은 둘 다 곧바로 옮겨
+ * 그리지만, **서버로 가는 것은 첫째 하나뿐**이다. 밀려나는 쪽을 누가 어디로
+ * 보낼지는 서버가 잠금 안에서 다시 계산한다(`setRank_`).
+ *
+ * 나눠 쓰면 안 되는 까닭 — 이제 순위를 담임도 학생도 바꾼다. 둘이 같은 6칸을
+ * 동시에 만지면 「누른 카드 쓰기」 둘이 먼저 끼어들어 **두 카드가 나란히 1순위**가
+ * 될 수 있다. 중간이 없으면 끼어들 자리도 없다.
+ *
+ * `seen` 은 이 학생 배치를 마지막으로 본 시각이다. 그 사이에 저쪽이 바꿨으면
+ * 서버가 안 쓰고 그렇다고 말한다 — 덮어쓰고 나서 알리는 것보다 낫다.
+ */
 export async function placeMany(moves) {
   const before = moves.map(({ id }) => [String(id), placementOf(id)]);
   for (const { id, slot, rank } of moves) {
@@ -392,10 +440,15 @@ export async function placeMany(moves) {
   }
   emit('change', 'state');
   if (offline) return;
+  const head = moves[0];
+  const app = state.apps.get(String(head.id));
   try {
-    await Promise.all(moves.map(({ id, slot, rank }) => api.setState({
-      id, hak: state.apps.get(String(id)).hak, slot, rank: slot === 'rank' ? rank : '',
-    })));
+    const res = await api.setRank({
+      id: head.id, hak: app.hak, slot: head.slot,
+      rank: head.slot === 'rank' ? head.rank : '',
+      seen: state.seen.get(String(app.hak)) || '',
+    });
+    if (res && res.at) state.seen.set(String(app.hak), String(res.at));
   } catch (err) {
     for (const [id, was] of before) state.placement.set(id, was);
     emit('change', 'state');

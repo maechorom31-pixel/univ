@@ -128,6 +128,44 @@ console.log('\n학생 경로는 열쇠와 무관하게 토큰으로만');
 }
 
 /*
+ * 순위 맞바꾸기 — **한 번에, 그리고 늦은 화면은 되돌린다.**
+ *
+ * 이제 담임도 학생도 순위를 바꾼다. 화면에서 두 번 나눠 쓰면 둘이 끼어들어
+ * 두 카드가 나란히 1순위가 될 수 있다. 서버가 잠금 안에서 한 번에 한다.
+ */
+console.log('\n순위 맞바꾸기');
+sheets['설정'] = mkSheet([G.HEADERS['설정']]);
+{
+  const K = '84348434';
+  const st = () => (sheets['배치'] ? sheets['배치'].getDataRange().getValues() : []);
+  const place = (id, rank) => Object.fromEntries(
+    st().slice(1).map((r) => [String(r[0]), { slot: r[2], rank: r[3], at: r[5] }]),
+  )[id];
+  sheets['배치'] = mkSheet([G.HEADERS['배치'],
+    ['A', '3101', 'rank', 1, '담임', '2026-09-01T00:00:00+09:00'],
+    ['B', '3101', 'rank', 2, '담임', '2026-09-01T00:00:00+09:00'],
+    ['C', '3101', 'pool', '', '담임', '2026-09-01T00:00:00+09:00'],
+  ]);
+
+  const r1 = G.handle_({ action: 'setRank', key: K, id: 'A', hak: '3101', slot: 'rank', rank: 2 });
+  eq(r1.ok, true, '1순위를 2순위로 옮긴다');
+  eq([place('A').rank, place('B').rank], [2, 1], 'B 가 A 가 있던 1순위로 온다 (맞바꾸기)');
+
+  const r2 = G.handle_({ action: 'setRank', key: K, id: 'C', hak: '3101', slot: 'rank', rank: 1 });
+  eq(r2.ok, true, '후보를 1순위로 올린다');
+  eq([place('C').rank, place('B').slot], [1, 'pool'],
+    '밀려난 것은 후보로 내려간다 — 조용히 사라지지 않는다');
+
+  const r3 = G.handle_({ action: 'setRank', key: K, id: 'A', hak: '3101', slot: 'rank', rank: 3,
+    seen: '2026-08-01T00:00:00+09:00' });
+  eq([r3.ok, r3.stale], [false, true], '한 발 늦은 화면은 되돌린다');
+  eq(place('A').rank, 2, '되돌렸으니 자리도 그대로다');
+
+  const r4 = G.handle_({ action: 'setRank', key: K, id: 'A', hak: '3101', slot: 'rank', rank: 9 });
+  eq(r4.ok, false, '1~6 밖은 안 받는다');
+}
+
+/*
  * 같은 목록이 서버(`Code.gs`)와 화면(`store.js`) 양쪽에 있다. 어긋나면 학생이
  * 적은 값이 「모르는 칸입니다」로 조용히 거절된다. 글자로 견줘 둔다.
  */

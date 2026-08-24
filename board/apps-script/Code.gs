@@ -215,6 +215,7 @@ function handle_(p) {
     case 'ping':       return { ok: true, who: who, locked: me.locked, at: now_() };
     case 'students':   return loadAll_(me);
     case 'setState':   return setState_(p, who);
+    case 'setRank':    return setRank_(p, who);
     case 'addNote':    return addNote_(p, who);
     case 'removeNote': return removeNote_(p, who);
     case 'setResult':  return setResult_(p, who, 'confirmed');
@@ -893,6 +894,83 @@ function setState_(p, who) {
   return { ok: true };
 }
 
+/**
+ * **순위 한 번에 바꾸기 — 자리다툼을 서버가 막는다.**
+ * =====================================================================
+ * 이제 순위를 담임도 바꾸고 학생도 바꾼다. 둘이 같은 학생의 6칸을 동시에 만지면
+ * 화면 쪽에서 두 번 나눠 쓰는 방식으로는 막을 수가 없다.
+ *
+ *     학생   2순위 카드를 1순위로   →  (쓰기1) 그 카드 rank=1
+ *     담임   같은 순간 다른 카드를 1순위로  →  (쓰기1) 그 카드 rank=1
+ *     학생   (쓰기2) 밀려난 카드 rank=2
+ *     담임   (쓰기2) 밀려난 카드 rank=2
+ *
+ * 두 카드가 나란히 1순위가 된다. 「같은 학생 안에서 rank 는 겹칠 수 없다」는
+ * 약속이 조용히 깨지고, 아무도 못 알아챈다.
+ *
+ * 그래서 **맞바꾸기를 통째로 서버가 한다.** 잠금 안에서 지금 배치를 읽고, 밀려날
+ * 카드를 찾고, 둘을 한꺼번에 쓴다. 중간이 없으니 끼어들 자리도 없다.
+ *
+ * 거기에 **한 발 늦은 화면을 되돌린다.** 화면은 마지막으로 본 배치의 시각(`seen`)을
+ * 같이 보낸다. 그 사이에 누가 이 학생의 배치를 건드렸으면 쓰지 않고 그렇다고
+ * 말한다 — 덮어쓰고 나서 알리는 것보다 낫다. `seen` 을 안 보내면 검사하지 않는다
+ * (예전 화면과 보기용 자료를 위해서다).
+ */
+function setRank_(p, who) {
+  if (!p.id || !p.hak) return { ok: false, error: 'id 와 hak 이 필요합니다.' };
+  var slot = p.slot || 'pool';
+  var rank = slot === 'rank' ? parseInt(p.rank, 10) : '';
+  if (slot === 'rank' && !(rank >= 1 && rank <= 6)) {
+    return { ok: false, error: '순위는 1~6 사이여야 합니다.' };
+  }
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var all = rows_(SHEET.state);
+    var mine = [];
+    var newest = '';
+    for (var i = 0; i < all.length; i++) {
+      if (String(all[i].hak) !== String(p.hak)) continue;
+      mine.push(all[i]);
+      if (String(all[i].at) > newest) newest = String(all[i].at);
+    }
+    if (p.seen && newest && String(p.seen) < newest) {
+      return {
+        ok: false, stale: true,
+        error: '그 사이에 순위가 바뀌었습니다. 새로 불러온 뒤 다시 해 주세요.'
+      };
+    }
+
+    var was = null;
+    var taken = null;
+    for (var j = 0; j < mine.length; j++) {
+      if (String(mine[j].id) === String(p.id)) was = mine[j];
+      else if (slot === 'rank' && String(mine[j].slot) === 'rank'
+        && parseInt(mine[j].rank, 10) === rank) taken = mine[j];
+    }
+
+    var now = now_();
+    var writes = [{ id: p.id, hak: p.hak, slot: slot, rank: rank, by: who, at: now }];
+    /*
+     * 밀려난 카드는 **누른 카드가 있던 자리로** 간다. 순위끼리면 맞바꾸기가 되고,
+     * 후보에서 올라온 것이면 밀려난 쪽이 후보로 내려간다. 조용히 사라지지 않는다.
+     */
+    if (taken) {
+      var backSlot = was && String(was.slot) === 'rank' ? 'rank' : 'pool';
+      var backRank = backSlot === 'rank' ? parseInt(was.rank, 10) : '';
+      writes.push({
+        id: taken.id, hak: p.hak, slot: backSlot, rank: backRank, by: who, at: now
+      });
+    }
+    for (var w = 0; w < writes.length; w++) upsert_(SHEET.state, ['id'], writes[w]);
+    log_(who, 'setRank', p.hak + ' ' + p.id + ' → ' + slot + (rank ? ('#' + rank) : '')
+      + (taken ? (' (밀려남 ' + taken.id + ')') : ''));
+    return { ok: true, at: now, moved: writes };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function addNote_(p, who) {
   if (!p.hak || !String(p.text || '').trim()) {
     return { ok: false, error: '학번과 내용이 필요합니다.' };
@@ -1012,7 +1090,7 @@ function ownsApp_(hak, id) {
 /** 토큰으로 여는 경로. 여기 적힌 것만 학생이 부를 수 있다. */
 var STUDENT_ACTION = {
   student: 1, studentDate: 1, studentApplyNo: 1, studentField: 1, studentResult: 1,
-  studentNote: 1, studentNoteRemove: 1, studentAsk: 1
+  studentNote: 1, studentNoteRemove: 1, studentAsk: 1, studentRank: 1
 };
 
 function studentAction_(action, p) {
@@ -1027,6 +1105,15 @@ function studentAction_(action, p) {
   }
   var who = hak + ' 학생';
 
+  /*
+   * **순위는 학생이 바로 바꾼다 — 확인 대기로 두지 않는다.**
+   *
+   * 날짜·접수번호·결과는 잘못 적으면 판단이 흔들려서 담임이 확인한다. 순위는
+   * 다르다. 어디를 몇 순위로 넣을지는 원래 학생이 정하는 것이고, 틀려도 다시
+   * 바꾸면 그만이다. 확인을 걸면 학생은 「바꿨는데 안 바뀐다」고 읽는다.
+   * 누가 바꿨는지는 `by` 에 「3201 학생」으로 남아 담임이 안다.
+   */
+  if (action === 'studentRank') return setRank_({ id: p.id, hak: hak, slot: p.slot, rank: p.rank, seen: p.seen }, who);
   if (action === 'studentDate') return setDate_(p, who, 'pending');
   if (action === 'studentApplyNo') {
     upsert_(SHEET.note, ['noteId'], {

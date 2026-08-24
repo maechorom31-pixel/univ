@@ -17,7 +17,7 @@
  */
 import * as api from './api.js';
 import { link as makeLink, indexIpgyeol, indexMojip, indexCollege, summarize } from './match.js';
-import { rate1 } from './text.js';
+import { josa, rate1 } from './text.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';
@@ -34,6 +34,7 @@ const state = {
   student: null,
   apps: [],
   placement: new Map(),
+  seen: '',              // 배치를 마지막으로 본 시각 — 덮어쓰기 막이. CONTRACT §2.4
   dates: new Map(),      // `${id}|${kind}` → { from, to, status }
   fields: new Map(),     // `${id}|${field}` → { value, status }. 생년월일은 id 가 빈 문자열
   notes: [],
@@ -94,6 +95,9 @@ function apply(data) {
     slot: r.slot || 'pool',
     rank: r.rank === '' || r.rank == null ? null : Number(r.rank),
   }]));
+  // 배치를 마지막으로 본 시각. 순위를 바꿀 때 되돌려 보내 한 발 늦은 화면이
+  // 담임의 변경을 덮어쓰지 못하게 한다. CONTRACT §2.4
+  state.seen = (data.state || []).reduce((hi, r) => (String(r.at || '') > hi ? String(r.at) : hi), '');
   state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
     from: String(r.from || ''), to: String(r.to || r.from || ''), status: r.status || 'pending',
   }]));
@@ -172,8 +176,20 @@ function render() {
     .sort((a, b) => state.placement.get(String(a.id)).rank - state.placement.get(String(b.id)).rank);
   const rest = state.apps.filter((a) => !ranked.includes(a));
 
-  main.appendChild(group('지원 6칸', ranked, `${ranked.length}/6`,
-    ranked.length ? '' : '아직 순위가 정해지지 않았습니다. 상담 때 함께 정합니다.'));
+  /*
+   * **빈 칸 여섯이 먼저 보인다.**
+   *
+   * 수시는 여섯 장이다. 그 사실이 화면 맨 위에 그대로 있어야, 학생이 「나는 지금
+   * 몇 칸을 채웠나」를 세지 않고 본다. 아래 카드마다 순위를 고르면 이 칸이 찬다.
+   */
+  main.appendChild(slotGrid(ranked));
+
+  /*
+   * 위의 격자와 **제목이 겹치면 안 된다.** 둘 다 「지원 6칸」이면 같은 것이 두 번
+   * 나온 줄로 읽는다. 위는 자리표, 여기는 그 자리에 든 지원의 속내다.
+   */
+  main.appendChild(group('순위를 정한 지원', ranked, `${ranked.length}곳`,
+    ranked.length ? '' : '아직 순위가 없습니다. 아래 지원에서 순위를 골라 보세요.'));
 
   /*
    * 숫자를 처음 만나는 자리에 읽는 법을 둔다.
@@ -372,6 +388,142 @@ function clashPanel() {
   return box;
 }
 
+const RANKS = [1, 2, 3, 4, 5, 6];
+
+/**
+ * **여섯 칸 — 비어 있어도 그린다.**
+ *
+ * 교사 보드와 같은 모양이다. 다만 학생 화면은 좁으니 대학 이름과 학과만 둔다.
+ * 숫자는 아래 카드에 있고, 여기는 「어디를 몇 순위로 넣었나」만 말한다.
+ */
+function slotGrid(ranked) {
+  const at = (r) => ranked.find((a) => (state.placement.get(String(a.id)) || {}).rank === r);
+  const wrap = el('section', 'panel');
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '지원 6칸'));
+  head.appendChild(el('span', 'count num', `${ranked.length}/6`));
+  wrap.appendChild(head);
+  const grid = el('div', ranked.length ? 'slots mine' : 'slots mine thin');
+  for (const r of RANKS) {
+    const app = at(r);
+    const box = el('div', app ? 'slot-card' : 'slot-card empty');
+    box.appendChild(el('div', 'rank', `${r}순위`));
+    if (app) {
+      box.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
+      box.appendChild(el('div', 'dept', tidy(app.dept)));
+    } else {
+      box.appendChild(el('div', 'dept', '비어 있음'));
+    }
+    grid.appendChild(box);
+  }
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+/**
+ * **순위 고르개 — 학생이 직접 바꾼다.**
+ * =====================================================================
+ * 어디를 몇 순위로 넣을지는 원래 학생이 정하는 것이다. 여태 상담 때 담임만
+ * 바꿀 수 있었는데, 집에서 밤에 마음이 바뀌는 쪽은 학생이다.
+ *
+ * 차 있는 순위를 고르면 **거기 있던 것과 자리를 맞바꾼다.** 무엇이 밀려났는지
+ * 고르개에 미리 적어 둔다 — 「2순위 ⇄ 국어국문학과」. 조용히 사라지면 안 된다.
+ *
+ * 맞바꾸기는 서버가 잠금 안에서 한 번에 한다(`studentRank`). 담임이 같은 순간
+ * 같은 6칸을 만지고 있어도 두 카드가 나란히 1순위가 되지 않는다.
+ */
+function rankPicker(app) {
+  const wrap = el('div', 'field rank-pick');
+  const id = `r-${app.id}`;
+  const lab = el('label', '', '순위');
+  lab.htmlFor = id;
+  wrap.appendChild(lab);
+
+  const sel = document.createElement('select');
+  sel.id = id;
+  sel.disabled = state.busy;
+  const now = state.placement.get(String(app.id)) || { slot: 'pool', rank: null };
+  const opt = (value, text) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    sel.appendChild(o);
+    return o;
+  };
+  opt('pool', '아직 안 정함');
+  for (const r of RANKS) {
+    const taken = state.apps.find((a) => a.id !== app.id
+      && (state.placement.get(String(a.id)) || {}).slot === 'rank'
+      && (state.placement.get(String(a.id)) || {}).rank === r);
+    opt(`rank:${r}`, taken ? `${r}순위 ⇄ ${tidy(taken.dept)}` : `${r}순위`);
+  }
+  sel.value = now.slot === 'rank' ? `rank:${now.rank}` : 'pool';
+  sel.onchange = () => { moveRank(app, sel.value); };
+  wrap.appendChild(sel);
+  return wrap;
+}
+
+async function moveRank(app, value) {
+  if (state.busy) return;
+  const [slot, rankText] = String(value).split(':');
+  const rank = rankText ? Number(rankText) : null;
+  const was = state.placement.get(String(app.id)) || { slot: 'pool', rank: null };
+  const taken = slot === 'rank'
+    ? state.apps.find((a) => a.id !== app.id
+      && (state.placement.get(String(a.id)) || {}).slot === 'rank'
+      && (state.placement.get(String(a.id)) || {}).rank === rank)
+    : null;
+
+  // 화면부터 옮긴다. 실패하면 되돌린다.
+  const before = new Map(state.placement);
+  state.placement.set(String(app.id), { slot, rank: slot === 'rank' ? rank : null });
+  if (taken) {
+    state.placement.set(String(taken.id), was.slot === 'rank'
+      ? { slot: 'rank', rank: was.rank }
+      : { slot: 'pool', rank: null });
+  }
+  state.busy = true;
+  state.notice = '';
+  if (taken) {
+    const name = tidy(taken.dept);
+    state.notice = was.slot === 'rank'
+      ? `${name}${josa(taken.dept, '과', '와')} ${was.rank}순위를 맞바꿨습니다.`
+      : `${name}${josa(taken.dept, '은', '는')} 순위에서 내렸습니다.`;
+  }
+  render();
+
+  if (offline) { state.busy = false; render(); return; }
+  try {
+    const res = await api.call('studentRank', {
+      token: state.token, id: app.id, slot,
+      rank: slot === 'rank' ? rank : '',
+      seen: state.seen || '',
+    });
+    if (res && res.at) state.seen = String(res.at);
+    state.notice = state.notice || '순위를 바꿨습니다.';
+  } catch (err) {
+    state.placement = before;
+    /*
+     * **여기서 `state.error` 를 건드리면 안 된다.** 그 값은 화면을 통째로
+     * 지우고 오류 한 줄만 남기는 자리다(자료를 못 받았을 때). 순위 하나를
+     * 못 바꾼 것 때문에 학생이 제 지원 목록을 잃으면 안 된다.
+     *
+     * 「그 사이에 바뀌었다」면 **다시 불러온다.** 새로고침을 시키면 학생은
+     * 자기가 무엇을 놓쳤는지 모른 채 같은 것을 다시 누른다.
+     */
+    if (/그 사이에/.test(String(err.message))) {
+      state.notice = '선생님이 방금 순위를 바꾸셨습니다. 새로 불러왔습니다 — 다시 골라 주세요.';
+      try {
+        apply(await api.call('student', { token: state.token }, { timeout: 45000 }));
+      } catch (e2) { state.notice = `다시 불러오지 못했습니다 — ${e2.message}`; }
+    } else {
+      state.notice = `순위를 바꾸지 못했습니다 — ${err.message}`;
+    }
+  }
+  state.busy = false;
+  render();
+}
+
 function group(title, apps, count, help) {
   const box = el('section', 'panel');
   const head = el('div', 'panel-head');
@@ -495,6 +647,7 @@ function card(app) {
 
   box.appendChild(figures(app));
   box.appendChild(marks(app));
+  box.appendChild(rankPicker(app));
 
   // 모의면접은 여러 번 한다. 잡힌 것을 다 보여 준다.
   const mocks = MOCKS.map((k) => dateOf(app, k)).filter(Boolean);

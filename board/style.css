@@ -341,6 +341,28 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 .soon { border-color: var(--amber); background: var(--amber-face); }
 .soon .row + .row { border-top-color: rgba(180, 83, 9, 0.18); }
 
+/* 학생 화면의 6칸. 교사 보드와 같은 격자를 쓰되 숫자는 안 넣는다 —
+   숫자는 아래 카드에 있고 여기는 「어디를 몇 순위로 넣었나」만 말한다.
+   좁은 화면에서는 두 칸씩 선다(격자가 알아서 접는다). */
+.slot-card {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  padding: var(--s3); min-height: 84px;
+}
+.slot-card.empty { border-style: dashed; color: var(--muted); min-height: 56px; }
+/* 학생 화면은 휴대폰으로 본다. 칸을 좁게 잡아 390px 에서도 두 줄에 셋씩 선다 —
+   여섯 칸이 세로로 늘어서면 정작 지원 목록이 화면 두 번 아래로 밀린다. */
+.slots.mine { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.slot-card .rank {
+  font-size: var(--t-xs); font-weight: 700; color: var(--amber-ink);
+  margin-bottom: 2px;
+}
+.slot-card .univ { font-weight: 700; line-height: 1.35; word-break: keep-all; }
+.slot-card .dept { color: var(--muted); font-size: var(--t-xs); word-break: keep-all; }
+.slots.thin .slot-card .dept { color: var(--muted); }
+
+/* 순위 고르개. 학생 화면의 다른 입력칸과 같은 줄 모양을 쓴다. */
+.field.rank-pick select { font-size: 16px; }   /* iOS 가 확대하지 않는 최소 크기 */
+
 .mycard { border-top: 1px solid var(--line); padding: var(--s4) 0; }
 .mycard:first-of-type { border-top: 0; padding-top: var(--s2); }
 .mycard .rank {

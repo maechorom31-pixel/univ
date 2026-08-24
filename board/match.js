@@ -440,7 +440,7 @@ export function link(app, src) {
   const mojipOf = () => {
     const u = src.mojip && resolveUniv(app.univ, src.mojip.index);
     if (!u) return [];
-    return pickMojip(src.mojip.byKey.get(key(u, app.dept)) || [], app);
+    return pickMojip(deptRows(u, app.dept, src.mojip.byKey).rows, app);
   };
 
   const kind = univKind(app.univType);
@@ -465,12 +465,12 @@ export function link(app, src) {
   }
 
   const k = key(univ, app.dept);
-  const rows = narrowDept((src.ipgyeol.byKey.get(k) || []).slice()
-    .sort((a, b) => a.year - b.year), app);
+  const hit = deptRows(univ, app.dept, src.ipgyeol.byKey);
+  const rows = narrowDept(hit.rows.slice().sort((a, b) => a.year - b.year), app);
 
   const mojipUniv = resolveUniv(app.univ, src.mojip.index);
   const mojip = pickMojip(
-    mojipUniv ? (src.mojip.byKey.get(key(mojipUniv, app.dept)) || []) : [],
+    mojipUniv ? deptRows(mojipUniv, app.dept, src.mojip.byKey).rows : [],
     app,
   );
 
@@ -496,7 +496,8 @@ export function link(app, src) {
     return {
       key: k, kind: 'univ', ipgyeol: rows, college: [], mojip, related,
       before: bundle, confidence: 'exact',
-      why: `${univ} · ${app.dept}`,
+      // 이름을 줄여서 찾았으면 **어떤 이름으로 찾았는지 적는다.** 숨기면 그냥 오연결이다.
+      why: hit.loose ? `${univ} · ${app.dept} → 입결의 「${hit.dept}」` : `${univ} · ${app.dept}`,
     };
   }
   if (bundle) {
@@ -532,6 +533,65 @@ export function link(app, src) {
     );
   }
   return none(`${univ}에 「${app.dept}」 입결이 없습니다`, mojip);
+}
+
+/*
+ * **학과 이름을 못 찾으면 두 번 더 두드린다.**
+ *
+ * 즐겨찾기와 입결이 같은 학과를 다른 자리에서 자른다.
+ *
+ *     즐겨찾기  조선대 국어국문학부(국어국문학전공)   입결  국어국문학전공
+ *     즐겨찾기  상명대 인문콘텐츠학부 문헌정보학전공   입결  문헌정보학전공
+ *     즐겨찾기  동아대 정치사회학부(사회학전공)       입결  사회학전공
+ *     즐겨찾기  조선대 약학과(6년제)                입결  약학과
+ *
+ * 앞은 **학부를 앞에 달고 전공을 뒤에 단** 것이고, 뒤는 **수업 연한**이다.
+ * 둘 다 같은 학과를 가리키는데 글자로는 안 겹친다.
+ *
+ * 그래서 못 찾았을 때만, 이 차례로 다시 찾는다.
+ *
+ *   1. 원래 이름 그대로
+ *   2. 「학부(전공)」·「학부 전공」의 **전공 쪽만** — 뒷조각이 학과 이름 꼴일 때만
+ *   3. 「(N년제)」를 뗀 이름 — 연한은 학과를 가르는 말이 아니다
+ *
+ * **찾은 것이 한 벌일 때만 쓴다.** 이름을 줄이면 여러 학과에 걸릴 수 있고, 그러면
+ * 어느 것인지 모르는 채 하나를 고르는 셈이다. 오연결이 미연결보다 나쁘다.
+ * 그리고 이것은 **이름이 바뀐 학과를 잇는 것과 다르다** — 저쪽은 자동으로 안 잇는다
+ * (`predecessor` 참고). 여기는 같은 이름을 다르게 자른 것을 도로 붙이는 것뿐이다.
+ */
+const MAJOR_TAIL = /(전공|학과|학부|계열)$/;
+
+function deptTries(dept) {
+  const out = [dept];
+  const raw = String(dept || '').trim();
+
+  // 「학부(전공)」 — 괄호 안이 학과 이름 꼴이면 그것만으로도 찾아본다
+  const par = raw.match(/^(.+?)\s*\(([^()]+)\)\s*$/);
+  if (par && MAJOR_TAIL.test(par[2].trim())) out.push(par[2].trim());
+
+  // 「학부 전공」 — 띄어쓰기로 갈린 꼴
+  const sp = raw.match(/^(\S*(?:학부|대학|스쿨|칼리지))\s+(.+)$/);
+  if (sp && MAJOR_TAIL.test(sp[2].trim())) out.push(sp[2].trim());
+
+  // 수업 연한은 학과를 가르는 말이 아니다
+  if (/\([2-6]\s*년제\)/.test(raw)) out.push(raw.replace(/\([2-6]\s*년제\)/g, '').trim());
+
+  return [...new Set(out.filter(Boolean))];
+}
+
+function deptRows(univ, dept, byKey) {
+  const tries = deptTries(dept);
+  for (let i = 0; i < tries.length; i += 1) {
+    const rows = byKey.get(key(univ, tries[i])) || [];
+    if (!rows.length) continue;
+    // 줄여서 찾았으면 **그 이름이 가리키는 학과가 하나뿐일 때만** 받는다
+    if (i > 0) {
+      const names = new Set(rows.map((r) => String(r.dept).replace(/\s/g, '')));
+      if (names.size > 1) continue;
+    }
+    return { rows, dept: tries[i], loose: i > 0 };
+  }
+  return { rows: [], dept, loose: false };
 }
 
 /*
@@ -1199,6 +1259,31 @@ function isNewThisYear(mojipRows, picked) {
   return true;
 }
 
+/*
+ * **학과 자체가 올해 생겼나.**
+ *
+ * 입결을 못 붙였을 때 쓰는 물음이다. 붙었을 때는 전형 줄 하나를 놓고 물으면 되지만
+ * (`isNewThisYear`), 못 붙었으면 견줄 전형 줄이 아예 없다. 그때는 **모집요강이
+ * 이 학과로 내놓은 전형이 하나도 빠짐없이 작년 칸이 비었나**를 본다. 그러면
+ * 작년에 이 학과로 아무도 안 뽑았다는 뜻이다.
+ *
+ * 여기서 `byName`(전형 이름이 맞았나)을 따지지 않는다. 학과 단위 물음이라
+ * 전형 이름이 맞고 틀리고는 상관이 없다.
+ *
+ * 이 말을 하는 것과 안 하는 것의 차이가 크다. 「입결 자료에 없습니다」는 선생님이
+ * 자료가 빠진 줄 알고 찾아 나서게 하지만, 「올해 신설이라 작년 자료가 없습니다」는
+ * 더 찾을 것이 없다는 말이다. 실제로 올해 개편이 잦다 — 광역모집·자유전공·
+ * AI 붙은 학과가 해마다 새로 생긴다.
+ */
+function deptIsNew(mojipRows) {
+  if (!mojipRows || !mojipRows.length) return false;
+  for (let i = 0; i < mojipRows.length; i += 1) {
+    const r = mojipRows[i];
+    if (!(r.quotaPrev == null && r.rate26 == null)) return false;
+  }
+  return true;
+}
+
 export function summarize(l, app) {
   if (!l) return { linked: false, kind: 'univ', rows: [], before: null, real: NO_RATE, why: '자료를 받는 중입니다' };
   if (l.confidence === 'none') {
@@ -1210,7 +1295,8 @@ export function summarize(l, app) {
     const mo = (l.mojip && l.mojip[0]) || null;
     return {
       linked: false, kind: l.kind, rows: [], mine: [], before: null, why: l.why,
-      isNew: isNewThisYear(l.mojip, null), alias: l.alias || null, nearby: null, catMissing: null,
+      // 입결을 못 붙였을 때는 **학과 단위**로 묻는다. 전형 줄이 아예 없어서다.
+      isNew: deptIsNew(l.mojip), alias: l.alias || null, nearby: null, catMissing: null,
       mojip: mo,
       quotaNow: app && app.quota != null ? app.quota : (mo ? mo.quota : null),
       quotaPrev: mo ? mo.quotaPrev : null,

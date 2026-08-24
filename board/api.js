@@ -38,7 +38,7 @@ const DEFAULT_KEY = '84348434';
  */
 const STUDENT_ACTION = new Set([
   'student', 'studentDate', 'studentApplyNo', 'studentField', 'studentResult',
-  'studentNote', 'studentNoteRemove', 'studentAsk',
+  'studentNote', 'studentNoteRemove', 'studentAsk', 'studentRank',
 ]);
 let apiUrl = '';
 let teacherKey = '';
@@ -175,6 +175,8 @@ export async function call(action, params, opts = {}) {
 
 export const students = () => call('students', {}, { timeout: 45000 });
 export const setState = (s) => call('setState', s);
+/** 순위 옮기기 — 맞바꾸기까지 서버가 한 번에 한다. board/CONTRACT.md §2.4 */
+export const setRank = (s) => call('setRank', s);
 export const addNote = (n) => call('addNote', n);
 export const removeNote = (noteId) => call('removeNote', { noteId });
 export const setResult = (r) => call('setResult', r);
