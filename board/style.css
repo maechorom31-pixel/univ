@@ -1053,6 +1053,12 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
   .panel { border: 1px solid #999; break-inside: avoid; page-break-inside: avoid; }
   .card { border: 1px solid #999; break-inside: avoid; page-break-inside: avoid; }
   .card .dept, .roster .hak, .pill, .who .meta { color: #000; }
+  /* 일정 탭을 그대로 A4 로 뽑는 담임 책상용. 배경 칠이 안 찍히므로 칩은 테두리로. */
+  .cal .ev { background: none; border: 1px solid #999; color: #000; }
+  .cal .ev .d { color: #000; }
+  .cal > * { min-height: 3rem; }
+  .month { page-break-inside: avoid; break-inside: avoid; }
+  .uni-block, .ev-row { page-break-inside: avoid; break-inside: avoid; }
   .roster { max-height: none; overflow: visible; }
 
   /* 내보내기 — 한 장이 한 쪽. 화면의 껍데기는 빼고 표만 남긴다. */

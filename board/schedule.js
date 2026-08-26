@@ -213,6 +213,12 @@ function render() {
     main.appendChild(interviewPanel(student));
   } else if (events.length) {
     main.appendChild(dayList(events));
+    /*
+     * **반 전체 달력.** 겹침 판정은 학생 한 명 안에서만 보지만, 11월의 실제
+     * 문제는 여러 학생의 모의면접이 같은 날 몰리는 것이다 — 교실도 담임의
+     * 몸도 하나다. 달력에 다 얹으면 몰린 날이 칩 무더기로 바로 보인다.
+     */
+    main.appendChild(calendars(events, true));
   } else {
     main.appendChild(el('p', 'empty-state',
       '아직 잡힌 날짜가 없습니다. 왼쪽에서 학생을 고르면 면접·실기 날짜를 넣을 수 있습니다.'));
@@ -255,13 +261,17 @@ const span = (e) => (e.fixed ? label(e.from) : `${label(e.from)}~${label(e.to)}`
 
 /* 달력 */
 
-function calendars(events) {
+function calendars(events, withName) {
   const box = el('section', 'panel');
-  box.appendChild(el('h2', '', '달력'));
+  box.appendChild(el('h2', '', withName ? '반 달력' : '달력'));
+  if (withName) {
+    box.appendChild(el('p', 'section-label',
+      '모의면접이 한 날에 몰리면 여기서 보입니다. 칩을 누르면 그 지원의 카드가 열립니다.'));
+  }
 
   const months = [...new Set(events.map((e) => e.from.slice(0, 7)))].sort();
   const wrap = el('div', 'months');
-  for (const ym of months) wrap.appendChild(month(ym, events));
+  for (const ym of months) wrap.appendChild(month(ym, events, withName));
   box.appendChild(wrap);
 
   const legend = el('div', 'legend');
@@ -276,7 +286,7 @@ function calendars(events) {
   return box;
 }
 
-function month(ym, events) {
+function month(ym, events, withName) {
   const [y, m] = ym.split('-').map(Number);
   const box = el('div', 'month');
   box.appendChild(el('div', 'month-h', `${y}년 ${m}월`));
@@ -322,7 +332,8 @@ function month(ym, events) {
       tag.type = 'button';
       tag.className = `ev ${kind}`.trim();
       tag.appendChild(el('span', '', `${shortUniv(e.app.univ)} ${e.kind}`));
-      tag.appendChild(el('i', 'd', tidy(e.app.dept)));
+      // 학생 한 명의 달력에서는 학과가, 반 전체 달력에서는 누구인지가 갈라 준다
+      tag.appendChild(el('i', 'd', withName ? `${e.hak} ${tidy(e.name)}` : tidy(e.app.dept)));
       const src = e.status === 'sched' ? ' · 전형일정표'
         : e.status === 'pending' ? ' · 학생 입력, 확인 대기' : '';
       tag.title = `${e.name} · ${e.app.dept} · ${span(e)}${src} — 누르면 카드가 열립니다`;

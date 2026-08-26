@@ -432,7 +432,9 @@ export function detailPanel(app, student, onClose) {
     const line = el('div', 'field-in');
     const kindSel = document.createElement('select');
     kindSel.setAttribute('aria-label', '고사 종류');
-    for (const k of ['면접', '실기', '논술', '적성']) {
+    // 모의면접도 여기서 잡는다 — 일정 탭까지 안 내려가도 되게. 몇 차인지는
+    // 저장할 때 빈 자리를 찾아 정한다(모의면접1~5, 일정 탭과 같은 칸 이름).
+    for (const k of ['면접', '실기', '논술', '적성', '모의면접']) {
       const o = document.createElement('option');
       o.value = k;
       o.textContent = k;
@@ -442,6 +444,7 @@ export function detailPanel(app, student, onClose) {
     input.type = 'date';
     input.setAttribute('aria-label', '날짜');
     const fill = () => {
+      if (kindSel.value === '모의면접') { input.value = ''; return; }
       const d = store.dateOf(app, kindSel.value);
       input.value = d && d.fixed ? d.from : '';
     };
@@ -451,9 +454,21 @@ export function detailPanel(app, student, onClose) {
     save.type = 'button';
     save.onclick = async () => {
       save.disabled = true;
+      let kind = kindSel.value;
+      if (kind === '모의면접') {
+        // 빈 차수를 찾는다. 다 찼으면 말한다 — 조용히 마지막 차수를 덮으면 안 된다.
+        const empty = Array.from({ length: MOCK_MAX }, (_, i) => `모의면접${i + 1}`)
+          .find((k) => !store.dateOf(app, k));
+        if (!empty) {
+          window.alert(`모의면접이 이미 ${MOCK_MAX}차까지 잡혀 있습니다. 일정 탭에서 지우고 다시 잡아 주세요.`);
+          save.disabled = false;
+          return;
+        }
+        kind = empty;
+      }
       try {
-        await store.setDate(app, kindSel.value, input.value, input.value);
-        sum.textContent = `${kindSel.value}일을 저장했습니다 — 면접·실기 날짜 넣기 · 고치기`;
+        await store.setDate(app, kind, input.value, input.value);
+        sum.textContent = `${kind}일을 저장했습니다 — 면접·실기 날짜 넣기 · 고치기`;
       } catch (err) {
         window.alert(`저장하지 못했습니다 — ${err.message}`);
       }
