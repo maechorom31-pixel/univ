@@ -398,7 +398,11 @@ function announcePanel() {
       const card = document.querySelector(`.mycard[data-id="${x.app.id}"]`);
       if (card) {
         card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        const sel = card.querySelector('.field select:not(.rank-pick select)');
+        // 결과가 접혀 있다 — 적으러 왔으니 펴 준다
+        const fold = [...card.querySelectorAll('details.fold-row')]
+          .find((f) => f.querySelector('summary').textContent.startsWith('결과'));
+        if (fold) fold.open = true;
+        const sel = card.querySelector('.fold-row .res-in select');
         if (sel) sel.focus({ preventScroll: true });
       }
     };
@@ -996,21 +1000,20 @@ const byMe = (n) => /학생$/.test(String(n.by || ''));
 function memoRow(app) {
   const wrap = el('div', 'field memo');
   const id = `m-${app.id}`;
-  const lab = el('label', '', '메모');
-  lab.htmlFor = id;
-  wrap.appendChild(lab);
 
   const list = state.notes
     .filter((n) => String(n.id) === String(app.id) && !isApplyNo(n))
     .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
 
+  // 주고받은 메모가 있을 때만 「메모」 머리말과 목록이 선다. 빈 카드는
+  // 접힌 「메모 적기」 한 줄만 — 안내문은 편 뒤에야 나온다.
   if (list.length) {
+    const lab = el('label', '', '메모');
+    lab.htmlFor = id;
+    wrap.appendChild(lab);
     const ul = el('ul', 'memo-list');
     for (const n of list) ul.appendChild(memoItem(app, n));
     wrap.appendChild(ul);
-  } else {
-    wrap.appendChild(el('p', 'hint',
-      '궁금한 것이나 기억해 둘 것을 적어 두면 선생님도 함께\u00A0봅니다.'));
   }
 
   /*
@@ -1022,6 +1025,11 @@ function memoRow(app) {
   const sum = document.createElement('summary');
   sum.textContent = '메모 적기';
   fold.appendChild(sum);
+
+  if (!list.length) {
+    fold.appendChild(el('p', 'hint',
+      '궁금한 것이나 기억해 둘 것을 적어 두면 선생님도 함께\u00A0봅니다.'));
+  }
 
   const ta = document.createElement('textarea');
   ta.rows = 2;
@@ -1105,13 +1113,31 @@ function dateAdder(app) {
   return fold;
 }
 
+/**
+ * **값이 정해진 입력은 접는다 — 지금 계절의 할 일만 편다.**
+ *
+ * 9월의 할 일은 순위 정하기다. 그런데 카드마다 면접일·접수번호·결과 입력이
+ * 펼쳐져 있어서 정작 순위 고르개가 소음에 묻혔다. 값은 접힌 줄의 제목이
+ * 그대로 보여 주고(「면접일 · 11/27(금)」), 고칠 때만 펴서 고친다.
+ * 카드 꼬리표(면접 날짜)와 발표 리마인드가 「언제 펴야 하는지」를 말해 준다.
+ */
+function foldRow(summaryText, nodes, open) {
+  const d = document.createElement('details');
+  d.className = 'fold-row';
+  if (open) d.open = true;
+  const sum = document.createElement('summary');
+  sum.textContent = summaryText;
+  // 접힌 줄의 끝말이 「적기」면 아직 할 일 — 링크 모양(호박색)으로 보인다.
+  if (/적기$/.test(summaryText)) sum.className = 'todo';
+  d.appendChild(sum);
+  for (const n of nodes) d.appendChild(n);
+  return d;
+}
+
 /** 면접 확정일을 넣는 줄. 넣으면 확인 대기로 들어간다. */
 function dateRow(app, kind, d) {
   const wrap = el('div', 'field');
   const id = `d-${app.id}-${kind}`;
-  const lab = el('label', '', `${kind}일`);
-  lab.htmlFor = id;
-  wrap.appendChild(lab);
 
   const hint = el('p', 'hint');
   // 빈 칸으로 서 있을 때가 이제 흔하다 — 무엇을 하라는 자리인지 말해 준다
@@ -1154,7 +1180,13 @@ function dateRow(app, kind, d) {
   btn.onclick = () => saveDate(app, kind, input.value);
   row.appendChild(btn);
   wrap.appendChild(row);
-  return wrap;
+
+  const word = !d ? ' 적기'
+    : d.status === 'confirmed' ? ` · ${label(d.from)} · 확정`
+      : d.status === 'pending' ? ` · ${label(d.from)} · 확인 대기`
+        : d.status === 'sched' ? (d.fixed ? ` · ${label(d.from)} · 일정표` : ' · 일정표 기간 · 적기')
+          : (d.fixed ? ` · ${label(d.from)}` : ' · 기간 · 적기');
+  return foldRow(`${kind}일${word}`, [wrap]);
 }
 
 /* ── 결과 ───────────────────────────────────────────────────────── */
@@ -1235,9 +1267,6 @@ function resultRow(app) {
   // 시트에 적힌 칸들(final·stage1·enrolled)을 학생이 고른 말로 되돌린다
   const now = labelOf(state.results.has(String(app.id)) ? saved : base);
 
-  const lab = el('label', '', '결과');
-  wrap.appendChild(lab);
-
   const hint = el('p', 'hint');
   if (!now) {
     hint.textContent = '발표가 나면 여기에 적어 주세요. 선생님도 함께 봅니다.';
@@ -1305,7 +1334,12 @@ function resultRow(app) {
 
   btn.onclick = () => saveResult(app, sel.value, wait.value.trim(),
     !go.hidden && check.checked);
-  return wrap;
+
+  const word = now
+    ? ` · ${now}${saved.waitNo || base.waitNo ? ` · 예비 ${saved.waitNo || base.waitNo}번` : ''}`
+      + (saved.status === 'student' ? ' · 확인 대기' : '')
+    : ' 적기';
+  return foldRow(`결과${word}`, [wrap]);
 }
 
 async function saveResult(app, label, waitNo, enrolled) {
@@ -1368,9 +1402,6 @@ function afterApply(app) {
 function fieldRow(app, spec) {
   const wrap = el('div', 'field');
   const id = `f-${app.id}-${spec.name}`;
-  const lab = el('label', '', spec.name);
-  lab.htmlFor = id;
-  wrap.appendChild(lab);
 
   const saved = state.fields.get(`${app.id}|${spec.name}`);
   wrap.appendChild(el('p', 'hint', saved
@@ -1393,7 +1424,7 @@ function fieldRow(app, spec) {
   btn.onclick = () => saveField(app, spec.name, input.value);
   row.appendChild(btn);
   wrap.appendChild(row);
-  return wrap;
+  return foldRow(saved ? `${spec.name} · ${saved.value}` : `${spec.name} 적기`, [wrap]);
 }
 
 /** 접수번호 안내를 이미 한 번 냈나. 일곱 장에 같은 문장이 일곱 번 나오면 소음이다. */
@@ -1402,9 +1433,6 @@ let firstApplyNo = false;
 function applyNoRow(app) {
   const wrap = el('div', 'field');
   const id = `n-${app.id}`;
-  const lab = el('label', '', '원서 접수번호');
-  lab.htmlFor = id;
-  wrap.appendChild(lab);
 
   const saved = state.notes.find((n) => String(n.id) === String(app.id)
     && String(n.text || '').startsWith('접수번호'));
@@ -1427,24 +1455,10 @@ function applyNoRow(app) {
   btn.disabled = state.busy;
   btn.onclick = () => saveApplyNo(app, input.value);
   row.appendChild(btn);
+  wrap.appendChild(row);
 
-  /*
-   * **아직 안 적었으면 입력칸을 접어 둔다.** 한 번 적으면 끝나는 칸인데
-   * 카드마다 펼쳐져 있어서 화면이 길게 늘어졌다. 적고 나면(고칠 일이 있을
-   * 때만 펴므로) 계속 접혀 있고, 저장된 번호는 위 안내줄이 보여 준다.
-   */
-  if (saved) {
-    const fold = document.createElement('details');
-    fold.className = 'date-add';
-    const sum = document.createElement('summary');
-    sum.textContent = '번호 고치기';
-    fold.appendChild(sum);
-    fold.appendChild(row);
-    wrap.appendChild(fold);
-  } else {
-    wrap.appendChild(row);
-  }
-  return wrap;
+  const no = saved ? String(saved.text).replace('접수번호', '').trim() : '';
+  return foldRow(no ? `접수번호 · ${no}` : '접수번호 적기', [wrap]);
 }
 
 /* ── 쓰기 ─────────────────────────────────────────────────────── */

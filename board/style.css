@@ -415,6 +415,20 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 .date-add[open] > summary { color: var(--text-2); text-decoration: none; }
 .date-add > summary::-webkit-details-marker { display: none; }
 
+/* 값이 정해진 입력은 접는다 — 접힌 줄(summary)이 값을 대신 말한다.
+   「면접일 · 11-27 · 확정」처럼 값이 있으면 본문 글씨로,
+   「결과 적기」처럼 아직 할 일이면 호박색 링크로 보인다. */
+.fold-row > summary {
+  font-size: var(--t-xs); color: var(--text-2); cursor: pointer;
+  padding: var(--s1) 0; min-height: 44px; display: flex; align-items: center;
+  text-underline-offset: 3px;
+}
+/* 아직 적을 것이 남은 줄 — 눌러 볼 곳임이 보이게 링크 모양 */
+.fold-row > summary.todo { color: var(--amber-ink); text-decoration: underline; }
+.fold-row[open] > summary { color: var(--text-2); text-decoration: none; }
+.fold-row > summary::-webkit-details-marker { display: none; }
+.fold-row > .field { margin-top: 0; }
+
 /* 순위 고르개. 학생 화면의 다른 입력칸과 같은 줄 모양을 쓴다. */
 .field.rank-pick select { font-size: 16px; }   /* iOS 가 확대하지 않는 최소 크기 */
 
@@ -1047,6 +1061,11 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
   /* 학생 화면의 입력 조각도 종이에는 안 싣는다 — 고르개·날짜 적기·입력칸 */
   .bar, .tabs, .btn, .card select, .card .move, .setup,
   .rank-pick, .date-add, .field-in, .memo-new, textarea { display: none !important; }
+  /* 접힌 입력 줄은 값을 말하는 접힌 글줄만 종이에 싣는다 — 입력칸·안내문은 뺀다 */
+  .fold-row > summary, .fold-row > summary.todo, .fold-row[open] > summary {
+    color: #000; text-decoration: none; min-height: 0; padding: 0;
+  }
+  .fold-row > .field { display: none !important; }
   body { background: #fff; color: #000; }
   .wrap { max-width: none; padding: 0; }
   .layout { display: block; }
