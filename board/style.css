@@ -251,7 +251,7 @@ button { font: inherit; color: inherit; }
 }
 .card .univ { font-weight: 700; line-height: 1.35; }
 .card .dept { font-size: var(--t-xs); color: var(--muted); line-height: 1.5; }
-.card .pills { display: flex; flex-wrap: wrap; margin: 0 -2px; }
+.card .pills, .mycard .pills, .slot-card .pills { display: flex; flex-wrap: wrap; margin: 0 -2px; }
 
 /* 견줘 볼 숫자를 나란히 — 라벨 위, 값 아래.
    자릿수가 세로로 맞아야 세 값을 한눈에 견줄 수 있다. */
@@ -355,7 +355,19 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 .slot-card.dragging, .mycard.dragging { opacity: 0.45; }
 /* 학생 화면은 휴대폰으로 본다. 칸을 좁게 잡아 390px 에서도 두 줄에 셋씩 선다 —
    여섯 칸이 세로로 늘어서면 정작 지원 목록이 화면 두 번 아래로 밀린다. */
+/* 390px 휴대폰에서 격자 폭이 324px 다(재 봤다). 두 칸이 서려면
+   칸 최소가 (324 - 12) / 2 = 156px 아래여야 한다 — 150으로 잡는다. */
 .slots.mine { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+/* 6칸 안의 숫자 한 줄 — 이름·값이 짝으로 선다. 값은 tabular 로 세로 견줌이 되게. */
+.slot-fig {
+  display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline;
+  margin-top: var(--s2); font-size: var(--t-xs);
+}
+.slot-fig .k { color: var(--muted); }
+.slot-fig b { font-weight: 600; font-variant-numeric: tabular-nums; }
+/* 6칸 안의 꼬리표는 카드보다 한 뼘 작게 */
+.pills.mini { margin-top: var(--s2); }
+.pills.mini .pill { font-size: 11px; padding: 1px 6px; }
 .slot-card .rank {
   font-size: var(--t-xs); font-weight: 700; color: var(--amber-ink);
   margin-bottom: 2px;

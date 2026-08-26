@@ -20,7 +20,7 @@ import {
   link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule,
   summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
 } from './match.js';
-import { josa, rate1, isoDay } from './text.js';
+import { josa, rate1, isoDay, minReqShort } from './text.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';
@@ -477,6 +477,41 @@ function slotGrid(ranked) {
     if (app) {
       box.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
       box.appendChild(el('div', 'dept', tidy(app.dept)));
+      /*
+       * **훑는 눈에 숫자 한 줄과 꼬리표를 준다** — 교사 6칸과 같은 뜻이다.
+       * 여섯 칸을 나란히 보며 「어디가 빠듯한가」를 견주는 자리라, 컷·내 환산과
+       * 최저·단계·면접일이 칸 안에 있어야 한다. 자세한 것은 아래 카드가 맡는다.
+       */
+      const s = summaryOf(app);
+      const mine = app.myScore || {};
+      const fig = el('div', 'slot-fig');
+      const put = (k, v) => {
+        if (v == null) return;
+        fig.appendChild(el('span', 'k', k));
+        fig.appendChild(el('b', 'num', String(v)));
+      };
+      put('70%컷', s && s.cut != null ? g2(s.cut) : null);
+      put('내', mine.grade != null ? g2(mine.grade) : null);
+      if (fig.children.length) box.appendChild(fig);
+
+      const pills = el('div', 'pills mini');
+      const pin = (text, kind, title) => {
+        const p = el('span', `pill${kind ? ' ' + kind : ''}`, text);
+        if (title) p.title = title;
+        pills.appendChild(p);
+      };
+      const minTxt = app.minReqText || (s && s.mojip && s.mojip.minReq) || '';
+      if (minTxt || app.minReq === true) {
+        const short = minReqShort(minTxt);
+        pin(short ? `최저 ${short}` : '최저 있음', 'mark', minTxt);
+      }
+      if (s && s.stages > 1) pin(`${s.stages}단계`);
+      const iv = dateOf(app, '면접');
+      if (iv) {
+        pin(`면접 ${label(iv.from)}`,
+          iv.status === 'confirmed' || iv.status === 'source' ? 'mark' : 'wait');
+      }
+      if (pills.children.length) box.appendChild(pills);
       dragify(box, app);
     } else {
       box.appendChild(el('div', 'dept', '비어 있음'));
@@ -749,8 +784,14 @@ function marks(app) {
     if (d.status === 'sched') p.title = '전형일정표의 날짜입니다. 배정받은 날이 다르면 카드에서 고쳐 주세요.';
     if (d.status === 'pending') p.title = '선생님 확인을 기다리는 중입니다.';
   }
-  // 관심대학 리스트는 기준 글 없이 Y/N 만 준다 — 그때도 표시가 나와야 한다
-  if (app.minReqText || app.minReq === true) add('수능 최저 있음', 'mark');
+  // 관심대학 리스트는 기준 글 없이 Y/N 만 준다 — 그때도 표시가 나와야 한다.
+  // 기준을 줄일 수 있으면 숫자로 말한다(「최저 3합 12」). 못 줄이면 예전 그대로.
+  if (app.minReqText || app.minReq === true) {
+    const txt = app.minReqText || (s && s.mojip && s.mojip.minReq) || '';
+    const short = minReqShort(txt);
+    const pill = add(short ? `최저 ${short}` : '수능 최저 있음', 'mark');
+    if (txt) pill.title = String(txt);
+  }
   /*
    * 올해 처음 뽑는 전형. 학생에게는 이게 제일 헷갈리는 자리다 —
    * 숫자가 비어 있으면 「자료가 아직 안 왔나 보다」로 읽는다. 작년에 없었다고 말해 준다.

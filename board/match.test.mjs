@@ -17,7 +17,7 @@ import {
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
   normType, pickIpgyeol, typeGroups, univKind, summarize, predecessor,
 } from './match.js';
-import { josa } from './text.js';
+import { josa, minReqShort } from './text.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -388,6 +388,18 @@ console.log('지원한 전형의 입결 줄 고르기');
 const files = process.argv.slice(2);
 
 /* ── 오늘 고친 것들을 못 박는다 ──────────────────────────────────── */
+
+console.log('수능 최저 줄이기');
+eq(minReqShort('국어, 수학, 영어, 사회/과학탐구(1과목) 중 2개 영역 등급 합 6 이내'), '2합 6', 'N개 영역 합 M');
+eq(minReqShort('국어, 수학, 영어, 탐구(사/과/직 중 1과목) 중 2개 영역 등급의 합이 9 이내'), '2합 9', '등급의 합이 꼴');
+eq(minReqShort('국어, 수학, 영어, 사회/과학탐구 중 3개 영역 각 1등급'), '3개 각 1등급', '각형');
+eq(minReqShort('국어, 수학, 영어, 사회/과학탐구(1과목) 중 1개 영역 3등급 이내'), '1개 3등급', '이내형');
+eq(minReqShort('국어, 수학, 영어, 탐구 4개 영역 등급 합 8 이내 및 한국사 4등급 이내(의학과는 4개 영역 등급 합 5 이내)'), null,
+  '값이 갈리면 줄이지 않는다 — 하나만 고르면 거짓말');
+eq(minReqShort('수학(미적분/기하) 영역과 국어·영어·과학탐구 2과목 평균 중 1개 영역 등급 합 4 이내'), null,
+  '1개 영역의 「합」은 묶음 특수형 — 줄이면 오해');
+eq(minReqShort(''), null, '빈 글');
+
 
 console.log('전형 이름 정규화');
 eq(normType('학생부교과:학교추천'), '교과학교추천', '쌍점을 지운다 (고려대)');

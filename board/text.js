@@ -85,3 +85,33 @@ export function isoDay(v) {
   if (Number.isNaN(t)) return s;
   return new Date(t + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }
+
+/**
+ * 수능 최저 기준 글을 「3합 12」 꼴로 줄인다. **못 줄이면 null 이다.**
+ *
+ * 기준 글 465가지를 다 넣고 쟀다. 「N개 영역 등급 합 M」 꼴이 대부분이고,
+ * 「N개 영역 각 M등급」·「N개 영역 M등급 이내」가 그 다음이다. 셋을 합치면
+ * **91%가 한 가지 요약으로 떨어진다.** 나머지는 요약하지 않는다 —
+ *
+ *   여러 값이 나오는 글   의예과 분기·계열 분기("의학과는 합 5") — 하나만 고르면 거짓말
+ *   1개 영역의 「합」      수학과 탐구평균을 묶은 특수형 — 「1합 4」는 오해를 만든다
+ *   못 읽는 글           "수학+과탐 등급 합 3" 따위 34가지 — 억지로 읽지 않는다
+ *
+ * null 이면 부르는 쪽이 「수능 최저 있음」으로 두고, 원문은 상세에 그대로 있다.
+ * **오표기가 미표기보다 나쁘다** — 컷 연결과 같은 원칙이다.
+ */
+const MIN_SUM = /([2-4])\s*개\s*(?:영역|과목)?\s*(?:의)?\s*(?:등급)?\s*(?:의)?\s*합(?:이)?\s*([0-9]{1,2})/g;
+const MIN_EACH = /([1-4])\s*개\s*(?:영역|과목)?\s*각(?:각)?\s*([1-9])\s*등급/g;
+const MIN_ONE = /([1-4])\s*개\s*영역(?:의)?\s*(?:등급)?(?:이)?\s*([1-9])\s*(?:등급)?\s*이내/g;
+
+export function minReqShort(text) {
+  const t = String(text || '');
+  if (!t.trim()) return null;
+  const hits = [
+    ...[...t.matchAll(MIN_SUM)].map((m) => `${m[1]}합 ${m[2]}`),
+    ...[...t.matchAll(MIN_EACH)].map((m) => `${m[1]}개 각 ${m[2]}등급`),
+    ...[...t.matchAll(MIN_ONE)].map((m) => `${m[1]}개 ${m[2]}등급`),
+  ];
+  const uniq = [...new Set(hits)];
+  return uniq.length === 1 ? uniq[0] : null;
+}

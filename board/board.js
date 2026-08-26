@@ -18,7 +18,7 @@
 import * as store from './store.js';
 import { detailPanel } from './card.js';
 import { normType } from './match.js';
-import { josa, rate1 } from './text.js';
+import { josa, rate1, minReqShort } from './text.js';
 
 const RANKS = [1, 2, 3, 4, 5, 6];
 const SLOT_LABEL = { rank: '순위', pool: '후보', archive: '보관', tray: '전문대' };
@@ -829,7 +829,17 @@ function pills(app) {
   // 셋 다 **성적 말고 따로 걸리는 것**이다. 같은 무게로 칠한다.
   if (s.stages > 1) add(`${s.stages}단계`, 'mark');
   // 관심대학 리스트는 기준 글 없이 Y/N 만 준다 — 그때도 표시가 나와야 한다
-  if (app.minReqText || app.minReq === true) add('최저 있음', 'mark');
+  if (app.minReqText || app.minReq === true) {
+    /*
+     * 기준을 줄일 수 있으면 숫자로 말한다 — 「최저 있음」보다 「최저 3합 12」가
+     * 훑는 눈에 훨씬 많이 말해 준다. 못 줄이면(의대 분기·특수형) 예전 그대로.
+     * 원문은 카드 상세에 있고, 여기서는 제목(title)에도 붙여 둔다.
+     */
+    const txt = app.minReqText || (s.mojip && s.mojip.minReq) || '';
+    const short = minReqShort(txt);
+    const pill = add(short ? `최저 ${short}` : '최저 있음', 'mark');
+    if (txt) pill.title = String(txt);
+  }
 
   /*
    * 가야 하는 날. 「최저 있음」과 같은 종류다 — 내신이 닿아도 그날 못 가면 끝난다.
