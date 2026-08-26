@@ -233,6 +233,7 @@ function render() {
    * 학생이 무엇을 켜고 끌 필요가 없다.
    */
   main.appendChild(soon());
+  main.appendChild(announcePanel());
 
   const ranked = state.apps
     .filter((a) => (state.placement.get(String(a.id)) || {}).slot === 'rank'
@@ -334,13 +335,81 @@ function birthPanel() {
 }
 
 /** 오늘. 시험에서 흔들리지 않게 한곳에서 만든다. */
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// UTC 로 자르면 자정~아침 9시에 어제 날짜가 나온다. +9시간이 KST 다.
+const todayISO = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 
 /**
  * 이레 안에 닥친 것만. 없으면 아무것도 그리지 않는다.
  *
  * 지원철에는 이 줄이 안 나온다. 11월이 되면 저절로 나타난다.
  */
+/**
+ * **발표일이 지났는데 결과가 비어 있는 지원** — 맨 위에서 적으라고 말한다.
+ *
+ * 결과는 학생이 적는다(집 원칙). 그런데 발표일을 아는 것은 도구다 —
+ * 전형일정표와 즐겨찾기가 1단계·최종 발표일을 준다. 발표가 나왔을 시간인데
+ * 결과 칸이 비어 있으면, 학생이 잊은 것이지 안 나온 것이 아니다.
+ * 12월에는 이 줄이 리마인드가 되고, 발표 전에는 아예 안 그려진다.
+ *
+ * 1단계는 단계별전형에만 묻는다 — 일괄전형은 1단계 발표가 없다.
+ */
+function announcePanel() {
+  const wrap = el('div');
+  const today = todayISO();
+  const paperOf = (app) => (state.src && state.src.sched ? paperDates(app, state.src.sched) : null);
+  const resOf = (app) => {
+    const saved = state.results.get(String(app.id)) || {};
+    const src = app.result || {};
+    return { stage1: saved.stage1 || src.stage1 || '', final: saved.final || src.final || '' };
+  };
+  const asDate = (x) => (x && x.from ? { from: x.from, to: x.to || x.from } : null);
+
+  const list = [];
+  for (const app of state.apps) {
+    const r = resOf(app);
+    if (r.final) continue;                      // 최종까지 적었으면 볼 것 없다
+    const paper = paperOf(app);
+    const fin = dateOf(app, '최종발표') || asDate(paper && paper.final);
+    const st1 = dateOf(app, '1단계발표') || asDate(paper && paper.stage1);
+    if (fin && fin.to <= today) {
+      list.push({ app, kind: '최종 발표', d: fin });
+    } else if (st1 && st1.to <= today && !r.stage1) {
+      const s = summaryOf(app);
+      if (s && s.stages > 1) list.push({ app, kind: '1단계 발표', d: st1 });
+    }
+  }
+  if (!list.length) return wrap;
+  list.sort((a, b) => (a.d.to < b.d.to ? -1 : 1));
+
+  const box = el('section', 'panel announce');
+  box.appendChild(el('h2', '', '결과를 적어 주세요'));
+  box.appendChild(el('p', 'section-label',
+    '발표일이 지났습니다. 확인한 결과를 카드의 「결과」 칸에 적어 주세요 — 선생님도 함께 봅니다.'));
+  const stack = el('div', 'stack');
+  for (const x of list) {
+    const row = el('div', 'row');
+    const txt = el('div', 'txt');
+    txt.appendChild(el('div', 'univ', `${shortUniv(x.app.univ)} ${tidy(x.app.dept)}`));
+    txt.appendChild(el('div', 'dept', `${x.kind} ${label(x.d.to)}`));
+    row.appendChild(txt);
+    const go = el('button', 'btn', '적으러 가기');
+    go.type = 'button';
+    go.onclick = () => {
+      const card = document.querySelector(`.mycard[data-id="${x.app.id}"]`);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const sel = card.querySelector('.field select:not(.rank-pick select)');
+        if (sel) sel.focus({ preventScroll: true });
+      }
+    };
+    row.appendChild(go);
+    stack.appendChild(row);
+  }
+  box.appendChild(stack);
+  wrap.appendChild(box);
+  return wrap;
+}
+
 function soon() {
   const wrap = el('div');
   const today = todayISO();
@@ -809,6 +878,7 @@ function marks(app) {
 
 function card(app) {
   const box = el('article', 'mycard');
+  box.dataset.id = app.id;          // 「적으러 가기」가 이 닻으로 내려온다
   const place = state.placement.get(String(app.id)) || {};
   if (place.slot === 'rank') box.appendChild(el('div', 'rank', `${place.rank}순위`));
   /*

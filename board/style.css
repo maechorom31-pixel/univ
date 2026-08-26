@@ -339,6 +339,9 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 
 /* 코앞에 닥친 것. 맨 위에 한 덩이만. 지원철에는 아예 안 나온다. */
 .soon { border-color: var(--amber); background: var(--amber-face); }
+/* 결과 리마인드 — 「곧 있습니다」와 같은 세기. 붉게 칠하지 않는다: 잘못이 아니라 할 일이다. */
+.announce { border-color: var(--amber); background: var(--amber-face); }
+.announce .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s3); align-items: center; }
 .soon .row + .row { border-top-color: rgba(180, 83, 9, 0.18); }
 
 /* 학생 화면의 6칸. 교사 보드와 같은 격자를 쓰되 숫자는 안 넣는다 —

@@ -64,6 +64,28 @@ export function start() {
     if (e.key === 'Escape' && store.selection.appId) closeDetail();
   });
   /*
+   * **탭에 돌아오면 스스로 다시 불러온다.**
+   *
+   * 학생이 밤에 순위·결과·면접일을 바꿔도 보드는 몰랐다 — 새로고침 단추를
+   * 눌러야 보였고, 안 누르면 지난 화면으로 상담을 시작한다. 담임의 아침은
+   * 대개 「어제 열어 둔 탭으로 돌아오기」라서, 그 순간이 다시 불러올 때다.
+   *
+   * 1분 안에 두 번은 안 부른다 — 탭을 오가며 일하는 동안 호출이 쌓이면
+   * Apps Script 하루 한도를 갉아먹는다. 보기용 자료로 열었을 때는 안 부른다.
+   */
+  let lastPull = Date.now();
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!store.live() || !store.state.ready || busy) return;
+    if (Date.now() - lastPull < 60000) return;
+    lastPull = Date.now();
+    try {
+      await store.load();
+    } catch (err) {
+      // 잠깐 끊긴 것일 수 있다. 다음에 돌아올 때 다시 시도한다 — 화면은 그대로 둔다.
+    }
+  });
+  /*
    * 단계(고민 ↔ 확정)가 바뀌면 카드를 다시 그린다. 예전에는 `body[data-stage]` 를
    * 적어 두기만 하고 아무도 안 읽어서, 단추가 탭만 바꾸고 화면은 그대로였다.
    */
@@ -156,6 +178,29 @@ function render() {
     return;
   }
   if (store.state.error) main.appendChild(banner(store.state.error, true));
+
+  /*
+   * **학생이 바꾼 순위를 담임이 알아채게 한다.**
+   *
+   * 바뀐 것 자체는 시트 기록에 남지만 아무도 기록 탭을 열어 보지 않는다.
+   * 최근 사흘 안에 학생이 바꾼 배치가 있으면 보드 맨 위에 한 줄로 말한다 —
+   * 사흘인 이유는 주말을 건너 월요일 아침에도 보여야 해서다.
+   */
+  const cut = (() => {
+    const t = new Date(Date.now() - 3 * 24 * 3600 * 1000 + 9 * 3600 * 1000);
+    return t.toISOString().slice(0, 19);
+  })();
+  const moved = (store.state.studentMoves || []).filter((m) => m.at && m.at.slice(0, 19) >= cut);
+  if (moved.length) {
+    const who = [...new Set(moved.map((m) => m.hak))].sort();
+    const name = (h) => {
+      const st = store.state.students.get(h);
+      return st ? `${h} ${st.name}` : h;
+    };
+    main.appendChild(banner(
+      `최근 사흘 안에 학생이 순위를 바꿨습니다 — ${who.slice(0, 5).map(name).join(', ')}`
+      + `${who.length > 5 ? ` 외 ${who.length - 5}명` : ''} (${moved.length}건)`));
+  }
 
   // 원본 탭 이름이 아는 것과 다르면 알린다. 조용히 첫 탭을 읽고 「0명」만 뜨면
   // 왜 비었는지 알 길이 없다.

@@ -31,6 +31,7 @@ export const state = {
   students: new Map(),   // hak → Student
   apps: new Map(),       // id → Application
   placement: new Map(),  // id → { slot, rank }
+  studentMoves: [],      // 학생이 바꾼 배치 [{id, hak, at}] — 보드가 알림에 쓴다
   seen: new Map(),       // hak → 그 학생 배치를 마지막으로 본 시각 (덮어쓰기 막이)
   notes: [],
   dates: new Map(),      // `${id}|${kind}` → { from, to, status }
@@ -71,6 +72,11 @@ function emit(name, payload) {
 /* ── 적재 ───────────────────────────────────────────────────────── */
 
 /** 학생·지원·배치를 받는다. 화면은 이것만으로 그려진다. */
+/** 보기용 자료가 아니라 진짜 서버에 붙어 있는가 — 자동 새로고침이 이걸 본다. */
+export function live() {
+  return !offline;
+}
+
 export async function load() {
   state.error = '';
   offline = false;
@@ -139,6 +145,8 @@ function apply(data) {
   // 배치를 마지막으로 본 시각. 학생과 담임이 같은 6칸을 동시에 만질 때
   // 한 발 늦은 화면이 덮어쓰지 못하게 서버로 되돌려 보낸다. CONTRACT §2.4
   state.seen = new Map();
+  // 학생이 바꾼 배치. 담임이 안 보는 사이(밤·주말)에 바뀐 것을 보드가 알려 준다.
+  state.studentMoves = [];
   for (const row of data.state || []) {
     state.placement.set(String(row.id), {
       slot: row.slot || 'pool',
@@ -147,6 +155,9 @@ function apply(data) {
     const hak = String(row.hak || '');
     if (hak && String(row.at || '') > (state.seen.get(hak) || '')) {
       state.seen.set(hak, String(row.at));
+    }
+    if (/학생$/.test(String(row.by || ''))) {
+      state.studentMoves.push({ id: String(row.id), hak, at: String(row.at || '') });
     }
   }
   linkCache.clear();
