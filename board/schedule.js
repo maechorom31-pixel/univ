@@ -309,11 +309,24 @@ function month(ym, events) {
       const kind = isMock(e.kind) ? 'mock'
         : NOTICE.includes(e.kind) ? 'tell'
           : (e.fixed && settled ? '' : 'soft');
-      const tag = el('span', `ev ${kind}`.trim(),
-        `${shortUniv(e.app.univ)} ${e.kind}`);
+      /*
+       * 칩이 대학·종류만 말해서, 한 대학 두 학과를 지원한 학생의 달력에서는
+       * 어느 면접인지 못 갈랐다. 학과를 둘째 줄로 단다 — 한 줄에 붙이면
+       * 칸 폭에서 말줄임표에 다 먹힌다.
+       *
+       * 그리고 **누르면 그 지원의 카드 상세가 뜬다.** 달력에서 본 날짜를
+       * 고치려면 보드 탭으로 돌아가 카드를 찾아야 했는데, 상세 덮개는 탭과
+       * 무관하게 뜨는 자리다. 상세에 「면접·실기 날짜 넣기 · 고치기」가 이미 있다.
+       */
+      const tag = document.createElement('button');
+      tag.type = 'button';
+      tag.className = `ev ${kind}`.trim();
+      tag.appendChild(el('span', '', `${shortUniv(e.app.univ)} ${e.kind}`));
+      tag.appendChild(el('i', 'd', tidy(e.app.dept)));
       const src = e.status === 'sched' ? ' · 전형일정표'
         : e.status === 'pending' ? ' · 학생 입력, 확인 대기' : '';
-      tag.title = `${e.name} · ${e.app.dept} · ${span(e)}${src}`;
+      tag.title = `${e.name} · ${e.app.dept} · ${span(e)}${src} — 누르면 카드가 열립니다`;
+      tag.onclick = () => store.select({ appId: e.app.id });
       cell.appendChild(tag);
     }
     grid.appendChild(cell);
@@ -465,7 +478,9 @@ function univBlock({ app, go, other, expect }) {
 
   const h = el('div', 'uni-head');
   h.appendChild(el('span', 'nm', tidy(shortUniv(app.univ))));
-  h.appendChild(el('span', 'fig', app.typeSub || app.typeName || ''));
+  // 학과가 빠져 있었다 — 한 대학에 두 학과를 지원한 학생이면 어느 면접인지 못 가른다
+  h.appendChild(el('span', 'fig', [tidy(app.dept), app.typeSub || app.typeName || '']
+    .filter(Boolean).join(' · ')));
   box.appendChild(h);
 
   const list = el('div', 'stack');
@@ -655,7 +670,7 @@ function dayList(events) {
     const row = el('div', 'row');
     const txt = el('div', 'txt');
     txt.appendChild(el('div', 'univ', label(day) + (list.every((e) => e.fixed) ? '' : ' 무렵')));
-    const who = list.map((e) => `${e.hak} ${e.name} — ${shortUniv(e.app.univ)} ${e.kind}`
+    const who = list.map((e) => `${e.hak} ${e.name} — ${shortUniv(e.app.univ)} ${tidy(e.app.dept)} ${e.kind}`
       + (e.fixed ? '' : ` (${span(e)})`));
     for (const line of who) txt.appendChild(el('div', 'dept', line));
     row.appendChild(txt);

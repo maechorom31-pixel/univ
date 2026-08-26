@@ -67,6 +67,8 @@ const mkSheet = (rows = []) => ({
   setFrozenRows: () => {},
   getDataRange: () => ({ getValues: () => rows }),
   getName: () => 'src',
+  appendRow: (line) => rows.push(line),
+  deleteRow: (n) => rows.splice(n - 1, 1),
 });
 const book = {
   getSheetByName: (n) => sheets[n] || null,
@@ -212,6 +214,47 @@ sheets['설정'] = mkSheet([G.HEADERS['설정']]);
 
   const r4 = G.handle_({ action: 'setRank', key: K, id: 'A', hak: '3101', slot: 'rank', rank: 9 });
   eq(r4.ok, false, '1~6 밖은 안 받는다');
+}
+
+/*
+ * **학생이 적은 것이 학생에게 돌아오는가.**
+ *
+ * studentDate 가 학번을 안 적어서, 학생이 넣고 담임이 확정한 면접일이
+ * 학생 화면에서만 사라졌다(학생 화면은 학번으로 제 것만 걸러 받는다).
+ * studentField 는 같은 이유로 저장 자체가 「학번이 필요합니다」로 실패했고,
+ * 생년월일은 지원 소유 검사에서 먼저 끊겼다. 셋 다 여기서 못박는다.
+ */
+console.log('\n학생이 적은 것이 학생에게 돌아온다');
+sheets['설정'] = mkSheet([G.HEADERS['설정']]);
+sheets['공유'] = mkSheet([G.HEADERS['공유'], ['3101', 'tokA', '2099-01-01', '']]);
+sheets['일정'] = mkSheet([G.HEADERS['일정']]);   // 앞 블록의 행을 안 물려받는다
+{
+  const v1 = G.handle_({ action: 'student', token: 'tokA' });
+  const id = v1.apps[0].id;
+
+  eq(G.handle_({ action: 'studentDate', token: 'tokA', id, kind: '면접', from: '2026-11-27', to: '2026-11-27' }).ok,
+    true, '학생이 면접일을 넣는다');
+  const row = sheets['일정'].getDataRange().getValues()[1];
+  eq(String(row[1]), '3101', '일정 행에 학번이 실린다 — 서버가 토큰에서 채운다');
+
+  eq(G.handle_({ action: 'approveDate', key: '84348434', id, kind: '면접' }).ok, true, '담임이 확정한다');
+  const v2 = G.handle_({ action: 'student', token: 'tokA' });
+  eq(v2.dates.length, 1, '확정된 날짜가 학생에게 돌아온다');
+  eq(v2.dates[0].status, 'confirmed', '확정 상태 그대로');
+
+  // 예전 코드가 남긴, 학번이 빈 일정 행도 학생이 받는다 — id 가 내 지원이면 내 것이다
+  sheets['일정'].getDataRange().getValues().push(
+    [id, '', '실기', '2026-12-01', '2026-12-01', 'pending', '3101 학생', '2026-09-01T01:00:00+09:00']);
+  const v3 = G.handle_({ action: 'student', token: 'tokA' });
+  eq(v3.dates.length, 2, '학번이 빈 옛 행도 거둔다');
+
+  // 수험번호·생년월일 — 저장이 되고, 남의 학번으로 못 적는다
+  eq(G.handle_({ action: 'studentField', token: 'tokA', id, field: '수험번호', value: '12345', hak: '9999' }).ok,
+    true, '수험번호가 저장된다');
+  const f1 = sheets['입력'].getDataRange().getValues()[1];
+  eq(String(f1[1]), '3101', '클라이언트가 보낸 학번은 버리고 토큰의 학번을 쓴다');
+  eq(G.handle_({ action: 'studentField', token: 'tokA', id: '', field: '생년월일', value: '2008-03-02' }).ok,
+    true, '생년월일은 id 없이도 저장된다');
 }
 
 /*

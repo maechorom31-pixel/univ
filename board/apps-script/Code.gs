@@ -1129,7 +1129,13 @@ function studentAction_(action, p) {
   if (!hak) {
     return { ok: false, error: '만료되었거나 잘못된 주소입니다. 담임 선생님께 문의하세요.' };
   }
-  if (!p.id || !ownsApp_(hak, p.id)) {
+  /*
+   * 생년월일은 학생 한 명에 하나라 id 가 빈 채로 온다 — 지원 소유 검사에서
+   * 빼야 한다. 여태 여기서 「본인 지원 내역이 아닙니다」로 끊겨서
+   * **학생이 생년월일을 저장할 길이 아예 없었다.**
+   */
+  var birthOnly = action === 'studentField' && String(p.field || '').trim() === '생년월일';
+  if (!birthOnly && (!p.id || !ownsApp_(hak, p.id))) {
     return { ok: false, error: '본인 지원 내역이 아닙니다.' };
   }
   var who = hak + ' 학생';
@@ -1143,7 +1149,17 @@ function studentAction_(action, p) {
    * 누가 바꿨는지는 `by` 에 「3201 학생」으로 남아 담임이 안다.
    */
   if (action === 'studentRank') return setRank_({ id: p.id, hak: hak, slot: p.slot, rank: p.rank, seen: p.seen }, who);
-  if (action === 'studentDate') return setDate_(p, who, 'pending');
+  /*
+   * **학번을 서버가 채운다 — 토큰에서 온 값으로.**
+   *
+   * 예전에는 p 를 그대로 넘겨서 일정 행의 hak 칸이 비었다. 담임 보드는 전체
+   * 행을 읽어 보였고 확정도 됐는데, 학생 화면은 학번으로 제 것만 걸러 받아서
+   * **학생이 넣고 담임이 확정한 면접일이 학생에게만 안 돌아왔다.**
+   * 클라이언트가 보낸 hak 은 쓰지 않는다 — 남의 학번을 적어 보낼 수 있다.
+   */
+  if (action === 'studentDate') {
+    return setDate_({ id: p.id, hak: hak, kind: p.kind, from: p.from, to: p.to }, who, 'pending');
+  }
   if (action === 'studentApplyNo') {
     upsert_(SHEET.note, ['noteId'], {
       noteId: 'applyno-' + p.id, hak: hak, id: p.id,
@@ -1184,7 +1200,10 @@ function studentAction_(action, p) {
     }
     return { ok: true, removed: false };
   }
-  if (action === 'studentField') return setField_(p, who, 'student');
+  // 같은 까닭 — hak 을 서버가 채운다. 안 채우면 「학번이 필요합니다」로 저장이 실패했다.
+  if (action === 'studentField') {
+    return setField_({ id: p.id, hak: hak, field: p.field, value: p.value }, who, 'student');
+  }
   if (action === 'studentResult') {
     return setResult_({ id: p.id, hak: hak, stage1: p.stage1, final: p.final,
       reason: p.reason, waitNo: p.waitNo, enrolled: p.enrolled }, who, 'student');
@@ -1373,11 +1392,20 @@ function studentView_(token) {
   var mine = function (arr) {
     return (arr || []).filter(function (r) { return String(r.hak) === hak; });
   };
+  /*
+   * hak 이 빈 일정 행도 거둔다. studentDate 가 hak 을 안 적던 시절의 행이다 —
+   * id 가 내 지원이면 내 것이 맞다(안정키는 학번을 씨앗에 품는다).
+   */
+  var myApps = {};
+  for (var ai = 0; ai < me.apps.length; ai++) myApps[String(me.apps[ai])] = true;
+  var myDates = rows_(SHEET.date).filter(function (r) {
+    return String(r.hak) === hak || (!String(r.hak || '') && myApps[String(r.id)]);
+  });
   return {
     ok: true, hak: hak, student: me,
     apps: parsed.apps.filter(function (a) { return a.hak === hak; }),
     state: mine(rows_(SHEET.state)),
-    dates: mine(rows_(SHEET.date)),
+    dates: myDates,
     // 학생이 적어 둔 결과를 돌려주지 않으면, 저장하고 새로고침했을 때 **사라져 보인다.**
     // 시트에는 있는데 화면에서 없어지면 학생은 다시 적거나 도구를 안 믿게 된다.
     results: mine(rows_(SHEET.result)),
