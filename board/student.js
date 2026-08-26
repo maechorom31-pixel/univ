@@ -743,7 +743,10 @@ function group(title, apps, count, help) {
   head.appendChild(el('span', 'count num', count));
   box.appendChild(head);
   if (help) box.appendChild(el('p', 'section-label', help));
-  for (const app of apps) box.appendChild(card(app));
+  // 좁은 화면에서는 한 줄기 목록, 넓은 화면에서는 두 단 격자 — CSS 가 가른다
+  const list = el('div', 'cards');
+  for (const app of apps) list.appendChild(card(app));
+  box.appendChild(list);
   return box;
 }
 
@@ -1010,18 +1013,29 @@ function memoRow(app) {
       '궁금한 것이나 기억해 둘 것을 적어 두면 선생님도 함께\u00A0봅니다.'));
   }
 
+  /*
+   * **적는 칸은 접어 둔다.** 카드 열 장마다 빈 글상자와 단추가 펼쳐져 있으면
+   * 화면이 길게 늘어진다 — 적힌 메모는 위에 그대로 보이고, 적을 때만 편다.
+   */
+  const fold = document.createElement('details');
+  fold.className = 'date-add';
+  const sum = document.createElement('summary');
+  sum.textContent = '메모 적기';
+  fold.appendChild(sum);
+
   const ta = document.createElement('textarea');
   ta.rows = 2;
   ta.id = id;
   ta.placeholder = '면접 준비 중 막히는 것, 물어보고 싶은 것';
   ta.disabled = state.busy;
-  wrap.appendChild(ta);
+  fold.appendChild(ta);
 
   const btn = el('button', 'btn', '메모 저장');
   btn.type = 'button';
   btn.disabled = state.busy;
   btn.onclick = () => saveNote(app, ta.value);
-  wrap.appendChild(btn);
+  fold.appendChild(btn);
+  wrap.appendChild(fold);
   return wrap;
 }
 
@@ -1413,7 +1427,23 @@ function applyNoRow(app) {
   btn.disabled = state.busy;
   btn.onclick = () => saveApplyNo(app, input.value);
   row.appendChild(btn);
-  wrap.appendChild(row);
+
+  /*
+   * **아직 안 적었으면 입력칸을 접어 둔다.** 한 번 적으면 끝나는 칸인데
+   * 카드마다 펼쳐져 있어서 화면이 길게 늘어졌다. 적고 나면(고칠 일이 있을
+   * 때만 펴므로) 계속 접혀 있고, 저장된 번호는 위 안내줄이 보여 준다.
+   */
+  if (saved) {
+    const fold = document.createElement('details');
+    fold.className = 'date-add';
+    const sum = document.createElement('summary');
+    sum.textContent = '번호 고치기';
+    fold.appendChild(sum);
+    fold.appendChild(row);
+    wrap.appendChild(fold);
+  } else {
+    wrap.appendChild(row);
+  }
   return wrap;
 }
 

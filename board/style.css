@@ -334,6 +334,24 @@ button { font: inherit; color: inherit; }
 
 body.student { --t-sm: 17px; --t-xs: 14px; --t-md: 21px; }
 body.student .wrap { max-width: 640px; }
+/*
+ * **넓은 화면에서는 두 단이다.** 640px 한 줄기는 휴대폰 기준인데, 컴퓨터로 열면
+ * 좌우가 텅 빈 채 아래로만 길게 늘어졌다. 900px부터 카드 목록이 격자가 된다 —
+ * 간격은 그리드 gap 이라 구형 iOS 에서도 안전하다(flex gap 금지 규칙과 무관).
+ * 목록꼴일 때는 카드가 윗금으로만 갈리고, 격자에서는 온전한 테두리 카드가 된다.
+ */
+@media (min-width: 900px) {
+  body.student .wrap { max-width: 1080px; }
+  body.student .cards {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: var(--s4); align-items: start;
+  }
+  body.student .cards .mycard {
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: var(--s4); margin: 0;
+  }
+  body.student .cards .mycard:first-of-type { border-top: 1px solid var(--line); padding-top: var(--s4); }
+}
 body.student .btn { font-size: var(--t-xs); min-height: 44px; padding: 0 var(--s4); }
 body.student .pill { font-size: 13px; padding: 3px 8px; }
 
