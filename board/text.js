@@ -68,3 +68,20 @@ export function rate1(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n.toFixed(1) : null;
 }
+
+/**
+ * 서버가 준 날짜를 「yyyy-MM-dd」로 못박는다.
+ *
+ * 구글 시트가 날짜 칸을 Date 로 바꿔 버리면 옛 배포의 서버는 그걸 UTC 로 적어
+ * 「2026-11-27T15:00:00.000Z」— 하루 전 날짜에 시각이 붙은 값을 준다. 서버는
+ * 고쳤지만(cell_) 선생님이 새 배포를 하기 전까지 옛 서버가 살아 있다.
+ * 받는 쪽에서도 씻어야 그 사이에 면접일이 화면에서 사라지지 않는다.
+ * +9시간은 KST 다 — 이 도구는 한국 학사 일정만 다룬다.
+ */
+export function isoDay(v) {
+  const s = String(v || '').trim();
+  if (!s || /^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const t = Date.parse(s);
+  if (Number.isNaN(t)) return s;
+  return new Date(t + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}

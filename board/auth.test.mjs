@@ -25,7 +25,18 @@ import { createHash } from 'node:crypto';
 const Utilities = {
   DigestAlgorithm: { SHA_1: 'SHA_1' }, Charset: { UTF_8: 'utf8' },
   computeDigest: (_a, s) => [...createHash('sha1').update(s, 'utf8').digest()].map(b => b > 127 ? b - 256 : b),
-  formatDate: () => '2026-09-01T00:00:00+09:00', getUuid: () => 'x',
+  /*
+   * 진짜 formatDate 흉내 — 날짜 세탁(cell_) 시험에 실제 서식이 필요하다.
+   * KST 로만 계산한다. 시험 자료가 그 시간대라서다.
+   */
+  formatDate: (d, _tz, fmt) => {
+    const t = new Date(d.getTime() + 9 * 3600 * 1000);
+    const p2 = (n) => String(n).padStart(2, '0');
+    if (fmt === 'yyyy-MM-dd') return `${t.getUTCFullYear()}-${p2(t.getUTCMonth() + 1)}-${p2(t.getUTCDate())}`;
+    if (fmt === 'HH:mm:ss') return `${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}:${p2(t.getUTCSeconds())}`;
+    return '2026-09-01T00:00:00+09:00';
+  },
+  getUuid: () => 'x',
 };
 // 「모든 사용자」 배포에서 구글은 접속자 계정을 안 알려 준다 — 실제로 이렇게 던진다
 const Session = { getActiveUser: () => ({ getEmail: () => { throw new Error('no permission'); } }) };
@@ -113,6 +124,36 @@ sheets['설정'] = mkSheet([G.HEADERS['설정'], ['', '', '우리반만아는글
     '읽기만이 아니라 쓰기도 막는다');
   const r = G.handle_({ action: 'students', key: '우리반만아는글자' });
   eq([r.ok, r.students.length, r.openToAll], [true, 2, false], '적어 둔 열쇠는 통과');
+}
+
+/*
+ * **시트가 날짜 칸을 Date 로 되돌려 주는 문제.**
+ *
+ * 학생이 「2026-11-28」을 넣으면 구글 시트가 그 칸을 날짜형으로 바꾼다. 읽어 오면
+ * 글자가 아니라 Date 객체고, JSON 으로 나가면서 UTC 로 적혀
+ * 「2026-11-27T15:00:00.000Z」— **하루 전 날짜에 시각까지 붙은 딴 값**이 된다.
+ * 달력은 「from ≤ 날짜 ≤ to」 글자 비교라 이 값과는 어떤 날도 안 맞아서,
+ * 학생이 넣고 담임이 확인한 면접일이 **화면에서 통째로 사라졌다.**
+ */
+console.log('\n시트가 Date 로 되돌려 준 날짜');
+sheets['설정'] = mkSheet([G.HEADERS['설정']]);
+{
+  // 시트가 날짜형으로 바꾼 칸 — 2026-11-28 KST 자정
+  const kst = new Date(Date.UTC(2026, 10, 27, 15, 0, 0));
+  sheets['일정'] = mkSheet([G.HEADERS['일정'],
+    ['A', '3101', '면접', kst, kst, 'confirmed', '담임', '2026-09-02T10:00:00+09:00'],
+  ]);
+  const r = G.handle_({ action: 'students', key: '84348434' });
+  eq(r.dates.length, 1, '일정이 내려온다');
+  eq(r.dates[0].from, '2026-11-28', 'Date 칸이 KST 날짜 글자로 돌아온다 — 하루 밀리지 않는다');
+  eq(r.dates[0].to, '2026-11-28', 'to 도 같다');
+  // 시각이 든 datetime 칸은 시각을 잃지 않는다 (배치 at 이 seen 비교에 쓴다)
+  const dt = new Date(Date.UTC(2026, 8, 2, 1, 11, 0));   // 2026-09-02 10:11 KST
+  sheets['배치'] = mkSheet([G.HEADERS['배치'],
+    ['B', '3101', 'rank', 1, '담임', dt],
+  ]);
+  const r2 = G.handle_({ action: 'students', key: '84348434' });
+  eq(r2.state[0].at, '2026-09-02T10:11:00+09:00', 'datetime 칸은 시각까지 KST 로');
 }
 
 console.log('\n학생 경로는 열쇠와 무관하게 토큰으로만');

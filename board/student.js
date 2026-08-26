@@ -20,7 +20,7 @@ import {
   link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule,
   summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
 } from './match.js';
-import { josa, rate1 } from './text.js';
+import { josa, rate1, isoDay } from './text.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';
@@ -102,8 +102,9 @@ function apply(data) {
   // 배치를 마지막으로 본 시각. 순위를 바꿀 때 되돌려 보내 한 발 늦은 화면이
   // 담임의 변경을 덮어쓰지 못하게 한다. CONTRACT §2.4
   state.seen = (data.state || []).reduce((hi, r) => (String(r.at || '') > hi ? String(r.at) : hi), '');
+  // 옛 배포의 서버가 시트의 Date 칸을 UTC 로 적어 보낼 수 있다 — 받는 쪽에서도 씻는다
   state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
-    from: String(r.from || ''), to: String(r.to || r.from || ''), status: r.status || 'pending',
+    from: isoDay(r.from), to: isoDay(r.to || r.from), status: r.status || 'pending',
   }]));
   summaryCache.clear();
   state.aliases = new Map((data.aliases || []).map((r) => [

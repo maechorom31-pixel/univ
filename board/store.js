@@ -20,6 +20,7 @@ import {
   indexIpgyeol, indexMojip, indexCollege, indexSchedule,
   splitDepts, referenceLine, resolveUniv, catOf, predecessor,
 } from './match.js';
+import { isoDay } from './text.js';
 
 const listeners = new Map();
 
@@ -129,8 +130,9 @@ function apply(data) {
       toUniv: String(r.toUniv || ''), toDept: String(r.toDept || ''),
       note: String(r.note || ''), by: r.by || '', at: r.at || '',
     }]));
+  // 옛 배포의 서버가 시트의 Date 칸을 UTC 로 적어 보낼 수 있다 — 받는 쪽에서도 씻는다
   state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
-    from: String(r.from || ''), to: String(r.to || r.from || ''),
+    from: isoDay(r.from), to: isoDay(r.to || r.from),
     status: r.status || 'pending',
   }]));
   state.placement = new Map();

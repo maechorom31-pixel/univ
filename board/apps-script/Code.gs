@@ -796,6 +796,27 @@ function tab_(name) {
   return sh;
 }
 
+/**
+ * **시트가 날짜 칸을 Date 로 되돌려 준다 — 여기서 글자로 씻는다.**
+ *
+ * 학생이 「2026-11-28」을 넣으면 구글 시트가 그 칸을 날짜형으로 바꾼다. 그대로
+ * JSON 에 실으면 UTC 로 적혀 「2026-11-27T15:00:00.000Z」— **하루 전 날짜에
+ * 시각까지 붙은 딴 값**이 된다. 달력은 「from ≤ 날짜 ≤ to」 글자 비교라 이 값과는
+ * 어떤 날도 안 맞아서, 학생이 넣고 담임이 「맞습니다」까지 누른 면접일이
+ * 화면에서 통째로 사라졌다.
+ *
+ * 자정(KST)이면 날짜만, 시각이 있으면(배치의 at 처럼 — seen 비교가 시각을 쓴다)
+ * KST 시각까지 남긴다. parseFavorites_ 쪽 txt_ 와 같은 종류의 함정이다.
+ */
+function cell_(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    var day = Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd');
+    var time = Utilities.formatDate(v, 'Asia/Seoul', 'HH:mm:ss');
+    return time === '00:00:00' ? day : day + 'T' + time + '+09:00';
+  }
+  return v;
+}
+
 function rows_(name) {
   var sh = tab_(name), last = sh.getLastRow();
   if (last < 2) return [];
@@ -804,7 +825,7 @@ function rows_(name) {
   for (var i = 0; i < vals.length; i++) {
     if (!String(vals[i].join('')).trim()) continue;
     var o = {};
-    for (var j = 0; j < head.length; j++) o[head[j]] = vals[i][j];
+    for (var j = 0; j < head.length; j++) o[head[j]] = cell_(vals[i][j]);
     o._row = i + 2;
     out.push(o);
   }
