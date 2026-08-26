@@ -202,7 +202,10 @@ function download(name, text) {
  * 내역이 아니라 고민 목록이 된다. 차례는 6칸에 넣은 순서 그대로다.
  */
 function ordered(hak) {
+  // 전문대·특수대는 6칸 밖이다(CONTRACT §2.4). 순위 칸에 잘못 끼어 있어도
+  // 대장·보고서에는 안 싣는다 — 아래 전문대 집계와 두 번 세지는 것도 막는다.
   return store.appsOf(hak)
+    .filter((a) => a.univType !== '전문대' && a.univType !== '특수대')
     .map((a) => ({ a, p: store.placementOf(a.id) }))
     .filter(({ p }) => p.slot === 'rank')
     .sort((x, y) => (x.p.rank || 99) - (y.p.rank || 99)

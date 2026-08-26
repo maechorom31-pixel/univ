@@ -235,7 +235,8 @@ function render() {
   main.appendChild(soon());
 
   const ranked = state.apps
-    .filter((a) => (state.placement.get(String(a.id)) || {}).slot === 'rank')
+    .filter((a) => (state.placement.get(String(a.id)) || {}).slot === 'rank'
+      && a.univType !== '전문대' && a.univType !== '특수대')
     .sort((a, b) => state.placement.get(String(a.id)).rank - state.placement.get(String(b.id)).rank);
   const rest = state.apps.filter((a) => !ranked.includes(a));
 
@@ -742,7 +743,14 @@ function card(app) {
 
   box.appendChild(figures(app));
   box.appendChild(marks(app));
-  box.appendChild(rankPicker(app));
+  /*
+   * **전문대·특수대에는 순위 고르개를 안 단다.** 수시 6회 제한 밖이라 교사 보드도
+   * 순위를 안 매긴다(tray). 여기서 달아 주면 학생이 전문대를 1순위에 넣을 수 있고,
+   * 그 칸은 교사 보드의 6칸 찾기(일반대만 본다)에는 비어 보이면서 서버에는 차
+   * 있어서 — 두 화면이 서로 다른 6칸을 보게 된다.
+   */
+  const outside = app.univType === '전문대' || app.univType === '특수대';
+  if (!outside) box.appendChild(rankPicker(app));
 
   // 모의면접은 여러 번 한다. 잡힌 것을 다 보여 준다.
   const mocks = MOCKS.map((k) => dateOf(app, k)).filter(Boolean);
@@ -956,11 +964,11 @@ function dateRow(app, kind, d) {
   input.type = 'date';
   input.id = id;
   /*
-   * **파싱해 온 확정일은 입력칸에 미리 채운다.** 대개 그 날이 맞으니 저장 한 번이면
-   * 되고, 다르면 고쳐서 저장한다 — 고친 값이 파싱값을 덮는다(사람이 먼저다).
+   * **확정일이면 미리 채운다** — 어느 자료에서 왔든. 대개 그 날이 맞으니 저장
+   * 한 번이면 되고, 다르면 고쳐서 저장한다(사람이 넣은 값이 파싱값을 덮는다).
+   * 기간만 아는 값(fixed 아님)은 안 채운다 — 시작일을 확정일로 굳히게 된다.
    */
-  input.value = d && (d.status !== 'source' || d.fixed) && d.fixed ? d.from
-    : (d && d.status !== 'source' && d.status !== 'sched' ? d.from : '');
+  input.value = d && d.fixed ? d.from : '';
   /*
    * min·max 는 **기간일 때만** 건다. 확정일 하루짜리에 걸면 min=max 가 되어
    * 다른 날을 고를 수 없다 — 「다르면 고쳐서 저장하라」고 해 놓고 달력이

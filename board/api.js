@@ -179,6 +179,12 @@ export async function call(action, params, opts = {}) {
     } catch (err) {
       last = err;
       if (err && err.stale) break;
+      /*
+       * 판단해서 거절한 것(ok:false)은 다시 물어도 답이 같다 — 재시도 없이 끝낸다.
+       * 예외는 잠금 시간 초과뿐이다. LockService 가 붐빌 때 던지는 오류는 doGet 이
+       * ok:false 로 감싸 오는데, 그건 잠시 뒤엔 답이 다를 수 있다.
+       */
+      if (err && err.server && !/lock|timeout|시간.*초과|잠시/i.test(String(err.message))) break;
       if (attempt < 2) await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
     }
   }

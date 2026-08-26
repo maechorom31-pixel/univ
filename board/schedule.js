@@ -375,6 +375,9 @@ function interviewPanel(student) {
   const rows = [];
   const outside = [];              // 근거가 없어 안 세운 지원 — 접힌 줄로 길을 연다
   for (const app of apps) {
+    // 보관은 「올해 안 넣기로 한 것」이다. 여기 세우면 안 내는 원서의 면접일을
+    // 넣으라는 칸이 생긴다 — 판에서도, 접힌 줄에서도 뺀다.
+    if (store.placementOf(app.id).slot === 'archive') continue;
     const go = ATTEND.map((k) => ({ kind: k, d: store.dateOf(app, k) })).filter((x) => x.d);
     const other = app.univType === '전문대' || app.univType === '특수대';
     const expect = go.length ? [] : expectedKinds(app);

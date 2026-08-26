@@ -1098,8 +1098,11 @@ export function pickIpgyeol(rows, app) {
         .some((r) => r.cat === myCat || String(r.type).includes(myCat)))
       .map((k) => ({ k, s: Math.max(...groups.get(k).keys.map((alt) => similarity(want, alt))) }))
       .sort((a, b) => b.s - a.s);
+    // 규칙 2를 그대로 강제한다 — 0.65 이상이 **하나뿐**이고 2등과 0.1 이상.
+    // 둘 다 문턱을 넘으면(0.80·0.68 따위) 간격이 넓어도 안 잇는다.
     if (scored.length && scored[0].s >= SIM_TYPE
-      && (scored.length === 1 || scored[0].s - scored[1].s >= SIM_GAP)) {
+      && (scored.length === 1
+        || (scored[1].s < SIM_TYPE && scored[0].s - scored[1].s >= SIM_GAP))) {
       return take(scored[0].k, 'sim');
     }
   }

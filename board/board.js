@@ -1209,7 +1209,19 @@ async function move(app, value) {
 
   await write;
   busy = false;
-  if (failed) notice = `오류: ${failed.message}`;
+  if (failed) {
+    /*
+     * 「그 사이에 바뀌었다」(stale)면 **스스로 다시 불러온다.** 학생 화면과 같은
+     * 처리다 — 안 그러면 seen 이 낡은 채 남아 다음 옮기기도 전부 거절되고,
+     * 선생님은 새로고침 단추를 찾아야 한다.
+     */
+    if (failed.stale) {
+      notice = '학생이 방금 순위를 바꿨습니다. 새로 불러왔습니다 — 다시 해 주세요.';
+      try { await store.load(); } catch (e2) { notice = `오류: ${e2.message}`; }
+    } else {
+      notice = `오류: ${failed.message}`;
+    }
+  }
   renderRoster();
   render();
 }
