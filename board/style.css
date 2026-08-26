@@ -349,6 +349,10 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
   padding: var(--s3); min-height: 84px;
 }
 .slot-card.empty { border-style: dashed; color: var(--muted); min-height: 56px; }
+/* 학생 화면의 끌어다 놓기 — 교사 보드의 .card.over 와 같은 신호 */
+.slot-card.over, .panel.over { border-color: var(--amber); background: var(--amber-face); }
+.slot-card[draggable="true"], .mycard[draggable="true"] { cursor: grab; }
+.slot-card.dragging, .mycard.dragging { opacity: 0.45; }
 /* 학생 화면은 휴대폰으로 본다. 칸을 좁게 잡아 390px 에서도 두 줄에 셋씩 선다 —
    여섯 칸이 세로로 늘어서면 정작 지원 목록이 화면 두 번 아래로 밀린다. */
 .slots.mine { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }

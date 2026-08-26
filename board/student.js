@@ -477,9 +477,11 @@ function slotGrid(ranked) {
     if (app) {
       box.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
       box.appendChild(el('div', 'dept', tidy(app.dept)));
+      dragify(box, app);
     } else {
       box.appendChild(el('div', 'dept', '비어 있음'));
     }
+    dropify(box, (dragged) => (app && dragged.id === app.id ? null : `rank:${r}`));
     grid.appendChild(box);
   }
   wrap.appendChild(grid);
@@ -527,6 +529,44 @@ function rankPicker(app) {
   sel.onchange = () => { moveRank(app, sel.value); };
   wrap.appendChild(sel);
   return wrap;
+}
+
+/*
+ * **끌어다 놓기 — 교사 보드와 같은 버릇.**
+ *
+ * 고르개는 어느 기기서나 되는 기본 길이고, 끌어다 놓기는 마우스가 있을 때 더
+ * 빠른 덤이다. 카드나 찬 칸을 잡아 6칸 위에 놓으면 그 순위로 가고, 차 있으면
+ * 맞바꾼다. 목록 위에 놓으면 순위에서 내려온다. 휴대폰은 끌기가 브라우저마다
+ * 들쭉날쭉해서(안드로이드 크롬은 아예 안 된다) 고르개가 늘 남아 있어야 한다.
+ */
+function dragify(node, app) {
+  if (app.univType === '전문대' || app.univType === '특수대') return;
+  node.draggable = true;
+  node.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/plain', String(app.id));
+    e.dataTransfer.effectAllowed = 'move';
+    node.classList.add('dragging');
+  });
+  node.addEventListener('dragend', () => node.classList.remove('dragging'));
+}
+
+function dropify(node, where) {
+  node.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    node.classList.add('over');
+  });
+  node.addEventListener('dragleave', () => node.classList.remove('over'));
+  node.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    node.classList.remove('over');
+    const app = state.apps.find((a) => String(a.id) === e.dataTransfer.getData('text/plain'));
+    if (!app) return;
+    if (app.univType === '전문대' || app.univType === '특수대') return;
+    const value = where(app);
+    if (value) moveRank(app, value);
+  });
 }
 
 async function moveRank(app, value) {
@@ -592,6 +632,8 @@ async function moveRank(app, value) {
 
 function group(title, apps, count, help) {
   const box = el('section', 'panel');
+  // 찬 칸을 여기로 끌어다 놓으면 순위에서 내려온다 — 6칸에서 빼는 길도 있어야 한다
+  dropify(box, (dragged) => ((state.placement.get(String(dragged.id)) || {}).slot === 'rank' ? 'pool' : null));
   const head = el('div', 'panel-head');
   head.appendChild(el('h2', '', title));
   head.appendChild(el('span', 'count num', count));
@@ -750,7 +792,10 @@ function card(app) {
    * 있어서 — 두 화면이 서로 다른 6칸을 보게 된다.
    */
   const outside = app.univType === '전문대' || app.univType === '특수대';
-  if (!outside) box.appendChild(rankPicker(app));
+  if (!outside) {
+    box.appendChild(rankPicker(app));
+    dragify(box, app);
+  }
 
   // 모의면접은 여러 번 한다. 잡힌 것을 다 보여 준다.
   const mocks = MOCKS.map((k) => dateOf(app, k)).filter(Boolean);
