@@ -1014,7 +1014,9 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
 /* ── 인쇄 ─────────────────────────────────────────────────────── */
 
 @media print {
-  .bar, .tabs, .btn, .card select, .card .move, .setup { display: none !important; }
+  /* 학생 화면의 입력 조각도 종이에는 안 싣는다 — 고르개·날짜 적기·입력칸 */
+  .bar, .tabs, .btn, .card select, .card .move, .setup,
+  .rank-pick, .date-add, .field-in, .memo-new, textarea { display: none !important; }
   body { background: #fff; color: #000; }
   .wrap { max-width: none; padding: 0; }
   .layout { display: block; }
