@@ -17,7 +17,7 @@ import {
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
   normType, pickIpgyeol, typeGroups, univKind, summarize, predecessor,
 } from './match.js';
-import { josa, minReqShort } from './text.js';
+import { josa, minReqShort, methodLine, interviewShare, methodHasInterview } from './text.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -399,6 +399,27 @@ eq(minReqShort('국어, 수학, 영어, 탐구 4개 영역 등급 합 8 이내 �
 eq(minReqShort('수학(미적분/기하) 영역과 국어·영어·과학탐구 2과목 평균 중 1개 영역 등급 합 4 이내'), null,
   '1개 영역의 「합」은 묶음 특수형 — 줄이면 오해');
 eq(minReqShort(''), null, '빈 글');
+
+console.log('전형 방법 한 줄 (methodLine · interviewShare)');
+eq(methodLine({ stages: 1, method1: '학생부100' }), '일괄 · 학생부100', '일괄');
+eq(methodLine({ stages: 2, method1: '서류100', mult1: 300, method2: '1단계70+면접30' }),
+  '1단계 서류100 (3배수) → 2단계 1단계70+면접30', '단계전형 조립');
+eq(methodLine({ stages: 2, method1: '1단계 서류100(3배수)', mult1: 300, method2: '1단계성적70+면접30' }),
+  '1단계 서류100 (3배수) → 2단계 1단계성적70+면접30', '방법1에 이미 적힌 1단계·배수는 떼고 우리 것만');
+eq(methodLine({ stages: 2, method1: '서류100', mult1: 350, method2: '서류60+면접40' }),
+  '1단계 서류100 (3.5배수) → 2단계 서류60+면접40', '3.5배수');
+eq(methodLine({ stages: 2, method1: '서류100', mult1: 200, method2: '1단계서류100, 2단계 서류70+면접30' }),
+  '1단계서류100, 2단계 서류70+면접30', '방법2가 문장 전체면 그대로 (73건)');
+eq(methodLine(null), null, '모집요강이 없으면 null');
+eq(interviewShare({ stages: 1, method1: '학생부60+면접40' }), 40, '일괄인데 면접 든 전형 (18건)');
+eq(interviewShare({ stages: 2, method1: '서류100', method2: '서류66.7+면접33.3' }), 33.3, '소수 비율');
+eq(interviewShare({ stages: 2, method1: '서류100', method2: '면접100' }), 100, '면접100 을 10 으로 오독하지 않는다');
+eq(interviewShare({ stages: 1, method1: '학생부100' }), null, '면접이 없으면 null');
+eq(interviewShare({ stages: 2, method1: '학생부60+면접40', method2: '서류100' }), null,
+  '단계전형은 마지막 단계만 본다 — 1단계의 면접을 최종 비중인 양 말하지 않는다');
+eq(methodHasInterview({ stages: 1, method1: '학생부50+면접50' }), true, '방법 글의 면접');
+eq(methodHasInterview({ stages: 1, method1: '학생부100' }), false, '면접 없음');
+eq(methodHasInterview(null), false, '모집요강 없음');
 
 
 console.log('전형 이름 정규화');

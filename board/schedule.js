@@ -21,6 +21,7 @@
  */
 import * as store from './store.js';
 import { catOf } from './match.js';
+import { methodHasInterview } from './text.js';
 
 /** 가야 하는 것 — 겹치면 한 곳은 포기해야 한다 */
 const ATTEND = ['면접', '실기', '논술', '적성'];
@@ -370,7 +371,9 @@ function month(ym, events, withName) {
  * 이 지원이 **가야 할 법한** 고사. 날짜가 아직 없어도 근거가 말해 준다.
  * 학생 화면의 날짜 칸과 같은 규칙이다 — 두 화면이 다른 지원을 세우면 안 된다.
  *
- *   면접   모집요강이 단계별전형이라고 말할 때 (전형단계 ≥ 2)
+ *   면접   모집요강이 단계별전형이라고 말하거나(전형단계 ≥ 2),
+ *          전형 방법 글에 면접이 있을 때 (일괄 「학생부60+면접40」 꼴 —
+ *          실제 지원 500건에 18건이 단계 수만으로는 안 잡히던 면접이다)
  *   논술   전형 유형이 논술
  *   실기   전형 유형이 실기
  */
@@ -378,7 +381,7 @@ function expectedKinds(app) {
   const s = store.summary(app);
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
   const out = [];
-  if (s && s.stages > 1) out.push('면접');
+  if (s && (s.stages > 1 || methodHasInterview(s.mojip))) out.push('면접');
   if (cat === '논술') out.push('논술');
   if (cat === '실기') out.push('실기');
   return out;

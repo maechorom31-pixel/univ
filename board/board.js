@@ -18,7 +18,7 @@
 import * as store from './store.js';
 import { detailPanel } from './card.js';
 import { normType } from './match.js';
-import { josa, rate1, minReqShort } from './text.js';
+import { josa, rate1, minReqShort, methodLine, interviewShare } from './text.js';
 
 const RANKS = [1, 2, 3, 4, 5, 6];
 const SLOT_LABEL = { rank: '순위', pool: '후보', archive: '보관', tray: '전문대' };
@@ -872,7 +872,22 @@ function pills(app) {
   }
 
   // 셋 다 **성적 말고 따로 걸리는 것**이다. 같은 무게로 칠한다.
-  if (s.stages > 1) add(`${s.stages}단계`, 'mark');
+  /*
+   * 단계 꼬리표에 **면접이 몇 %인지** 같이 적는다 — 「2단계」만으로는 면접이
+   * 당락에 얼마나 걸리는지 안 보인다. 일괄인데 면접이 든 전형(학생부60+면접40,
+   * 실제 지원 500건에 18건)은 단계 수만 보면 면접이 아예 안 보이던 자리라
+   * 따로 세운다. 전형 방법 전문은 제목(title)에 붙는다.
+   */
+  const share = interviewShare(s.mojip);
+  if (s.stages > 1) {
+    const p = add(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`, 'mark');
+    const line = methodLine(s.mojip);
+    if (line) p.title = line;
+  } else if (share != null) {
+    const p = add(`면접 ${share}%`, 'mark');
+    const line = methodLine(s.mojip);
+    if (line) p.title = line;
+  }
   // 관심대학 리스트는 기준 글 없이 Y/N 만 준다 — 그때도 표시가 나와야 한다
   if (app.minReqText || app.minReq === true) {
     /*

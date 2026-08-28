@@ -1841,8 +1841,15 @@ export function indexMojip(doc) {
       quota: val(r, '모집2027'), quotaPrev: val(r, '모집2026'),
       rate26: val(r, '경쟁2026'), rate25: val(r, '경쟁2025'),
       cut70: val(r, '입결1_26'), cut50: val(r, '입결2_26'),
-      filled26: val(r, '추합26'),
+      filled26: val(r, '추합26'), filled25: val(r, '추합25'),
       minReq: val(r, '수능최저'), stages: val(r, '전형단계'),
+      // 전형방법 — 「서류100」「1단계70+면접30」꼴 글줄. 전형방법1은 전 줄에 있고
+      // 선발비율1은 단계전형에서 배수×100 (300 = 3배수), 일괄이면 100 이다.
+      method1: val(r, '전형방법1'), mult1: val(r, '선발비율1'),
+      method2: val(r, '전형방법2'),
+      // 학생부 구성비(교과 90 + 출결 10 꼴 숫자)와 반영 교과 원문
+      wSubj: val(r, '교과'), wAtt: val(r, '출결'), wVol: val(r, '봉사'),
+      refMain: val(r, '공통일반'), refCareer: val(r, '진로선택'),
       exam: val(r, '대학고사'), examWhen: val(r, '고사시기'),
       d1: val(r, '발표1단계'), dEssay: val(r, '논술일정'),
       dInterview: val(r, '면접일정'), dFinal: val(r, '합격자발표'),

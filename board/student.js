@@ -20,7 +20,7 @@ import {
   link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule,
   summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
 } from './match.js';
-import { josa, rate1, isoDay, minReqShort } from './text.js';
+import { josa, rate1, isoDay, minReqShort, methodLine, interviewShare, methodHasInterview } from './text.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';
@@ -578,7 +578,9 @@ function slotGrid(ranked) {
         const short = minReqShort(minTxt);
         pin(short ? `최저 ${short}` : '최저 있음', 'mark', minTxt);
       }
-      if (s && s.stages > 1) pin(`${s.stages}단계`);
+      const share = s ? interviewShare(s.mojip) : null;
+      if (s && s.stages > 1) pin(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`);
+      else if (share != null) pin(`면접 ${share}%`);
       const iv = dateOf(app, '면접');
       if (iv) {
         pin(`면접 ${label(iv.from)}`,
@@ -843,7 +845,20 @@ function marks(app) {
     if (d) add(`${now}명 뽑음 (작년 ${prev})`, heavy ? 'warn' : '');
     else add(`${now}명 뽑음`);
   }
-  if (s && s.stages > 1) add(`${s.stages}단계`);
+  // 단계 꼬리표에 면접 비중을 같이 적는다 — 교사 보드와 같은 규칙.
+  // 일괄인데 면접이 든 전형(학생부60+면접40 꼴)도 여기서 처음 면접이 보인다.
+  {
+    const share = s ? interviewShare(s.mojip) : null;
+    if (s && s.stages > 1) {
+      const p = add(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`);
+      const line = methodLine(s.mojip);
+      if (line) p.title = line;
+    } else if (share != null) {
+      const p = add(`면접 ${share}%`);
+      const line = methodLine(s.mojip);
+      if (line) p.title = line;
+    }
+  }
   /*
    * **가야 하는 날은 꼬리표로 단다.** 날짜를 넣고도 카드를 펼쳐야 보이면
    * 여섯 장을 훑을 때 어느 면접이 잡혔는지 안 보인다. 선생님 보드의 노란
@@ -934,18 +949,21 @@ function card(app) {
    *
    * 이제 **볼 근거가 있으면 빈 칸이라도 세운다.**
    *
-   *   면접   모집요강이 단계별전형이라고 말할 때 (전형단계 ≥ 2)
+   *   면접   모집요강이 단계별전형이라고 말하거나(전형단계 ≥ 2),
+   *          전형 방법 글에 면접이 있을 때 (일괄 「학생부60+면접40」 꼴)
    *   논술   전형 유형이 논술일 때
    *   실기   전형 유형이 실기일 때
    *
    * 실제 502건으로 재 보니 모집요강이 전형단계를 아는 것이 87.6% 이고, 그중
-   * 단계별은 71건이다. 나머지는 일괄전형이라 면접이 없는 게 맞아서 칸도 안 선다.
-   * 근거 없이 다 세우면 면접 없는 카드마다 빈 날짜 칸이 붙어 시끄러워진다.
+   * 단계별은 71건이다. 일괄인데 전형 방법에 면접이 든 것이 18건 더 있다 —
+   * 단계 수만 보면 이 18건은 면접 칸이 안 서던 자리다(항공서비스·간호 계열).
+   * 나머지는 정말 면접이 없어서 칸도 안 선다. 근거 없이 다 세우면 면접 없는
+   * 카드마다 빈 날짜 칸이 붙어 시끄러워진다.
    */
   const s = summaryOf(app);
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
   const expects = (kind) => {
-    if (kind === '면접') return s ? s.stages > 1 : false;
+    if (kind === '면접') return s ? (s.stages > 1 || methodHasInterview(s.mojip)) : false;
     if (kind === '논술') return cat === '논술';
     if (kind === '실기') return cat === '실기';
     return false;                       // 적성은 즐겨찾기가 줄 때만
@@ -1627,13 +1645,23 @@ function openDetail(app) {
     for (const [k, v] of have) {
       const tr = document.createElement('tr');
       tr.appendChild(el('th', 'rowhead', k));
-      tr.appendChild(el('td', /[0-9]/.test(String(v)) ? 'num' : null, String(v)));
+      // num 은 줄바꿈을 막는다(nowrap). 「전형 방법」 같은 긴 글줄에 붙으면
+      // 좁은 화면에서 잘리므로, 숫자와 단위만으로 된 짧은 값에만 붙인다.
+      tr.appendChild(el('td', /^[\d.,:~\s%명개-]+$/.test(String(v)) ? 'num' : null, String(v)));
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
     tw.appendChild(table);
     return tw;
   };
+
+  /* 이 전형이 무엇으로 뽑는지 — 「1단계 서류100 (3배수) → 2단계 1단계70+면접30」 */
+  block('전형 방법', factTable([
+    ['방법', methodLine(mo)],
+    ['학생부 구성', mo && mo.wSubj != null
+      ? `교과 ${mo.wSubj}${mo.wAtt ? ` + 출결 ${mo.wAtt}` : ''}${mo.wVol ? ` + 봉사 ${mo.wVol}` : ''}`
+      : null],
+  ]));
 
   block('인원과 경쟁률', factTable([
     ['올해 모집', s && s.quotaNow != null ? `${s.quotaNow}명` : app.quotaText || null],
@@ -1719,6 +1747,12 @@ function openDetail(app) {
   const minText = app.minReqText || (mo && mo.minReq) || '';
   if (minText) block('수능 최저학력 기준', el('p', 'longtext', String(minText).replace(/^\s*\*\s*/, '')));
   else if (app.minReq === false) block('수능 최저학력 기준', el('p', 'hint', '이 전형은 수능 최저가 없습니다.'));
+  if (mo && (mo.refMain || mo.refCareer)) {
+    const rf = el('div');
+    if (mo.refMain) rf.appendChild(el('p', 'longtext', `공통·일반선택 — ${mo.refMain}`));
+    if (mo.refCareer) rf.appendChild(el('p', 'longtext', `진로선택 — ${mo.refCareer}`));
+    block('반영 교과', rf);
+  }
   if (mo && mo.eligibility) block('지원 자격', el('p', 'longtext', String(mo.eligibility)));
 
   body.appendChild(el('p', 'hint',

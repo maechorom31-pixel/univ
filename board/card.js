@@ -15,7 +15,7 @@
 import * as store from './store.js';
 import { realRate, normType, typeGroups } from './match.js';
 import { confidence, pctText } from './confidence.js';
-import { josa, rate1 } from './text.js';
+import { josa, rate1, methodLine } from './text.js';
 
 export { realRate };
 
@@ -265,7 +265,15 @@ export function detailPanel(app, student, onClose) {
     ['선발 방식', app.selectType, '즐겨찾기'],
     ['계열', app.track || (isCollege ? s.track : null), app.track ? '즐겨찾기' : '전문대 자료'],
     ['지역', app.region, '즐겨찾기'],
-    ['전형 단계', mo && mo.stages ? `${mo.stages}단계` : null, '모집요강'],
+    /*
+     * 「전형 단계 2단계」보다 「1단계 서류100 (3배수) → 2단계 1단계70+면접30」이
+     * 학생에게 이 전형이 **무엇으로 뽑는지** 말해 준다. 원문을 못 읽으면 단계 수만.
+     */
+    ['전형 방법', methodLine(mo), '모집요강'],
+    ['전형 단계', !methodLine(mo) && mo && mo.stages ? `${mo.stages}단계` : null, '모집요강'],
+    ['학생부 구성', mo && mo.wSubj != null
+      ? `교과 ${mo.wSubj}${mo.wAtt ? ` + 출결 ${mo.wAtt}` : ''}${mo.wVol ? ` + 봉사 ${mo.wVol}` : ''}`
+      : null, '모집요강'],
   ]));
 
   /*
@@ -510,7 +518,16 @@ export function detailPanel(app, student, onClose) {
         : '즐겨찾기와 모집요강에 최저 기준이 적혀 있지 않습니다. 모집요강을 확인해 주세요.'));
   body.appendChild(min);
 
-  /* 6. 지원 자격 */
+  /* 6. 반영 교과 — 원문 그대로. 어느 과목이 들어가는지가 교과 전형의 반이다. */
+  if (mo && (mo.refMain || mo.refCareer)) {
+    const rf = el('div', 'detail-block');
+    rf.appendChild(el('h3', '', '반영 교과'));
+    if (mo.refMain) rf.appendChild(el('p', 'longtext', `공통·일반선택 — ${mo.refMain}`));
+    if (mo.refCareer) rf.appendChild(el('p', 'longtext', `진로선택 — ${mo.refCareer}`));
+    body.appendChild(rf);
+  }
+
+  /* 7. 지원 자격 */
   if (mo && mo.eligibility) {
     const q = el('div', 'detail-block');
     q.appendChild(el('h3', '', '지원 자격'));
@@ -518,7 +535,7 @@ export function detailPanel(app, student, onClose) {
     body.appendChild(q);
   }
 
-  /* 7. 전문대만 있는 값 */
+  /* 8. 전문대만 있는 값 */
   if (isCollege && s.linked) {
     const d = s.rows[0] || {};
     body.appendChild(rows('전문대 정보', [

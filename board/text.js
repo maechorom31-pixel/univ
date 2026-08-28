@@ -115,3 +115,50 @@ export function minReqShort(text) {
   const uniq = [...new Set(hits)];
   return uniq.length === 1 ? uniq[0] : null;
 }
+
+/**
+ * 전형 방법 한 줄 — 「1단계 서류100 (3배수) → 2단계 1단계70+면접30」.
+ * =====================================================================
+ * 학생이 제 전형이 **무엇으로 뽑는지** 카드에서 바로 읽게 하는 줄이다.
+ * 모집요강의 전형방법1 은 16,873줄 전부에 있고(「학생부100」「서류100」꼴),
+ * 선발비율1 은 단계전형에서 배수×100 이다(300 = 3배수, 350 = 3.5배수).
+ *
+ * 방법1 에 「1단계」「(3배수)」가 이미 적힌 줄이 더러 있어(같은 말이 두 번 나온다)
+ * 우리가 붙이기 전에 떼고, 방법1 이 「, 2단계」까지 품은 문장이면 그대로 쓴다 —
+ * 쪼개서 다시 조립하면 원문과 달라질 수 있다. 못 읽으면 null — 오표기가
+ * 미표기보다 나쁘다.
+ */
+export function methodLine(mo) {
+  if (!mo || !mo.method1) return null;
+  const m1 = String(mo.method1).trim();
+  if (!((mo.stages || 1) > 1)) return `일괄 · ${m1}`;
+  const raw2 = String(mo.method2 || '').trim();
+  if (/2\s*단계/.test(m1)) return m1;            // 방법1이 이미 문장 전체다
+  if (/2\s*단계/.test(raw2)) return raw2;        // 방법2가 문장 전체인 줄도 73건 있다
+  const base = m1.replace(/^1\s*단계\s*/, '').replace(/\s*\([0-9.]+\s*배수\)\s*/, '').trim();
+  const mult = mo.mult1 != null && mo.mult1 > 100
+    ? ` (${String(mo.mult1 / 100).replace(/\.0$/, '')}배수)` : '';
+  const m2 = raw2 ? ` → 2단계 ${raw2}` : '';
+  return `1단계 ${base}${mult}${m2}`;
+}
+
+/**
+ * 마지막 단계에서 면접이 몇 %인가. 「1단계70+면접30」→ 30.
+ *
+ * 단계전형이면 방법2, 일괄이면 방법1 에서 읽는다. **일괄인데 면접이 든 전형이
+ * 실제 지원 500건에 18건 있다**(학생부60+면접40 꼴 — 항공서비스·간호 계열).
+ * 단계 수만 보면 이 18건은 면접이 안 보인다. 못 읽으면 null.
+ */
+export function interviewShare(mo) {
+  if (!mo) return null;
+  const t = String(((mo.stages || 1) > 1 ? mo.method2 : mo.method1) || '');
+  // 「면접100」이 전체 자료에 12건 있다 — 두 자리로 끊으면 10 으로 오독한다.
+  const m = t.match(/면접\s*([0-9]{1,3}(?:\.[0-9]+)?)/);
+  const n = m ? Number(m[1]) : null;
+  return n != null && n > 0 && n <= 100 ? n : null;
+}
+
+/** 전형 방법 글에 면접이 있나 — 면접 날짜 칸을 세울 근거로 쓴다. */
+export function methodHasInterview(mo) {
+  return !!mo && /면접/.test(`${mo.method1 || ''} ${mo.method2 || ''}`);
+}
