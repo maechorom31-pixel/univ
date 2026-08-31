@@ -25,6 +25,7 @@
  *   CSV 내려받기 →  다른 도구로 넘길 원자료
  */
 import * as store from './store.js';
+import { outsideLimit } from './match.js';
 import * as stats from './stats.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -205,7 +206,7 @@ function ordered(hak) {
   // 전문대·특수대는 6칸 밖이다(CONTRACT §2.4). 순위 칸에 잘못 끼어 있어도
   // 대장·보고서에는 안 싣는다 — 아래 전문대 집계와 두 번 세지는 것도 막는다.
   return store.appsOf(hak)
-    .filter((a) => a.univType !== '전문대' && a.univType !== '특수대')
+    .filter((a) => !outsideLimit(a))
     .map((a) => ({ a, p: store.placementOf(a.id) }))
     .filter(({ p }) => p.slot === 'rank')
     .sort((x, y) => (x.p.rank || 99) - (y.p.rank || 99)
@@ -543,7 +544,7 @@ function rowsForReport() {
      * 뺀다 — 그건 올해 안 넣기로 한 것이다.
      */
     const others = store.appsOf(student.hak).filter((a) => {
-      const outside = a.univType === '전문대' || a.univType === '특수대';
+      const outside = outsideLimit(a);
       return outside && store.placementOf(a.id).slot !== 'archive';
     });
     for (const app of [...ordered(student.hak), ...others]) {

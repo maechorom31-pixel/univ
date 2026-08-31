@@ -13,7 +13,7 @@
  * 계산하지 않고 「자료 불일치」로 둔다.
  */
 import * as store from './store.js';
-import { realRate, normType, typeGroups } from './match.js';
+import { realRate, normType, typeGroups, fillTrend } from './match.js';
 import { confidence, pctText } from './confidence.js';
 import { josa, rate1, methodLine } from './text.js';
 
@@ -314,7 +314,6 @@ export function detailPanel(app, student, onClose) {
     [yr('경쟁률'), s && s.rate != null ? `${rate1(s.rate)}:1` : null, isCollege ? '전문대 자료' : ipSrc],
     ['작년 실질 경쟁률', real.value != null ? `${rate1(real.value)}:1` : null,
       real.why || '명목 × 모집 ÷ (모집 + 추합)'],
-    ['작년 추가 합격', mo && mo.filled26 != null ? `${mo.filled26}명` : null, '모집요강'],
     ['충원율', isCollege && s.linked && s.rows[0] && s.rows[0].fill != null
       ? `${Math.round(s.rows[0].fill)}%` : null, '전문대 자료'],
   ]);
@@ -352,6 +351,42 @@ export function detailPanel(app, student, onClose) {
       + ' 좌우되므로 그 해 값은 특히 흔들립니다.'));
   }
   body.appendChild(quotaBlock);
+
+  /*
+   * 충원(추가합격) 3개년 추이 — 예비번호가 어디까지 도는 전형인지 말해 준다.
+   * 추합란이 누적 예비번호로 보이는 해(suspect)는 칸을 비운다.
+   */
+  const ft = fillTrend(mo);
+  if (ft.length && !isCollege) {
+    const fb = el('div', 'detail-block');
+    fb.appendChild(el('h3', '', '충원(추가합격) 추이'));
+    const tw = el('div', 'tw');
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    for (const h of ['연도', '모집', '경쟁률', '추가 합격', '충원율', '실질 경쟁률']) hr.appendChild(el('th', '', h));
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (const r of ft) {
+      const tr = document.createElement('tr');
+      tr.appendChild(el('td', 'num', r.year));
+      tr.appendChild(el('td', 'num', r.quota != null ? `${Math.round(r.quota)}명` : '—'));
+      tr.appendChild(el('td', 'num', r.rate != null ? `${rate1(r.rate)}:1` : '—'));
+      const fc = el('td', 'num', r.filled != null ? `${r.filled}명` : '—');
+      if (r.suspect) fc.title = r.real.why;
+      tr.appendChild(fc);
+      tr.appendChild(el('td', 'num', r.fillPct != null ? `${r.fillPct}%` : '—'));
+      tr.appendChild(el('td', 'num', r.real.value != null ? `${rate1(r.real.value)}:1` : '—'));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tw.appendChild(table);
+    fb.appendChild(tw);
+    fb.appendChild(el('p', 'hint',
+      '충원율 = 추가 합격 ÷ 모집 × 100. 예비번호가 모집인원의 몇 %까지 돌았는지입니다. 출처: 모집요강.'));
+    body.appendChild(fb);
+  }
 
   /* 3. 성적 — 내 성적과 작년 결과를 나란히. 빼지 않고 그대로 둔다. */
   const naesin = (student && student.naesin) || {};
@@ -545,6 +580,19 @@ export function detailPanel(app, student, onClose) {
       ['연계 편입', d.transfer ? `${d.transfer}곳` : null, '전문대 자료'],
       ['등록금', d.tuition != null ? `${Math.round(d.tuition).toLocaleString('ko-KR')}원` : null, '전문대 자료'],
       ['학과 변경', d.change, '전문대 자료'],
+    ]));
+  }
+
+  /*
+   * 전문대 공통 일정 — **자료가 붙었는지와 무관하게** 전문대면 늘 선다.
+   * 접수 기간은 전 대학 공통(한국전문대학교육협의회)이고, 등록 규칙은
+   * 몰랐다가는 정시를 통째로 잃는 자리라 상담의 단골 질문이다.
+   */
+  if (app.univType === '전문대') {
+    body.appendChild(rows('전문대 공통 일정', [
+      ['수시 접수', '1차 2026. 9. 7 ~ 9. 30 · 2차 11. 11 ~ 11. 25', '전문대교협 공통 일정'],
+      ['지원 횟수', '제한 없음 — 4년제 6회와 별개', '전문대교협 공통 일정'],
+      ['등록', '한 곳만. 수시 등록하면 정시·추가모집 지원 불가', '전문대교협 공통 일정'],
     ]));
   }
 

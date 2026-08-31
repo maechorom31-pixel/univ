@@ -19,6 +19,7 @@ import * as api from './api.js';
 import {
   link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule,
   summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
+  fillTrend, outsideLimit,
 } from './match.js';
 import { josa, rate1, isoDay, minReqShort, methodLine, interviewShare, methodHasInterview } from './text.js';
 
@@ -237,7 +238,7 @@ function render() {
 
   const ranked = state.apps
     .filter((a) => (state.placement.get(String(a.id)) || {}).slot === 'rank'
-      && a.univType !== '전문대' && a.univType !== '특수대')
+      && !outsideLimit(a))
     .sort((a, b) => state.placement.get(String(a.id)).rank - state.placement.get(String(b.id)).rank);
   const rest = state.apps.filter((a) => !ranked.includes(a));
 
@@ -281,11 +282,41 @@ function render() {
   if (rest.length) {
     main.appendChild(group('그 밖의 지원', rest, `${rest.length}곳`,
       '6칸에 넣지 않았거나 6회 제한 밖(전문대·특수대)인 지원입니다.'));
+    if (rest.some((a) => a.univType === '전문대')) main.appendChild(jcNotice());
   }
 
   main.appendChild(upcoming());
   main.appendChild(clashPanel());
   main.appendChild(birthPanel());
+}
+
+/**
+ * 전문대 수시의 규칙 — **4년제와 다른 것만** 적는다.
+ * =====================================================================
+ * 전문대 지원이 있는 학생에게만 나온다. 원서접수 기간은 전 대학 공통이고
+ * (한국전문대학교육협의회), 등록 규칙은 몰랐다가는 정시를 통째로 잃는 자리라
+ * 화면에 박아 둔다. V9.7 상담카드(운정고 이재규 외)에서 배워 온 안내다.
+ * 마감 시각·조기 마감·대학 안 복수지원은 대학마다 달라 요강 확인으로 돌린다.
+ */
+function jcNotice() {
+  const box = el('section', 'panel');
+  box.appendChild(el('h2', '', '전문대 수시는 규칙이 다릅니다'));
+  const ul = el('ul', 'memo-list');
+  const li = (strong, rest) => {
+    const item = document.createElement('li');
+    const p = el('p', 'memo-text');
+    p.appendChild(el('b', '', strong));
+    p.appendChild(document.createTextNode(' ' + rest));
+    item.appendChild(p);
+    ul.appendChild(item);
+  };
+  li('지원 횟수 제한이 없습니다.', '4년제 수시 6회와 별개로 셉니다. 그래서 순위 6칸에도 안 들어갑니다.');
+  li('원서접수는 전 대학이 같은 기간입니다.', '1차 2026. 9. 7 ~ 9. 30 · 2차 11. 11 ~ 11. 25. 발표일은 대학마다 다릅니다. 마감 시각과 조기 마감은 요강에서 확인하세요.');
+  li('등록은 반드시 한 곳만.', '1차에 붙어도 등록하지 않으면 2차에 지원할 수 있지만, 수시에 붙어 등록하면 정시·추가모집에 지원할 수 없습니다.');
+  li('같은 대학 안 복수지원은 대학마다 다릅니다.', '허용 여부와 횟수를 모집요강에서 확인하세요.');
+  box.appendChild(ul);
+  box.appendChild(el('p', 'hint', '출처: 한국전문대학교육협의회 공통 일정. 최종 확정 내용은 각 대학 모집요강이 기준입니다.'));
+  return box;
 }
 
 /**
@@ -650,7 +681,7 @@ function rankPicker(app) {
  * 들쭉날쭉해서(안드로이드 크롬은 아예 안 된다) 고르개가 늘 남아 있어야 한다.
  */
 function dragify(node, app) {
-  if (app.univType === '전문대' || app.univType === '특수대') return;
+  if (outsideLimit(app)) return;
   node.draggable = true;
   node.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('text/plain', String(app.id));
@@ -673,7 +704,7 @@ function dropify(node, where) {
     node.classList.remove('over');
     const app = state.apps.find((a) => String(a.id) === e.dataTransfer.getData('text/plain'));
     if (!app) return;
-    if (app.univType === '전문대' || app.univType === '특수대') return;
+    if (outsideLimit(app)) return;
     const value = where(app);
     if (value) moveRank(app, value);
   });
@@ -845,6 +876,9 @@ function marks(app) {
     if (d) add(`${now}명 뽑음 (작년 ${prev})`, heavy ? 'warn' : '');
     else add(`${now}명 뽑음`);
   }
+  if (outsideLimit(app) && app.univType !== '전문대' && app.univType !== '특수대') {
+    add('수시 6회에 안 셈');
+  }
   // 단계 꼬리표에 면접 비중을 같이 적는다 — 교사 보드와 같은 규칙.
   // 일괄인데 면접이 든 전형(학생부60+면접40 꼴)도 여기서 처음 면접이 보인다.
   {
@@ -924,7 +958,7 @@ function card(app) {
    * 그 칸은 교사 보드의 6칸 찾기(일반대만 본다)에는 비어 보이면서 서버에는 차
    * 있어서 — 두 화면이 서로 다른 6칸을 보게 된다.
    */
-  const outside = app.univType === '전문대' || app.univType === '특수대';
+  const outside = outsideLimit(app);
   if (!outside) {
     box.appendChild(rankPicker(app));
     dragify(box, app);
@@ -1668,8 +1702,39 @@ function openDetail(app) {
     ['작년 모집', s && s.quotaPrev != null ? `${s.quotaPrev}명` : null],
     [s && s.year ? `${s.year} 경쟁률` : '경쟁률', s && s.rate != null ? `${rate1(s.rate)}:1` : null],
     ['작년 실질 경쟁률', s && s.real && s.real.value != null ? `${rate1(s.real.value)}:1` : null],
-    ['작년 추가 합격', mo && mo.filled26 != null ? `${mo.filled26}명` : null],
   ]));
+
+  /* 충원(추가합격) 3개년 — 예비번호가 어디까지 도는 전형인지. 선생님 상세와 같은 표 */
+  const ft = fillTrend(mo);
+  if (ft.length) {
+    const tw = el('div', 'tw');
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    for (const h of ['연도', '모집', '경쟁률', '추가 합격', '충원율', '실질']) hr.appendChild(el('th', '', h));
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (const r of ft) {
+      const tr = document.createElement('tr');
+      tr.appendChild(el('td', 'num', r.year));
+      tr.appendChild(el('td', 'num', r.quota != null ? `${Math.round(r.quota)}명` : '—'));
+      tr.appendChild(el('td', 'num', r.rate != null ? `${rate1(r.rate)}:1` : '—'));
+      const fc = el('td', 'num', r.filled != null ? `${r.filled}명` : '—');
+      if (r.suspect) fc.title = r.real.why;
+      tr.appendChild(fc);
+      tr.appendChild(el('td', 'num', r.fillPct != null ? `${r.fillPct}%` : '—'));
+      tr.appendChild(el('td', 'num', r.real.value != null ? `${rate1(r.real.value)}:1` : '—'));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tw.appendChild(table);
+    const box = el('div');
+    box.appendChild(tw);
+    box.appendChild(el('p', 'hint',
+      '충원율 = 추가 합격 ÷ 모집 × 100. 예비번호가 모집인원의 몇 %까지 돌았는지입니다.'));
+    block('충원(추가합격) 추이', box);
+  }
 
   /* 연도별 추이 — 이 학과의 모든 전형·모든 해 */
   if (s && s.rows && s.rows.length) {

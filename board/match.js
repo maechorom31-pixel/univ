@@ -310,6 +310,23 @@ export function univKind(raw) {
   return '';
 }
 
+/**
+ * 수시 6회 제한 **밖**의 지원인가.
+ * =====================================================================
+ * 전문대·특수대(사관학교·경찰대)는 즐겨찾기의 학교유형으로 걸리지만,
+ * 과학기술원(KAIST·GIST·DGIST·UNIST)과 한국에너지공대는 특별법 대학이라
+ * 6회 제한이 없는데 **학교유형은 「일반대」로 들어온다.** 이름으로 거른다.
+ * (V9.7 상담카드가 명시하던 목록. 실제 지원 자료에는 아직 0건 — 예방 규칙이다.)
+ *
+ * 이 판정이 참이면 6칸(순위)에 넣지 않고 「그 밖의 지원」으로 뺀다.
+ */
+const SIX_EXEMPT = /사관학교|경찰대|한국과학기술원|KAIST|광주과학기술원|GIST|대구경북과학기술원|DGIST|울산과학기술원|UNIST|한국에너지공/;
+export function outsideLimit(app) {
+  if (!app) return false;
+  if (app.univType === '전문대' || app.univType === '특수대') return true;
+  return SIX_EXEMPT.test(String(app.univ || ''));
+}
+
 export function catOf(typeCat) {
   const t = String(typeCat || '');
   if (/논술/.test(t)) return '논술';
@@ -344,6 +361,41 @@ export function realRate(nominal, quota, filled) {
     return { value: null, why: '추가합격이 누적 예비번호로 적힌 것으로 보여 계산하지 않았습니다' };
   }
   return { value: (nominal * quota) / (quota + filled), why: '' };
+}
+
+/**
+ * 충원(추가합격) 3개년 추이 — 모집요강의 추합26·25·24 로 그린다.
+ * =====================================================================
+ * V9.7 상담카드(운정고 이재규 외)의 「과거 입결·충원 추이」 부록에서 배워 온 것.
+ * 그쪽은 대학어디가 자료를 따로 실었지만, **우리 모집요강에 이미 3년치가 있다**
+ * (추합 76·65·62%, 실질 계산까지 통과하는 줄 74·63·60%).
+ *
+ * 충원율 = 추합 ÷ 모집 × 100. 실질경쟁률과 같은 가드를 쓴다 —
+ * 모집+추합 > 지원자수면 추합란이 누적 예비번호라는 뜻이라(suspect),
+ * 그 해의 추합·충원율·실질은 내지 않는다. 오표기가 미표기보다 나쁘다.
+ */
+export function fillTrend(mo) {
+  if (!mo) return [];
+  const spec = [
+    [2026, mo.quotaPrev, mo.rate26, mo.filled26],
+    [2025, mo.quota25, mo.rate25, mo.filled25],
+    [2024, mo.quota24, mo.rate24, mo.filled24],
+  ];
+  const out = [];
+  for (const [year, quota, rate, filled] of spec) {
+    if (quota == null && rate == null && filled == null) continue;
+    const real = realRate(rate, quota, filled);
+    const suspect = real.value == null && /예비번호/.test(real.why || '');
+    out.push({
+      year, quota, rate,
+      filled: suspect ? null : filled,
+      fillPct: !suspect && filled != null && quota ? Math.round((filled / quota) * 100) : null,
+      real: suspect ? { value: null, why: real.why } : real,
+      suspect,
+    });
+  }
+  // 셋 다 추합이 없으면 추이가 아니다 — 연도별 추이 표와 겹치는 말만 남는다
+  return out.some((r) => r.filled != null) ? out : [];
 }
 
 /**
@@ -1839,9 +1891,11 @@ export function indexMojip(doc) {
       free: tag ? tag[1] : null, parts,
       type: val(r, '세부전형'), track: val(r, '계열'),
       quota: val(r, '모집2027'), quotaPrev: val(r, '모집2026'),
-      rate26: val(r, '경쟁2026'), rate25: val(r, '경쟁2025'),
+      quota25: val(r, '모집2025'), quota24: val(r, '모집2024'),
+      rate26: val(r, '경쟁2026'), rate25: val(r, '경쟁2025'), rate24: val(r, '경쟁2024'),
       cut70: val(r, '입결1_26'), cut50: val(r, '입결2_26'),
-      filled26: val(r, '추합26'), filled25: val(r, '추합25'),
+      // 추합은 연도별로 다 있다(76·65·62%) — 충원 추이를 그릴 수 있는 자리다
+      filled26: val(r, '추합26'), filled25: val(r, '추합25'), filled24: val(r, '추합24'),
       minReq: val(r, '수능최저'), stages: val(r, '전형단계'),
       // 전형방법 — 「서류100」「1단계70+면접30」꼴 글줄. 전형방법1은 전 줄에 있고
       // 선발비율1은 단계전형에서 배수×100 (300 = 3배수), 일괄이면 100 이다.

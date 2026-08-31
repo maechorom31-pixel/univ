@@ -15,7 +15,7 @@ import {
   univStem, campusOf, resolveUniv, buildUnivIndex,
   normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
-  normType, pickIpgyeol, typeGroups, univKind, summarize, predecessor,
+  normType, pickIpgyeol, typeGroups, univKind, summarize, predecessor, fillTrend, outsideLimit,
 } from './match.js';
 import { josa, minReqShort, methodLine, interviewShare, methodHasInterview } from './text.js';
 
@@ -420,6 +420,29 @@ eq(interviewShare({ stages: 2, method1: '학생부60+면접40', method2: '서류
 eq(methodHasInterview({ stages: 1, method1: '학생부50+면접50' }), true, '방법 글의 면접');
 eq(methodHasInterview({ stages: 1, method1: '학생부100' }), false, '면접 없음');
 eq(methodHasInterview(null), false, '모집요강 없음');
+
+
+console.log('충원(추가합격) 추이 (fillTrend)');
+{
+  const t = fillTrend({ quotaPrev: 10, rate26: 5, filled26: 8, quota25: 10, rate25: 4, filled25: 6, quota24: null, rate24: null, filled24: null });
+  eq(t.length, 2, '자료 있는 해만');
+  eq(t[0].fillPct, 80, '충원율 = 추합 ÷ 모집 × 100');
+  eq(Math.round(t[0].real.value * 100) / 100, 2.78, '실질 = 명목 × 모집 ÷ (모집+추합)');
+  const sus = fillTrend({ quotaPrev: 10, rate26: 2, filled26: 300 });
+  eq(sus.length, 0, '누적 예비번호(모집+추합 > 지원자)만 있으면 추이를 내지 않는다');
+  const mix = fillTrend({ quotaPrev: 10, rate26: 2, filled26: 300, quota25: 10, rate25: 4, filled25: 6 });
+  eq(mix[0].filled, null, '누적 의심 해는 추합 칸을 비운다');
+  eq(mix[1].fillPct, 60, '멀쩡한 해는 그대로');
+  eq(fillTrend(null).length, 0, '모집요강 없음');
+}
+
+console.log('수시 6회 제한 밖 (outsideLimit)');
+eq(outsideLimit({ univType: '전문대', univ: '광주보건대학교' }), true, '전문대');
+eq(outsideLimit({ univType: '특수대', univ: '육군사관학교' }), true, '특수대');
+eq(outsideLimit({ univType: '일반대', univ: '한국과학기술원(KAIST)' }), true, '과기원은 학교유형이 일반대여도 6회 밖');
+eq(outsideLimit({ univType: '일반대', univ: '한국에너지공과대학교' }), true, '한국에너지공대');
+eq(outsideLimit({ univType: '일반대', univ: '국민대학교(서울)' }), false, '보통 일반대');
+eq(outsideLimit(null), false, '빈 값');
 
 
 console.log('전형 이름 정규화');

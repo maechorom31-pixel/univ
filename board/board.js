@@ -17,7 +17,7 @@
  */
 import * as store from './store.js';
 import { detailPanel } from './card.js';
-import { normType } from './match.js';
+import { normType, outsideLimit } from './match.js';
 import { josa, rate1, minReqShort, methodLine, interviewShare } from './text.js';
 
 const RANKS = [1, 2, 3, 4, 5, 6];
@@ -285,8 +285,8 @@ function render() {
         + ' 원본을 새로 받으셨다면 다시 불러와 주세요.'));
     return;
   }
-  const general = apps.filter((a) => a.univType !== '전문대' && a.univType !== '특수대');
-  const others = apps.filter((a) => a.univType === '전문대' || a.univType === '특수대');
+  const general = apps.filter((a) => !outsideLimit(a));
+  const others = apps.filter((a) => outsideLimit(a));
   const at = (r) => general.find((a) => {
     const p = store.placementOf(a.id);
     return p.slot === 'rank' && p.rank === r;
@@ -878,6 +878,12 @@ function pills(app) {
    * 실제 지원 500건에 18건)은 단계 수만 보면 면접이 아예 안 보이던 자리라
    * 따로 세운다. 전형 방법 전문은 제목(title)에 붙는다.
    */
+  // 과기원·사관학교처럼 학교유형은 일반대인데 6회 제한 밖인 지원 — 왜 순위 칸에
+  // 없는지 꼬리표가 말해 준다. 걸리는 조건이 아니라 혜택이므로 노란 칠은 안 한다.
+  if (outsideLimit(app) && app.univType !== '전문대' && app.univType !== '특수대') {
+    add('수시 6회에 안 셈');
+  }
+
   const share = interviewShare(s.mojip);
   if (s.stages > 1) {
     const p = add(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`, 'mark');
@@ -1007,7 +1013,7 @@ function mover(app) {
   const box = el('div', 'move');
   const sel = document.createElement('select');
   sel.setAttribute('aria-label', `${app.univ} 자리 옮기기`);
-  const isOther = app.univType === '전문대' || app.univType === '특수대';
+  const isOther = outsideLimit(app);
   const options = isOther
     ? [['tray', '지원'], ['archive', '보관']]
     : [...RANKS.map((r) => [`rank:${r}`, `${r}순위`]), ['pool', '후보'], ['archive', '보관']];
@@ -1062,7 +1068,7 @@ function group(title, apps, help, student, slot) {
   // 묶음 자체가 받는 쪽이다. 비어 있어도 받아야 「후보로 빼기」가 된다.
   if (slot) {
     dropTarget(box, (dropped) => {
-      const other = dropped.univType === '전문대' || dropped.univType === '특수대';
+      const other = outsideLimit(dropped);
       // 전문대를 6칸 쪽 묶음에, 일반대를 전문대 묶음에 놓는 것은 막는다
       if (slot === 'tray' && !other) return null;
       if (slot !== 'tray' && slot !== 'archive' && other) return null;
