@@ -417,6 +417,10 @@ eq(interviewShare({ stages: 2, method1: '서류100', method2: '면접100' }), 10
 eq(interviewShare({ stages: 1, method1: '학생부100' }), null, '면접이 없으면 null');
 eq(interviewShare({ stages: 2, method1: '학생부60+면접40', method2: '서류100' }), null,
   '단계전형은 마지막 단계만 본다 — 1단계의 면접을 최종 비중인 양 말하지 않는다');
+eq(interviewShare({ stages: 2, method1: '서류100', method2: '1단계 면접100(5배수), 2단계 1단계60+체력40' }), null,
+  '문장 전체 방법줄도 2단계 뒤만 본다 — 1단계의 면접100 을 집지 않는다');
+eq(interviewShare({ stages: 2, method1: '1단계서류100, 2단계 서류70+면접30', method2: '' }), 30,
+  '방법2가 비면 문장 전체인 방법1에서 2단계 뒤를 읽는다');
 eq(methodHasInterview({ stages: 1, method1: '학생부50+면접50' }), true, '방법 글의 면접');
 eq(methodHasInterview({ stages: 1, method1: '학생부100' }), false, '면접 없음');
 eq(methodHasInterview(null), false, '모집요강 없음');
@@ -440,6 +444,8 @@ console.log('수시 6회 제한 밖 (outsideLimit)');
 eq(outsideLimit({ univType: '전문대', univ: '광주보건대학교' }), true, '전문대');
 eq(outsideLimit({ univType: '특수대', univ: '육군사관학교' }), true, '특수대');
 eq(outsideLimit({ univType: '일반대', univ: '한국과학기술원(KAIST)' }), true, '과기원은 학교유형이 일반대여도 6회 밖');
+eq(outsideLimit({ univType: '일반대', univ: '카이스트' }), true, '한글 표기도 거른다');
+eq(outsideLimit({ univType: '일반대', univ: '유니스트(UNIST)' }), true, '유니스트');
 eq(outsideLimit({ univType: '일반대', univ: '한국에너지공과대학교' }), true, '한국에너지공대');
 eq(outsideLimit({ univType: '일반대', univ: '국민대학교(서울)' }), false, '보통 일반대');
 eq(outsideLimit(null), false, '빈 값');

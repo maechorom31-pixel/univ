@@ -1062,9 +1062,11 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
   .bar, .tabs, .btn, .card select, .card .move, .setup,
   .rank-pick, .date-add, .field-in, .memo-new, textarea { display: none !important; }
   /* 접힌 입력 줄은 값을 말하는 접힌 글줄만 종이에 싣는다 — 입력칸·안내문은 뺀다 */
-  .fold-row > summary, .fold-row > summary.todo, .fold-row[open] > summary {
+  .fold-row > summary, .fold-row[open] > summary {
     color: #000; text-decoration: none; min-height: 0; padding: 0;
   }
+  /* 「결과 적기」 같은 할 일 줄은 값이 없다 — 종이에는 값을 말하는 줄만 싣는다 */
+  .fold-row > summary.todo { display: none; }
   .fold-row > .field { display: none !important; }
   body { background: #fff; color: #000; }
   .wrap { max-width: none; padding: 0; }

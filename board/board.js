@@ -367,7 +367,7 @@ function render() {
     const kept = others.filter((a) => store.placementOf(a.id).slot !== 'archive');
     const stored = others.filter((a) => store.placementOf(a.id).slot === 'archive');
     // 전문대는 6회 제한 밖이라 12월에도 살아 있는 이야기다. 접지 않는다.
-    main.appendChild(group('전문대 · 특수대', kept,
+    main.appendChild(group('수시 6회 밖 — 전문대 · 특수대 · 과기원', kept,
       '수시 6회 제한 밖이라 순위를 매기지 않습니다.', student, 'tray'));
     if (stored.length) put('전문대 보관', stored, '', 'archive');
   }

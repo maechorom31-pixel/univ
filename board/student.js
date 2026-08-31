@@ -203,8 +203,22 @@ function dateOf(app, kind) {
 
 /* ── 그리기 ───────────────────────────────────────────────────── */
 
+/* 접힘의 자리표 — 카드 id + 접힌 글줄의 첫 낱말. 값이 저장돼 글줄 뒤가 바뀌어도
+   첫 낱말(면접일·접수번호·결과·메모…)은 그대로라 다시 찾을 수 있다. */
+function foldKeyOf(d) {
+  const sum = d.querySelector('summary');
+  const card = d.closest('[data-id]');
+  return `${card ? card.dataset.id : 'top'}|${(sum ? sum.textContent : '').split(' ')[0]}`;
+}
+
 function render() {
   const main = $('#me');
+  /*
+   * **학생이 펴 둔 접힘은 다시 그려도 펴 둔다.** 저장이 실패하거나(빈 날짜로
+   * 저장을 눌렀거나 통신이 끊겼거나) 다른 카드의 저장이 화면을 다시 그릴 때,
+   * 적던 줄이 눈앞에서 닫히면 학생은 어디에 적고 있었는지 잃는다.
+   */
+  const openFolds = new Set([...main.querySelectorAll('details[open]')].map(foldKeyOf));
   main.textContent = '';
   firstApplyNo = false;
 
@@ -288,6 +302,12 @@ function render() {
   main.appendChild(upcoming());
   main.appendChild(clashPanel());
   main.appendChild(birthPanel());
+
+  if (openFolds.size) {
+    for (const d of main.querySelectorAll('details')) {
+      if (openFolds.has(foldKeyOf(d))) d.open = true;
+    }
+  }
 }
 
 /**
@@ -1211,6 +1231,8 @@ function dateRow(app, kind, d) {
   const input = document.createElement('input');
   input.type = 'date';
   input.id = id;
+  // 접힘으로 바꾸며 <label> 이 빠졌다 — 읽어 주는 프로그램에는 이름이 남아야 한다
+  input.setAttribute('aria-label', `${shortUniv(app.univ)} ${kind}일`);
   /*
    * **확정일이면 미리 채운다** — 어느 자료에서 왔든. 대개 그 날이 맞으니 저장
    * 한 번이면 되고, 다르면 고쳐서 저장한다(사람이 넣은 값이 파싱값을 덮는다).
@@ -1465,6 +1487,7 @@ function fieldRow(app, spec) {
   input.type = 'text';
   input.inputMode = spec.mode;
   input.id = id;
+  input.setAttribute('aria-label', `${shortUniv(app.univ)} ${spec.name}`);
   input.placeholder = spec.ph;
   input.value = saved ? saved.value : '';
   input.disabled = state.busy;
@@ -1476,7 +1499,9 @@ function fieldRow(app, spec) {
   btn.onclick = () => saveField(app, spec.name, input.value);
   row.appendChild(btn);
   wrap.appendChild(row);
-  return foldRow(saved ? `${spec.name} · ${saved.value}` : `${spec.name} 적기`, [wrap]);
+  return foldRow(saved
+    ? `${spec.name} · ${saved.value}${saved.status === 'student' ? ' · 확인 대기' : ''}`
+    : `${spec.name} 적기`, [wrap]);
 }
 
 /** 접수번호 안내를 이미 한 번 냈나. 일곱 장에 같은 문장이 일곱 번 나오면 소음이다. */
@@ -1498,6 +1523,7 @@ function applyNoRow(app) {
   input.type = 'text';
   input.inputMode = 'numeric';
   input.id = id;
+  input.setAttribute('aria-label', `${shortUniv(app.univ)} 접수번호`);
   input.value = saved ? String(saved.text).replace('접수번호', '').trim() : '';
   input.disabled = state.busy;
   row.appendChild(input);

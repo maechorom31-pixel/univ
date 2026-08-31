@@ -320,7 +320,7 @@ export function univKind(raw) {
  *
  * 이 판정이 참이면 6칸(순위)에 넣지 않고 「그 밖의 지원」으로 뺀다.
  */
-const SIX_EXEMPT = /사관학교|경찰대|한국과학기술원|KAIST|광주과학기술원|GIST|대구경북과학기술원|DGIST|울산과학기술원|UNIST|한국에너지공/;
+const SIX_EXEMPT = /사관학교|경찰대|한국과학기술원|KAIST|카이스트|광주과학기술원|GIST|지스트|대구경북과학기술원|DGIST|울산과학기술원|UNIST|유니스트|한국에너지공|켄텍/;
 export function outsideLimit(app) {
   if (!app) return false;
   if (app.univType === '전문대' || app.univType === '특수대') return true;

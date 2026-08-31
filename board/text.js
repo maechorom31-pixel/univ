@@ -151,7 +151,15 @@ export function methodLine(mo) {
  */
 export function interviewShare(mo) {
   if (!mo) return null;
-  const t = String(((mo.stages || 1) > 1 ? mo.method2 : mo.method1) || '');
+  let t = String(((mo.stages || 1) > 1 ? mo.method2 || mo.method1 : mo.method1) || '');
+  /*
+   * 방법줄이 「1단계 …, 2단계 …」 문장 전체일 때(전체 자료에 75건) 1단계 쪽의
+   * 면접을 최종 비중인 양 읽으면 안 된다 — 「2단계」 뒤만 본다.
+   */
+  if ((mo.stages || 1) > 1) {
+    const cut = t.lastIndexOf('2단계');
+    if (cut >= 0) t = t.slice(cut);
+  }
   // 「면접100」이 전체 자료에 12건 있다 — 두 자리로 끊으면 10 으로 오독한다.
   const m = t.match(/면접\s*([0-9]{1,3}(?:\.[0-9]+)?)/);
   const n = m ? Number(m[1]) : null;

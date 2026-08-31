@@ -257,6 +257,7 @@ export function detailPanel(app, student, onClose) {
   }
 
   /* 1. 전형 */
+  const mLine = methodLine(mo);
   body.appendChild(rows('전형', [
     ['모집 시기', app.period, '즐겨찾기'],
     ['전형 유형', app.typeCat, '즐겨찾기'],
@@ -269,8 +270,8 @@ export function detailPanel(app, student, onClose) {
      * 「전형 단계 2단계」보다 「1단계 서류100 (3배수) → 2단계 1단계70+면접30」이
      * 학생에게 이 전형이 **무엇으로 뽑는지** 말해 준다. 원문을 못 읽으면 단계 수만.
      */
-    ['전형 방법', methodLine(mo), '모집요강'],
-    ['전형 단계', !methodLine(mo) && mo && mo.stages ? `${mo.stages}단계` : null, '모집요강'],
+    ['전형 방법', mLine, '모집요강'],
+    ['전형 단계', !mLine && mo && mo.stages ? `${mo.stages}단계` : null, '모집요강'],
     ['학생부 구성', mo && mo.wSubj != null
       ? `교과 ${mo.wSubj}${mo.wAtt ? ` + 출결 ${mo.wAtt}` : ''}${mo.wVol ? ` + 봉사 ${mo.wVol}` : ''}`
       : null, '모집요강'],
