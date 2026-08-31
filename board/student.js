@@ -1022,11 +1022,17 @@ function card(app) {
     if (kind === '실기') return cat === '실기';
     return false;                       // 적성은 즐겨찾기가 줄 때만
   };
+  /*
+   * **접힌 입력들은 한 줄 띠(fold-strip)에 나란히 선다.** 접힘마다 제 줄을
+   * 차지하면 칩 서너 개가 카드 아래를 세로로 늘인다 — 닫힌 것은 옆으로
+   * 나란히, 누른 것만 제 줄로 내려와 펴진다.
+   */
+  const strip = el('div', 'fold-strip');
   let shown = 0;
   for (const kind of ATTEND) {
     const d = dateOf(app, kind);
     if (!d && !(app.dates && app.dates[kind]) && !expects(kind)) continue;
-    box.appendChild(dateRow(app, kind, d));
+    strip.appendChild(dateRow(app, kind, d));
     shown += 1;
   }
   /*
@@ -1035,8 +1041,8 @@ function card(app) {
    * 받았는데 적을 자리가 없으면 그 학생에게는 이 기능이 없는 것과 같다.
    * 접어 두어 평소에는 한 줄만 보인다.
    */
-  if (!shown) box.appendChild(dateAdder(app));
-  box.appendChild(applyNoRow(app));
+  if (!shown) strip.appendChild(dateAdder(app));
+  strip.appendChild(applyNoRow(app));
 
   /*
    * 수험번호·최종경쟁률은 **원서를 내고 나서야** 알 수 있다.
@@ -1045,10 +1051,22 @@ function card(app) {
    * 「곧 있습니다」와 같은 방식이다. 켜고 끄는 단추를 두지 않는 까닭이다.
    */
   if (afterApply(app)) {
-    for (const spec of CARD_FIELDS) box.appendChild(fieldRow(app, spec));
+    for (const spec of CARD_FIELDS) strip.appendChild(fieldRow(app, spec));
   }
-  box.appendChild(resultRow(app));
-  box.appendChild(memoRow(app));
+  strip.appendChild(resultRow(app));
+
+  /*
+   * 메모는 두 얼굴 — 주고받은 목록이 있으면 제 블록으로 내용을 보이고,
+   * 빈 카드에서는 「메모 적기」 칩 하나로 띠에 들어간다.
+   */
+  const memo = memoRow(app);
+  if (memo.hasList) {
+    box.appendChild(strip);
+    box.appendChild(memo.node);
+  } else {
+    strip.appendChild(memo.node);
+    box.appendChild(strip);
+  }
   return box;
 }
 
@@ -1069,6 +1087,7 @@ const isApplyNo = (n) => String(n.text || '').startsWith('접수번호');
 /** 이 메모를 학생이 적었나. 서버가 `by` 에 「3201 학생」으로 적어 둔다. */
 const byMe = (n) => /학생$/.test(String(n.by || ''));
 
+/** @return {{hasList: boolean, node: Element}} 목록이 있으면 블록 전체, 없으면 접힘 칩만 */
 function memoRow(app) {
   const wrap = el('div', 'field memo');
   const id = `m-${app.id}`;
@@ -1115,8 +1134,9 @@ function memoRow(app) {
   btn.disabled = state.busy;
   btn.onclick = () => saveNote(app, ta.value);
   fold.appendChild(btn);
+  if (!list.length) return { hasList: false, node: fold };
   wrap.appendChild(fold);
-  return wrap;
+  return { hasList: true, node: wrap };
 }
 
 function memoItem(app, n) {

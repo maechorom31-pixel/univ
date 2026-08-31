@@ -429,6 +429,17 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 .fold-row > summary::-webkit-details-marker { display: none; }
 .fold-row > .field { margin-top: 0; }
 
+/*
+ * 접힘 칩 띠 — 닫힌 접힘(면접일·접수번호·결과·메모)이 제 줄을 하나씩 먹으면
+ * 카드 아래가 세로로 늘어진다. 닫힌 것은 한 줄에 나란히 서고, 누른 것만
+ * 제 줄(flex-basis 100%)로 내려와 펴진다.
+ * 간격은 gap 이 아니라 마진 — 구형 iOS(14.5 미만)는 flex gap 을 조용히
+ * 무시해서 칩이 다닥다닥 붙는다.
+ */
+.fold-strip { display: flex; flex-wrap: wrap; align-items: center; }
+.fold-strip > details { margin: 0 var(--s5) 0 0; min-width: 0; }
+.fold-strip > details[open] { flex-basis: 100%; margin-right: 0; }
+
 /* 순위 고르개. 학생 화면의 다른 입력칸과 같은 줄 모양을 쓴다. */
 .field.rank-pick select { font-size: 16px; }   /* iOS 가 확대하지 않는 최소 크기 */
 
