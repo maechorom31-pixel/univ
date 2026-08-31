@@ -461,6 +461,11 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
   .explore-row { grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); align-items: start; }
 }
 .stu-chip { cursor: pointer; background: var(--surface); padding: 3px 8px; }
+/* 검토판 — 줄 전체 폭으로 펼쳐진다. 표 둘(전형별 자료·학생)이 나란히 쌓인다 */
+.dept-detail { grid-column: 1 / -1; cursor: default; }
+.dept-detail .tw + .tw { margin-top: var(--s3); }
+.dept-detail .stu-row { cursor: pointer; }
+@media (hover: hover) { .dept-detail .stu-row:hover td, .dept-detail .stu-row:hover th { background: #F3F1ED; } }
 @media (hover: hover) { .stu-chip:hover { background: #F3F1ED; } }
 .stu-chip:active { transform: scale(0.98); }
 

@@ -10,6 +10,8 @@
  * 반 선택은 일정판과 같은 선택(store.selection.cls)을 따른다.
  */
 import * as store from './store.js';
+import { fillTrend } from './match.js';
+import { rate1, minReqShort } from './text.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -55,6 +57,103 @@ export function start() {
   render();
 }
 
+/** 학생 보드로 건너뛴다 — 돌아올 자리를 기억하고 「← 탐색으로」를 켠다. */
+function goStudent(hak) {
+  backScroll = window.scrollY;
+  // 화면을 먼저 보드로 바꾼다 — 탐색이 보이는 채로 select 를 부르면
+  // 탐색이 다시 그려지며 방금 켠 돌아가기 단추를 도로 숨긴다.
+  const b = document.getElementById('view-board');
+  if (b) b.click();
+  store.select({ hak, appId: '' });
+  if (backBtn) backBtn.hidden = false;
+}
+
+/**
+ * 학과 검토판 — 전형별 자료 한 표, 생각 있는 학생 한 표.
+ * 값은 전부 잰 값이다(카드 상세와 같은 summary 에서 온다). 어림·판정은
+ * 여기 없다 — 견주는 눈은 상담이 갖는다.
+ */
+function deptDetail({ list, order }) {
+  const box = el('div', 'dept-detail');
+
+  // 1. 전형별 자료 — 우리 학생들이 실제로 쓴 전형만
+  const types = new Map();
+  for (const x of list) {
+    const t = x.app.typeSub || x.app.typeName || '전형 미상';
+    if (!types.has(t)) types.set(t, x.app);
+  }
+  {
+    const tw = el('div', 'tw');
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    for (const h of ['전형', '올해 모집', '경쟁률', '실질', '70%컷', '50%컷', '최저', '작년 충원율']) {
+      hr.appendChild(el('th', '', h));
+    }
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (const [t, app] of types) {
+      const sum = store.summary(app) || {};
+      const mo = sum.mojip;
+      const ft = fillTrend(mo);
+      const minTxt = app.minReqText || (mo && mo.minReq) || '';
+      const tr = document.createElement('tr');
+      tr.appendChild(el('th', 'rowhead', t));
+      tr.appendChild(el('td', 'num', sum.quotaNow != null ? `${sum.quotaNow}명` : '—'));
+      const yr = sum.year && sum.year !== 2026 ? ` (${sum.year})` : '';
+      tr.appendChild(el('td', 'num', sum.rate != null ? `${rate1(sum.rate)}:1${yr}` : '—'));
+      tr.appendChild(el('td', 'num', sum.real && sum.real.value != null ? `${rate1(sum.real.value)}:1` : '—'));
+      tr.appendChild(el('td', 'num', sum.cut != null ? `${g2(sum.cut)}${yr}` : '—'));
+      tr.appendChild(el('td', 'num', sum.cut50 != null ? g2(sum.cut50) : '—'));
+      const short = minReqShort(minTxt);
+      const minCell = el('td', '', short || (minTxt ? '있음' : (app.minReq === false ? '없음' : '—')));
+      if (minTxt) minCell.title = String(minTxt);
+      tr.appendChild(minCell);
+      tr.appendChild(el('td', 'num', ft.length && ft[0].fillPct != null ? `${ft[0].fillPct}%` : '—'));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tw.appendChild(table);
+    box.appendChild(tw);
+  }
+
+  // 2. 생각 있는 학생 — 자리·전형·내신을 한 표로. 줄을 누르면 그 학생 보드.
+  {
+    const tw = el('div', 'tw');
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    for (const h of ['학생', '자리', '전형', '전교과', '환산']) hr.appendChild(el('th', '', h));
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (const x of list.slice().sort((a, b) => order(a) - order(b)
+      || String(a.student.hak).localeCompare(String(b.student.hak)))) {
+      const tr = document.createElement('tr');
+      tr.className = 'stu-row';
+      tr.tabIndex = 0;
+      tr.appendChild(el('th', 'rowhead', `${x.student.hak} ${tidy(x.student.name)}`));
+      tr.appendChild(el('td', '', slotWord(x.app)));
+      tr.appendChild(el('td', '', x.app.typeSub || x.app.typeName || '—'));
+      const whole = Number((x.student.naesin || {})['전교과'] ?? (x.student.naesin || {})['전교과(100)']);
+      tr.appendChild(el('td', 'num', Number.isFinite(whole) ? g2(whole) : '—'));
+      const conv = Number(x.app.myScore && x.app.myScore.grade);
+      tr.appendChild(el('td', 'num', Number.isFinite(conv) ? g2(conv) : '—'));
+      const go = () => goStudent(x.student.hak);
+      tr.onclick = go;
+      tr.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tw.appendChild(table);
+    box.appendChild(tw);
+    box.appendChild(el('p', 'hint',
+      '전형이 다르면 환산 잣대도 달라 세로로 곧장 견주기 어렵습니다. 줄을 누르면 그 학생의 보드로 갑니다.'));
+  }
+  return box;
+}
+
 /** 자리 이름 — 학생 칩에 붙는 짧은 말. */
 function slotWord(app) {
   const p = store.placementOf(app.id);
@@ -97,7 +196,7 @@ function render() {
   box.appendChild(head);
   box.appendChild(el('p', 'section-label',
     '같은 학과를 순위나 후보에 둔 학생을 한 줄로 모았습니다. 몰린 학과가 위에 옵니다.'
-    + ' 학생을 누르면 그 학생의 보드로, 학과 이름을 누르면 연도별 추이·충원 상세로 갑니다.'));
+    + ' 학과 이름을 누르면 전형별 자료와 학생 검토판이 펼쳐지고, 학생을 누르면 그 학생의 보드로 갑니다.'));
 
   // 찾기 — 대학·학과 이름 글자로 거른다
   const line = el('div', 'field-in');
@@ -149,13 +248,26 @@ function deptRow({ univ, dept, list, n }) {
   };
 
   const txt = el('div', 'txt');
-  // 학과 이름을 누르면 대표 지원의 상세(연도별 추이·충원·전형 방법)가 뜬다 —
-  // 추이를 여기 또 그리지 않는다. 상세가 이미 그 표를 가진 화면이다.
-  const best = list.slice().sort((a, b) => order(a) - order(b))[0];
+  /*
+   * 학과 이름을 누르면 **학과 검토판**이 그 줄 아래로 펼쳐진다.
+   * 처음에는 대표 학생 한 명의 카드를 열었는데, 그 카드에는 그 학생의
+   * 성적이 붙어 있어 물음(「이 학과에 생각 있는 애들을 견줘 보자」)과
+   * 어긋났다. 검토판은 전형별 자료 표와 학생 표 — 학과가 주인공이다.
+   */
+  let detail = null;
   const nameBtn = el('button', 'linkish uni-name', `${univ} ${dept}`);
   nameBtn.type = 'button';
-  nameBtn.title = '연도별 추이·충원 상세 열기';
-  nameBtn.onclick = () => store.select({ appId: best.app.id });
+  nameBtn.title = '전형별 자료·학생 검토판 펴기';
+  nameBtn.setAttribute('aria-expanded', 'false');
+  nameBtn.onclick = () => {
+    if (!detail) {
+      detail = deptDetail({ univ, dept, list, order });
+      row.appendChild(detail);
+    } else {
+      detail.hidden = !detail.hidden;
+    }
+    nameBtn.setAttribute('aria-expanded', String(!detail.hidden));
+  };
   const nameLine = el('div', 'univ');
   nameLine.appendChild(nameBtn);
   txt.appendChild(nameLine);
@@ -229,15 +341,7 @@ function deptRow({ univ, dept, list, n }) {
         .filter(Boolean).join(' · '));
     chip.type = 'button';
     chip.title = [...new Set(x.types.filter(Boolean))].join(' · ');
-    chip.onclick = () => {
-      backScroll = window.scrollY;
-      // 화면을 먼저 보드로 바꾼다 — 탐색이 보이는 채로 select 를 부르면
-      // 탐색이 다시 그려지며 방금 켠 돌아가기 단추를 도로 숨긴다.
-      const b = document.getElementById('view-board');
-      if (b) b.click();
-      store.select({ hak: x.student.hak, appId: '' });
-      if (backBtn) backBtn.hidden = false;
-    };
+    chip.onclick = () => goStudent(x.student.hak);
     pills.appendChild(chip);
   }
   row.appendChild(pills);
