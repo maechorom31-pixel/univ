@@ -31,6 +31,14 @@
 /* ===== 설정 ========================================================= */
 
 /** 즐겨찾기 원본이 들어 있는 시트 이름. 여러 개면 앞에서부터 찾는다. */
+/*
+ * 이 코드가 어느 판인지. **배포 확인용이다** — 코드를 고칠 때마다 날짜를 올린다.
+ * 배포 뒤 브라우저에서 <웹앱 주소>?action=ping&key=<열쇠> 를 열면 ver 로
+ * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
+ * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
+ */
+var CODE_VER = '2026-08-31';
+
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
 var SHEET = {
@@ -212,7 +220,7 @@ function handle_(p) {
   var who = me.email || '이름 없는 접속';
 
   switch (action) {
-    case 'ping':       return { ok: true, who: who, locked: me.locked, at: now_() };
+    case 'ping':       return { ok: true, who: who, locked: me.locked, at: now_(), ver: CODE_VER };
     case 'students':   return loadAll_(me);
     case 'setState':   return setState_(p, who);
     case 'setRank':    return setRank_(p, who);
