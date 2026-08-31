@@ -404,29 +404,34 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
 }
 .mycard-head .univ { font-weight: 700; font-size: var(--t-md); line-height: 1.35; }
 
-/* 근거가 없어 날짜 칸이 안 선 카드의 접힌 줄. 평소에는 한 줄만 보인다. */
-.date-add > summary {
-  font-size: var(--t-xs); color: var(--amber-ink); cursor: pointer;
-  padding: var(--s2) 0; min-height: 44px; display: flex; align-items: center;
-  text-underline-offset: 3px; text-decoration: underline;
+/*
+ * 접힌 입력의 접힌 글줄 — **링크가 아니라 조용한 단추(칩)다.**
+ * 밑줄 링크를 서너 개 나란히 놓으니 「하이퍼링크 나열」로 읽혔다. 단추(.btn)의
+ * 기하(6px 모서리·1px 테두리)를 그대로 빌려 한 벌로 보이게 한다.
+ * 값이 있는 칩(「면접일 · 11/27 · 확정」)은 본문색, 할 일 칩(「결과 적기」)은
+ * 호박색 글자 — 액센트는 글자색 하나로만 갈라 색 가짓수를 늘리지 않는다.
+ * 펴면 칩 껍데기를 벗고 그 조각의 작은 제목이 된다.
+ */
+.fold-row > summary, .date-add > summary {
+  display: inline-flex; align-items: center;
+  min-height: 40px; padding: 0 var(--s3);
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); color: var(--text-2);
+  font-size: var(--t-xs); cursor: pointer;
+  transition: background-color 160ms ease;
 }
-/* flex 로 그리면 브라우저가 기본 삼각형을 지운다. 눌러서 펴는 줄이라는 것이
-   보여야 해서 글자를 링크처럼 두고, 펴진 뒤에는 밑줄을 뗀다. */
-.date-add[open] > summary { color: var(--text-2); text-decoration: none; }
-.date-add > summary::-webkit-details-marker { display: none; }
-
-/* 값이 정해진 입력은 접는다 — 접힌 줄(summary)이 값을 대신 말한다.
-   「면접일 · 11-27 · 확정」처럼 값이 있으면 본문 글씨로,
-   「결과 적기」처럼 아직 할 일이면 호박색 링크로 보인다. */
-.fold-row > summary {
-  font-size: var(--t-xs); color: var(--text-2); cursor: pointer;
-  padding: var(--s1) 0; min-height: 44px; display: flex; align-items: center;
-  text-underline-offset: 3px;
+/* 학생 화면은 손가락 기준 — 44px */
+body.student .fold-row > summary, body.student .date-add > summary { min-height: 44px; }
+.fold-row > summary.todo, .date-add > summary { color: var(--amber-ink); font-weight: 600; }
+.fold-row[open] > summary, .date-add[open] > summary {
+  border-color: transparent; background: none; padding-left: 0;
+  color: var(--text-2); font-weight: 600;
 }
-/* 아직 적을 것이 남은 줄 — 눌러 볼 곳임이 보이게 링크 모양 */
-.fold-row > summary.todo { color: var(--amber-ink); text-decoration: underline; }
-.fold-row[open] > summary { color: var(--text-2); text-decoration: none; }
-.fold-row > summary::-webkit-details-marker { display: none; }
+@media (hover: hover) {
+  .fold-row:not([open]) > summary:hover, .date-add:not([open]) > summary:hover { background: #F3F1ED; }
+}
+.fold-row > summary:active, .date-add > summary:active { transform: scale(0.98); }
+.fold-row > summary::-webkit-details-marker, .date-add > summary::-webkit-details-marker { display: none; }
 .fold-row > .field { margin-top: 0; }
 
 /*
@@ -436,8 +441,8 @@ body.student .pill { font-size: 13px; padding: 3px 8px; }
  * 간격은 gap 이 아니라 마진 — 구형 iOS(14.5 미만)는 flex gap 을 조용히
  * 무시해서 칩이 다닥다닥 붙는다.
  */
-.fold-strip { display: flex; flex-wrap: wrap; align-items: center; }
-.fold-strip > details { margin: 0 var(--s5) 0 0; min-width: 0; }
+.fold-strip { display: flex; flex-wrap: wrap; align-items: center; margin-top: var(--s2); }
+.fold-strip > details { margin: 0 var(--s2) var(--s2) 0; min-width: 0; }
 .fold-strip > details[open] { flex-basis: 100%; margin-right: 0; }
 
 /* 순위 고르개. 학생 화면의 다른 입력칸과 같은 줄 모양을 쓴다. */
@@ -1075,6 +1080,7 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
   /* 접힌 입력 줄은 값을 말하는 접힌 글줄만 종이에 싣는다 — 입력칸·안내문은 뺀다 */
   .fold-row > summary, .fold-row[open] > summary {
     color: #000; text-decoration: none; min-height: 0; padding: 0;
+    border: 0; background: none;
   }
   /* 「결과 적기」 같은 할 일 줄은 값이 없다 — 종이에는 값을 말하는 줄만 싣는다 */
   .fold-row > summary.todo { display: none; }

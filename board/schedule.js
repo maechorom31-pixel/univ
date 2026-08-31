@@ -498,14 +498,17 @@ function univBlock({ app, go, other, expect }) {
   box.appendChild(h);
 
   const list = el('div', 'stack');
+  // 입력 칩(날짜 적기·모의면접 적기)은 값 줄들 아래 한 줄 띠에 모은다 —
+  // 빈 입력이 대학마다 두 줄씩 펴져 있으면 판이 세로로 늘어진다.
+  const strip = el('div', 'fold-strip');
 
-  // 1. 대학이 정한 것 — 없으면 근거가 말한 종류마다 넣는 칸을 세운다
+  // 1. 대학이 정한 것 — 없으면 근거가 말한 종류마다 넣는 칩을 세운다
   if (go.length) {
     for (const x of go) list.appendChild(fixedRow(app, x.kind, x.d));
   } else if (expect && expect.length) {
-    for (const kind of expect) list.appendChild(missingRow(app, other, kind));
+    for (const kind of expect) strip.appendChild(missingRow(app, other, kind));
   } else {
-    list.appendChild(missingRow(app, other, '면접'));
+    strip.appendChild(missingRow(app, other, '면접'));
   }
 
   // 2. 학교에서 잡는 모의면접. 여러 번 한다.
@@ -521,11 +524,12 @@ function univBlock({ app, go, other, expect }) {
   const next = MOCKS.find((k) => !store.dateOf(app, k));
   if (next) {
     const first = go[0];
-    list.appendChild(addMockRow(app, next, mocks.length + 1,
+    strip.appendChild(addMockRow(app, next, mocks.length + 1,
       first ? suggestMock(first.d.from) : ''));
   }
 
   box.appendChild(list);
+  if (strip.children.length) box.appendChild(strip);
   return box;
 }
 
@@ -592,10 +596,21 @@ function fixedRow(app, kind, d) {
   return row;
 }
 
+/** 접힘 칩 — 학생 화면과 같은 규칙: 끝말이 「적기」면 할 일 표시가 붙는다. */
+function chip(summaryText, node) {
+  const d = document.createElement('details');
+  d.className = 'fold-row';
+  const sum = document.createElement('summary');
+  sum.textContent = summaryText;
+  if (/적기$/.test(summaryText)) sum.className = 'todo';
+  d.appendChild(sum);
+  d.appendChild(node);
+  return d;
+}
+
 /** 날짜가 없는 지원 — 선생님이 직접 넣는다. 종류는 부르는 쪽의 근거가 정한다. */
 function missingRow(app, other, kind) {
   const wrap = el('div', 'field');
-  wrap.appendChild(el('label', '', `${kind}일`));
   wrap.appendChild(el('p', 'hint', other
     ? `전문대·특수대는 즐겨찾기에 ${kind}일이 없는 일이 많습니다. 직접 넣어 주세요.`
     : `아직 ${kind} 날짜가 없습니다. 학생이 넣으면 여기로 오고, 아는 날짜가 있으면 직접 넣어도 됩니다.`));
@@ -609,7 +624,7 @@ function missingRow(app, other, kind) {
   save.onclick = () => saveDate(app, kind, input.value);
   line.appendChild(save);
   wrap.appendChild(line);
-  return wrap;
+  return chip(`${kind}일 적기`, wrap);
 }
 
 /** 이미 잡힌 모의면접. */
@@ -629,7 +644,6 @@ function mockRow(app, kind, d, n) {
 /** 모의면접 한 번 더. */
 function addMockRow(app, kind, n, suggested) {
   const wrap = el('div', 'field');
-  wrap.appendChild(el('label', '', `모의면접 ${n}차`));
   if (suggested) {
     wrap.appendChild(el('p', 'hint', `${label(suggested)} 쯤이 면접 사흘 전입니다.`));
   }
@@ -644,7 +658,7 @@ function addMockRow(app, kind, n, suggested) {
   save.onclick = () => saveDate(app, kind, input.value);
   line.appendChild(save);
   wrap.appendChild(line);
-  return wrap;
+  return chip(`모의면접 ${n}차 적기`, wrap);
 }
 
 async function saveDate(app, kind, value) {
