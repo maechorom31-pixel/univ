@@ -440,6 +440,12 @@ console.log('충원(추가합격) 추이 (fillTrend)');
   eq(fillTrend(null).length, 0, '모집요강 없음');
 }
 
+console.log('대학 이름 꼬리 「~대학」 (전문대 표기)');
+eq(univStem('명지전문대학'), univStem('명지전문대'), '즐겨찾기 「전문대학」 ↔ 자료 「전문대」');
+eq(univStem('인하공업전문대학'), univStem('인하공업전문대'), '인하공전');
+eq(univStem('한양여자대학'), univStem('한양여대'), '대학 꼬리를 턴 뒤에도 축약 규칙이 이어진다');
+eq(univStem('강원도립대학') === univStem('강원대'), false, '다른 학교가 합쳐지면 안 된다');
+
 console.log('수시 6회 제한 밖 (outsideLimit)');
 eq(outsideLimit({ univType: '전문대', univ: '광주보건대학교' }), true, '전문대');
 eq(outsideLimit({ univType: '특수대', univ: '육군사관학교' }), true, '특수대');

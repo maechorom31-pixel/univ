@@ -41,7 +41,13 @@ export function univStem(name) {
   let n = String(name || '').trim();
   n = n.replace(/\s*[-–—]\s*.*$/, '');     // "한국외국어대학교(용인) - 글로벌캠퍼스"
   n = n.replace(/\(.*$/, '').trim();       // 캠퍼스 괄호
-  n = n.replace(/대학교$/, '대').replace(/\s/g, '');
+  /*
+   * 「~대학」도 「~대」로 턴다 — 전문대가 이 꼬리로 갈린다. 즐겨찾기는
+   * 「명지전문대학」「인하공업전문대학」, 전문대 자료는 「명지전문대」
+   * 「인하공업전문대」다. 실이름 450개 전체로 재서 이 규칙으로 **서로 다른
+   * 학교가 새로 합쳐지는 일이 없음**을 확인했다(오연결 0).
+   */
+  n = n.replace(/대학교$/, '대').replace(/대학$/, '대').replace(/\s/g, '');
   for (const [long, short] of ABBR) {
     if (n.endsWith(long)) return n.slice(0, -long.length) + short;
   }
