@@ -164,7 +164,10 @@ function render() {
     : store.studentsOf(cls).flatMap((s) => store.appsOf(s.hak));
   // 일정표에서 온 「예정」은 순위에 넣었거나 6회 밖인 지원만 달력에 싣는다 —
   // 후보의 예정일이 달력을 채우면 진짜 가는 날이 묻힌다. 사람이 잡은 날은 그대로.
-  const target = (a) => outsideLimit(a) || store.placementOf(a.id).slot === 'rank';
+  const target = (a) => {
+    const slot = store.placementOf(a.id).slot;
+    return outsideLimit(a) ? slot === 'tray' : slot === 'rank';
+  };
   const events = eventsOf(apps).filter((e) => e.status !== 'sched' || target(e.app));
 
   const head = el('div', 'who');
@@ -418,7 +421,10 @@ function interviewPanel(student) {
      * 값을 버리지 않고 보여 준다. 일정표 예정(sched)만으로는 안 세운다.
      */
     const human = go.some((x) => x.d.status !== 'sched');
-    if (!other && slot !== 'rank' && !human) continue;
+    // 6회 밖은 「지원」(tray)으로 올린 것이 순위에 해당한다 — 후보 전문대에
+    // 면접 칸을 세우면 아직 내지도 않은 원서의 면접을 고민하게 된다.
+    const committed = other ? slot === 'tray' : slot === 'rank';
+    if (!committed && !human) continue;
     const expect = go.length ? [] : expectedKinds(app);
     if (!go.length && !other && !expect.length) { outside.push(app); continue; }
     rows.push({ app, go, other, expect });

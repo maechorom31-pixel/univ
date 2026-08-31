@@ -350,6 +350,30 @@ function render() {
     }
   }
   main.appendChild(slots);
+
+  /*
+   * **지원한 전문대는 6칸 바로 아래 카드로 붙는다.** 전문대·과기원은 순위가
+   * 없지만 「지원했다」는 사실은 6칸과 같은 무게다 — 후보 무리에 섞여 있으면
+   * 원서를 냈는지 훑어서는 안 보인다. 기본은 후보고, 「지원」으로 올린 것만
+   * 여기 선다.
+   */
+  const trayApps = others.filter((a) => store.placementOf(a.id).slot === 'tray');
+  if (trayApps.length) {
+    main.appendChild(label('전문대 지원 — 6회 밖'));
+    const trayRow = el('div', 'slots');
+    for (const app of trayApps) {
+      try {
+        trayRow.appendChild(card(app, 'tray', student));
+      } catch (err) {
+        const box = el('div', 'card broken');
+        box.appendChild(el('div', 'univ', tidy(app.univ || '대학 없음')));
+        box.appendChild(el('p', 'warn', '이 카드를 그리지 못했습니다.'));
+        trayRow.appendChild(box);
+      }
+    }
+    main.appendChild(trayRow);
+  }
+
   if (!placed.length) {
     main.appendChild(el('p', 'hint',
       '아래 지원을 카드째 끌어다 놓거나, 카드의 순위 고르개로 칸을 채웁니다.'));
@@ -390,11 +414,17 @@ function render() {
   put('후보', pool,
     '아직 순위를 정하지 않은 지원입니다. 6칸에서 끌어다 놓으면 여기로 옵니다.', 'pool');
   if (others.length) {
-    const kept = others.filter((a) => store.placementOf(a.id).slot !== 'archive');
+    const keptPool = others.filter((a) => {
+      const slot = store.placementOf(a.id).slot;
+      return slot !== 'archive' && slot !== 'tray';   // 지원(tray)은 6칸 아래 카드로 올라갔다
+    });
     const stored = others.filter((a) => store.placementOf(a.id).slot === 'archive');
     // 전문대는 6회 제한 밖이라 12월에도 살아 있는 이야기다. 접지 않는다.
-    main.appendChild(group('수시 6회 밖 — 전문대 · 특수대 · 과기원', kept,
-      '수시 6회 제한 밖이라 순위를 매기지 않습니다.', student, 'tray'));
+    if (keptPool.length) {
+      main.appendChild(group('전문대 · 특수대 후보 — 6회 밖', keptPool,
+        '아직 지원을 확정하지 않은 6회 밖 후보입니다. 원서를 냈으면 「지원」으로 올리세요 — 위 6칸 아래에 카드로 붙습니다.',
+        student, 'tray'));
+    }
     if (stored.length) put('전문대 보관', stored, '', 'archive');
   }
   put('보관', archive,
@@ -705,10 +735,11 @@ function card(app, rank, student) {
   markEnrolled(box, app);
   dragSource(box, app);
   // 찬 칸에 놓으면 자리를 맞바꾼다. move() 가 밀려난 것을 알아서 옮긴다.
-  dropTarget(box, (dropped) => (dropped.id === app.id ? null : `rank:${rank}`));
+  dropTarget(box, (dropped) => (dropped.id === app.id ? null : (rank === 'tray' ? 'tray' : `rank:${rank}`)));
   openable(box, app);
 
-  if (rank) box.appendChild(el('div', 'rank', `${rank}순위`));
+  if (rank === 'tray') box.appendChild(el('div', 'rank', '전문대 지원'));
+  else if (rank) box.appendChild(el('div', 'rank', `${rank}순위`));
   box.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
   box.appendChild(figures(app, student));
@@ -1041,7 +1072,7 @@ function mover(app) {
   sel.setAttribute('aria-label', `${app.univ} 자리 옮기기`);
   const isOther = outsideLimit(app);
   const options = isOther
-    ? [['tray', '지원'], ['archive', '보관']]
+    ? [['tray', '지원'], ['pool', '후보'], ['archive', '보관']]
     : [...RANKS.map((r) => [`rank:${r}`, `${r}순위`]), ['pool', '후보'], ['archive', '보관']];
 
   const now = store.placementOf(app.id);

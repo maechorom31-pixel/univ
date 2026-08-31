@@ -210,8 +210,10 @@ function dateOf(app, kind) {
  * 이미 사람이 잡은 날짜는 어디서든 보인다 — 값은 버리지 않는다.
  */
 function schedTarget(app) {
-  if (outsideLimit(app)) return true;
-  return (state.placement.get(String(app.id)) || {}).slot === 'rank';
+  const slot = (state.placement.get(String(app.id)) || {}).slot;
+  // 6회 밖(전문대·과기원)은 「지원」(tray)으로 올린 것이 순위에 해당한다
+  if (outsideLimit(app)) return slot === 'tray';
+  return slot === 'rank';
 }
 
 /* 접힘의 자리표 — 카드 id + 접힌 글줄의 첫 낱말. 값이 저장돼 글줄 뒤가 바뀌어도
@@ -273,7 +275,9 @@ function render() {
    * 수시는 여섯 장이다. 그 사실이 화면 맨 위에 그대로 있어야, 학생이 「나는 지금
    * 몇 칸을 채웠나」를 세지 않고 본다. 아래 카드마다 순위를 고르면 이 칸이 찬다.
    */
-  main.appendChild(slotGrid(ranked));
+  main.appendChild(slotGrid(ranked,
+    state.apps.filter((a) => outsideLimit(a)
+      && (state.placement.get(String(a.id)) || {}).slot === 'tray')));
 
   /*
    * 위의 격자와 **제목이 겹치면 안 된다.** 둘 다 「지원 6칸」이면 같은 것이 두 번
@@ -341,7 +345,7 @@ function jcNotice() {
     item.appendChild(p);
     ul.appendChild(item);
   };
-  li('지원 횟수 제한이 없습니다.', '4년제 수시 6회와 별개로 셉니다. 그래서 순위 6칸에도 안 들어갑니다.');
+  li('지원 횟수 제한이 없습니다.', '4년제 수시 6회와 별개로 셉니다. 순위 6칸에는 안 들어가고, 원서를 낸 것은 6칸 아래 「전문대 지원」 줄에 붙습니다.');
   li('원서접수는 전 대학이 같은 기간입니다.', '1차 2026. 9. 7 ~ 9. 30 · 2차 11. 11 ~ 11. 25. 발표일은 대학마다 다릅니다. 마감 시각과 조기 마감은 요강에서 확인하세요.');
   li('등록은 반드시 한 곳만.', '1차에 붙어도 등록하지 않으면 2차에 지원할 수 있지만, 수시에 붙어 등록하면 정시·추가모집에 지원할 수 없습니다.');
   li('같은 대학 안 복수지원은 대학마다 다릅니다.', '허용 여부와 횟수를 모집요강에서 확인하세요.');
@@ -598,12 +602,13 @@ const RANKS = [1, 2, 3, 4, 5, 6];
  * 교사 보드와 같은 모양이다. 다만 학생 화면은 좁으니 대학 이름과 학과만 둔다.
  * 숫자는 아래 카드에 있고, 여기는 「어디를 몇 순위로 넣었나」만 말한다.
  */
-function slotGrid(ranked) {
+function slotGrid(ranked, tray = []) {
   const at = (r) => ranked.find((a) => (state.placement.get(String(a.id)) || {}).rank === r);
   const wrap = el('section', 'panel');
   const head = el('div', 'panel-head');
   head.appendChild(el('h2', '', '지원 6칸'));
-  head.appendChild(el('span', 'count num', `${ranked.length}/6`));
+  head.appendChild(el('span', 'count num',
+    `${ranked.length}/6${tray.length ? ` · 전문대 ${tray.length}` : ''}`));
   wrap.appendChild(head);
   const grid = el('div', ranked.length ? 'slots mine' : 'slots mine thin');
   for (const r of RANKS) {
@@ -658,6 +663,30 @@ function slotGrid(ranked) {
     grid.appendChild(box);
   }
   wrap.appendChild(grid);
+
+  /*
+   * **지원한 전문대는 6칸 아래 붙는다** — 교사 보드와 같은 자리다. 6회 밖이라
+   * 순위는 없지만 「원서를 냈다」는 사실은 6칸과 같은 무게로 보여야 한다.
+   * 기본은 후보고, 선생님이 「지원」으로 올린 것만 여기 선다.
+   */
+  if (tray.length) {
+    wrap.appendChild(el('p', 'section-label', '전문대 지원 — 6회 밖'));
+    const tgrid = el('div', 'slots mine');
+    for (const app of tray) {
+      const box = el('div', 'slot-card');
+      box.appendChild(el('div', 'rank', '전문대'));
+      box.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
+      box.appendChild(el('div', 'dept', tidy(app.dept)));
+      const iv = dateOf(app, '면접');
+      if (iv) {
+        const pills = el('div', 'pills mini');
+        pills.appendChild(el('span', 'pill mark', `면접 ${label(iv.from)}`));
+        box.appendChild(pills);
+      }
+      tgrid.appendChild(box);
+    }
+    wrap.appendChild(tgrid);
+  }
   return wrap;
 }
 

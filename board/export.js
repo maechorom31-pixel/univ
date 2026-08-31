@@ -545,7 +545,8 @@ function rowsForReport() {
      */
     const others = store.appsOf(student.hak).filter((a) => {
       const outside = outsideLimit(a);
-      return outside && store.placementOf(a.id).slot !== 'archive';
+      // 후보는 아직 원서가 아니다 — 「지원」으로 올린 것만 보고서에 센다.
+      return outside && store.placementOf(a.id).slot === 'tray';
     });
     for (const app of [...ordered(student.hak), ...others]) {
       // 선생님이 시트에 적은 결과를 얹어서 넘긴다. 통계는 그걸 봐야 한다 —
