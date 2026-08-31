@@ -192,14 +192,40 @@ function render() {
   })();
   const moved = (store.state.studentMoves || []).filter((m) => m.at && m.at.slice(0, 19) >= cut);
   if (moved.length) {
-    const who = [...new Set(moved.map((m) => m.hak))].sort();
-    const name = (h) => {
-      const st = store.state.students.get(h);
-      return st ? `${h} ${st.name}` : h;
-    };
-    main.appendChild(banner(
-      `최근 사흘 안에 학생이 순위를 바꿨습니다 — ${who.slice(0, 5).map(name).join(', ')}`
-      + `${who.length > 5 ? ` 외 ${who.length - 5}명` : ''} (${moved.length}건)`));
+    /*
+     * **닫을 수 있다 — 새 변경이 오면 다시 뜬다.** 닫기는 「여기까지 봤다」라서
+     * 마지막으로 본 변경 시각을 이 컴퓨터에 기억해 두고, 그보다 늦은 변경이
+     * 생겼을 때만 다시 세운다. 이름을 누르면 그 학생 보드로 간다.
+     */
+    const latest = moved.map((m) => String(m.at)).sort().pop();
+    let seenAt = '';
+    try { seenAt = localStorage.getItem('board.movesSeen') || ''; } catch (err) { seenAt = ''; }
+    if (latest > seenAt) {
+      const who = [...new Set(moved.map((m) => m.hak))].sort();
+      const name = (h) => {
+        const st = store.state.students.get(h);
+        return st ? `${h} ${st.name}` : h;
+      };
+      const box = el('p', 'note moves-note');
+      box.appendChild(document.createTextNode('최근 사흘 안에 학생이 순위를 바꿨습니다 — '));
+      who.slice(0, 5).forEach((h, i) => {
+        if (i) box.appendChild(document.createTextNode(', '));
+        const b = el('button', 'linkish', name(h));
+        b.type = 'button';
+        b.onclick = () => { store.select({ hak: h, appId: '' }); };
+        box.appendChild(b);
+      });
+      box.appendChild(document.createTextNode(
+        `${who.length > 5 ? ` 외 ${who.length - 5}명` : ''} (${moved.length}건)`));
+      const close = el('button', 'btn dismiss', '닫기');
+      close.type = 'button';
+      close.onclick = () => {
+        try { localStorage.setItem('board.movesSeen', latest); } catch (err) { /* 이번 화면에서만 닫힌다 */ }
+        render();
+      };
+      box.appendChild(close);
+      main.appendChild(box);
+    }
   }
 
   // 원본 탭 이름이 아는 것과 다르면 알린다. 조용히 첫 탭을 읽고 「0명」만 뜨면

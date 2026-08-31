@@ -441,6 +441,18 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
  * 간격은 gap 이 아니라 마진 — 구형 iOS(14.5 미만)는 flex gap 을 조용히
  * 무시해서 칩이 다닥다닥 붙는다.
  */
+/* 글자만 있는 눌림 요소 — 공지의 학생 이름, 탐색의 학과 이름 */
+.linkish {
+  background: none; border: 0; padding: 0; font: inherit;
+  color: var(--amber-ink); text-decoration: underline; text-underline-offset: 3px;
+  cursor: pointer;
+}
+.moves-note .dismiss { margin-left: var(--s3); padding: 2px 10px; }
+.back-explore { color: var(--amber-ink); }
+.explore-row .uni-name { font-weight: 700; text-decoration: none; }
+@media (hover: hover) { .explore-row .uni-name:hover { text-decoration: underline; } }
+.explore-row .cutline { color: var(--muted); }
+
 /* 탐색 — 학과 한 줄에 학생 칩들. 칩은 누르면 그 학생 보드로 간다. */
 .explore-row { cursor: default; }
 .explore-row:active { cursor: default; }
