@@ -203,6 +203,17 @@ function dateOf(app, kind) {
 
 /* ── 그리기 ───────────────────────────────────────────────────── */
 
+/**
+ * 이 지원의 면접 일정을 **다룰 때인가** — 순위(1~6칸)에 넣었거나 6회 밖
+ * (전문대·특수대·과기원 — 순위 없이 지원 상태)일 때만이다. 후보 카드에까지
+ * 빈 「면접일 적기」가 서면 아직 넣지도 않은 원서의 면접 날짜를 고민하게 된다.
+ * 이미 사람이 잡은 날짜는 어디서든 보인다 — 값은 버리지 않는다.
+ */
+function schedTarget(app) {
+  if (outsideLimit(app)) return true;
+  return (state.placement.get(String(app.id)) || {}).slot === 'rank';
+}
+
 /* 접힘의 자리표 — 카드 id + 접힌 글줄의 첫 낱말. 값이 저장돼 글줄 뒤가 바뀌어도
    첫 낱말(면접일·접수번호·결과·메모…)은 그대로라 다시 찾을 수 있다. */
 function foldKeyOf(d) {
@@ -508,7 +519,8 @@ function upcoming() {
   for (const app of state.apps) {
     for (const kind of [...ATTEND, ...MOCKS]) {
       const d = dateOf(app, kind);
-      if (d && d.to >= today) list.push({ app, kind, d });
+      // 일정표에서 온 「예정」은 순위에 넣은 지원만 — 후보의 예정일로 재촉하지 않는다
+      if (d && d.to >= today && (d.status !== 'sched' || schedTarget(app))) list.push({ app, kind, d });
     }
   }
   list.sort((a, b) => (a.d.from < b.d.from ? -1 : 1));
@@ -922,6 +934,7 @@ function marks(app) {
   for (const kind of ATTEND) {
     const d = dateOf(app, kind);
     if (!d) continue;
+    if (d.status === 'sched' && !schedTarget(app)) continue;   // 예정은 순위만
     const day = d.fixed ? label(d.from) : `${label(d.from)}~${label(d.to)}`;
     // 내가 잡은 날(확정·즐겨찾기)만 꽉 채운 칠. 일정표에서 온 것과 확인 대기는 점선.
     const settled = d.status === 'confirmed' || d.status === 'source';
@@ -1031,7 +1044,11 @@ function card(app) {
   let shown = 0;
   for (const kind of ATTEND) {
     const d = dateOf(app, kind);
-    if (!d && !(app.dates && app.dates[kind]) && !expects(kind)) continue;
+    // 사람이 잡은 날짜(확정·대기·즐겨찾기)는 어느 카드에서든 보인다.
+    // 빈 칸과 일정표 예정은 **순위에 넣은 지원에만** 선다 — 후보 카드에서
+    // 면접 날짜를 고민하게 하지 않는다.
+    const human = d && d.status !== 'sched';
+    if (!human && !(schedTarget(app) && (d || expects(kind)))) continue;
     strip.appendChild(dateRow(app, kind, d));
     shown += 1;
   }
@@ -1041,7 +1058,7 @@ function card(app) {
    * 받았는데 적을 자리가 없으면 그 학생에게는 이 기능이 없는 것과 같다.
    * 접어 두어 평소에는 한 줄만 보인다.
    */
-  if (!shown) strip.appendChild(dateAdder(app));
+  if (!shown && schedTarget(app)) strip.appendChild(dateAdder(app));
   strip.appendChild(applyNoRow(app));
 
   /*

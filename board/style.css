@@ -441,6 +441,17 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
  * 간격은 gap 이 아니라 마진 — 구형 iOS(14.5 미만)는 flex gap 을 조용히
  * 무시해서 칩이 다닥다닥 붙는다.
  */
+/* 탐색 — 학과 한 줄에 학생 칩들. 칩은 누르면 그 학생 보드로 간다. */
+.explore-row { cursor: default; }
+.explore-row:active { cursor: default; }
+@media (min-width: 480px) {
+  /* 학과 이름 칸을 고정하고 칩들이 나머지를 차지한다 — 줄마다 시작점이 맞아야 훑힌다 */
+  .explore-row { grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); align-items: start; }
+}
+.stu-chip { cursor: pointer; background: var(--surface); padding: 3px 8px; }
+@media (hover: hover) { .stu-chip:hover { background: #F3F1ED; } }
+.stu-chip:active { transform: scale(0.98); }
+
 .fold-strip { display: flex; flex-wrap: wrap; align-items: center; margin-top: var(--s2); }
 .fold-strip > details { margin: 0 var(--s2) var(--s2) 0; min-width: 0; }
 .fold-strip > details[open] { flex-basis: 100%; margin-right: 0; }
@@ -706,9 +717,11 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
  * 카드 안의 여러 구역 가운데 하나지만, 학생 화면에서는 이게 읽을 거리다.
  */
 .field.memo .memo-text { font-size: var(--t-sm); }
-.field.memo textarea {
-  font: inherit; font-size: 16px;   /* 16px 미만이면 iOS가 포커스 시 화면을 확대한다 */
-  width: 100%; line-height: 1.6; resize: vertical;
+/* 메모 접힘이 .memo 래퍼 없이 칩 띠에 설 때도 같은 글상자다 —
+   16px 미만이면 iOS 가 포커스 시 화면을 확대하고, 폭 100% 가 없으면 칸을 넘는다 */
+.field.memo textarea, .date-add textarea {
+  font: inherit; font-size: 16px;
+  width: 100%; box-sizing: border-box; line-height: 1.6; resize: vertical;
   padding: var(--s2) var(--s3);
   border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
 }

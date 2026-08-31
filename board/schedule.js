@@ -20,7 +20,7 @@
  * 정해야 한다. 선생님이 넣은 날짜는 학생 화면에도 그대로 간다.
  */
 import * as store from './store.js';
-import { catOf } from './match.js';
+import { catOf, outsideLimit } from './match.js';
 import { methodHasInterview } from './text.js';
 
 /** 가야 하는 것 — 겹치면 한 곳은 포기해야 한다 */
@@ -162,7 +162,10 @@ function render() {
   const apps = student
     ? store.appsOf(hak)
     : store.studentsOf(cls).flatMap((s) => store.appsOf(s.hak));
-  const events = eventsOf(apps);
+  // 일정표에서 온 「예정」은 순위에 넣었거나 6회 밖인 지원만 달력에 싣는다 —
+  // 후보의 예정일이 달력을 채우면 진짜 가는 날이 묻힌다. 사람이 잡은 날은 그대로.
+  const target = (a) => outsideLimit(a) || store.placementOf(a.id).slot === 'rank';
+  const events = eventsOf(apps).filter((e) => e.status !== 'sched' || target(e.app));
 
   const head = el('div', 'who');
   const line = el('div', 'who-line');
@@ -404,9 +407,18 @@ function interviewPanel(student) {
   for (const app of apps) {
     // 보관은 「올해 안 넣기로 한 것」이다. 여기 세우면 안 내는 원서의 면접일을
     // 넣으라는 칸이 생긴다 — 판에서도, 접힌 줄에서도 뺀다.
-    if (store.placementOf(app.id).slot === 'archive') continue;
+    const slot = store.placementOf(app.id).slot;
+    if (slot === 'archive') continue;
     const go = ATTEND.map((k) => ({ kind: k, d: store.dateOf(app, k) })).filter((x) => x.d);
-    const other = app.univType === '전문대' || app.univType === '특수대';
+    const other = outsideLimit(app);
+    /*
+     * **면접 준비는 순위(1~6칸)에 넣은 지원의 일이다.** 후보 카드까지 세우면
+     * 아직 넣지도 않은 원서의 면접 날짜를 고민하게 된다. 6회 밖(전문대·과기원)은
+     * 순위가 없으니 그대로 서고, 후보라도 **사람이 이미 잡은 날짜**가 있으면
+     * 값을 버리지 않고 보여 준다. 일정표 예정(sched)만으로는 안 세운다.
+     */
+    const human = go.some((x) => x.d.status !== 'sched');
+    if (!other && slot !== 'rank' && !human) continue;
     const expect = go.length ? [] : expectedKinds(app);
     if (!go.length && !other && !expect.length) { outside.push(app); continue; }
     rows.push({ app, go, other, expect });
