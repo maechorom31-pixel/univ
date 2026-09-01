@@ -591,15 +591,23 @@ function parseGradeRows_(values) {
  * 「성적」 탭을 찾아 읽는다. **원본 파일(관심대학 리스트) 먼저, 이 파일 다음.**
  * 선생님이 성적을 원본 파일에 붙여 두었으니 그쪽이 먼저다. 어디에도 없으면
  * 빈 목록 — 성적 없이도 보드는 여태처럼 돈다.
+ *
+ * **원본을 다시 열지 않는다.** loadAll_ 이 이미 연 즐겨찾기 시트를 받아 그
+ * 부모 파일부터 본다 — 처음에는 여기서 sourceSheet_() 를 또 불러 외부 파일
+ * openById 가 요청마다 두 번 나갔다. 제일 비싼 호출을 하필 두 번 하고 있었다.
  */
-function gradeRows_() {
+function gradeRows_(src) {
   try {
     var books = [];
+    var active = SpreadsheetApp.getActiveSpreadsheet();
     try {
-      var src = sourceSheet_();
-      if (src && src.getParent) books.push(src.getParent());
-    } catch (e) { /* 원본을 못 열어도 이 파일은 본다 */ }
-    books.push(SpreadsheetApp.getActiveSpreadsheet());
+      var book = src && src.getParent ? src.getParent() : null;
+      if (book) {
+        books.push(book);
+        if (book.getId() !== active.getId()) books.push(active);
+      }
+    } catch (e) { /* 부모를 못 짚어도 이 파일은 본다 */ }
+    if (!books.length) books.push(active);
     for (var i = 0; i < books.length; i++) {
       var sh = books[i] && books[i].getSheetByName(SHEET.grade);
       if (!sh) continue;
@@ -970,7 +978,7 @@ function loadAll_(me) {
   }
   var book = src.__book || { external: false, why: '' };
   var parsed = parseFavorites_(src.getDataRange().getValues());
-  var grades = gradeRows_();
+  var grades = gradeRows_(src);
   return {
     ok: true, who: me.email || '이름 없는 접속', locked: me.locked, at: now_(),
     sourceSheet: srcName, sourceKnown: known,
