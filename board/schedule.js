@@ -42,6 +42,37 @@ const KINDS = [...ATTEND, ...NOTICE, MOCK, ...MOCKS];
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
+/*
+ * 2027학년도 공통 일정 — **모두에게 같은 날.**
+ * =====================================================================
+ * 지원마다 다른 면접·논술과 달리 이건 학년 전체의 축이다. 수능이 달력에 없으면
+ * 「수능 전인가 후인가」를 다른 데서 세어 와야 한다.
+ *
+ * 출처 — 교육부 2027학년도 수능 시행일 발표(수능·예비소집·성적 통지),
+ * 대교협 2027학년도 대입전형 기본사항(원서접수·발표 마감·등록·충원).
+ * 발표 마감 12/18 은 이 저장소의 전형일정표 자료와도 맞는다(마감일 발표가 302개교).
+ * **해가 바뀌면 이 표부터 간다.**
+ */
+/*
+ * 칸에 적는 이름(name)은 좁은 칸(두 달 나란일 때 44px)에 맞춰 짧게, 온이름(full)은
+ * 제목(title)에 둔다 — 잘린 「원서…」는 읽는 사람에게 아무 말도 안 한다.
+ */
+const KEY_DATES = [
+  { from: '2026-09-07', to: '2026-09-11', name: '원서접수',
+    full: '수시 원서접수', note: '대학마다 이 기간 안에서 3일 이상' },
+  { from: '2026-11-18', to: '2026-11-18', name: '예비소집', full: '수능 예비소집' },
+  { from: '2026-11-19', to: '2026-11-19', name: '수능', big: true },
+  { from: '2026-12-11', to: '2026-12-11', name: '성적 통지', full: '수능 성적 통지' },
+  { from: '2026-12-18', to: '2026-12-18', name: '발표 마감', full: '수시 합격자 발표 마감' },
+  { from: '2026-12-21', to: '2026-12-23', name: '수시 등록', full: '수시 합격자 등록' },
+  { from: '2026-12-24', to: '2026-12-29', name: '미등록 충원', full: '수시 미등록 충원 합격 통보' },
+  { from: '2026-12-30', to: '2026-12-30', name: '충원 마감', full: '충원 합격 등록 마감' },
+];
+
+/* 크게 보기 — 이 컴퓨터의 취향이라 브라우저에 기억한다. 시트에는 안 적는다. */
+let bigCal = false;
+try { bigCal = localStorage.getItem('board.calBig') === '1'; } catch (err) { /* 사생활 모드 */ }
+
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
   const node = document.createElement(tag);
@@ -229,6 +260,8 @@ function render() {
   } else {
     main.appendChild(el('p', 'empty-state',
       '아직 잡힌 날짜가 없습니다. 왼쪽에서 학생을 고르면 면접·실기 날짜를 넣을 수 있습니다.'));
+    // 지원 일정이 없어도 공통 일정(원서접수·수능·발표)은 볼 것이 있다
+    main.appendChild(calendars([], true));
   }
 }
 
@@ -270,20 +303,57 @@ const span = (e) => (e.fixed ? label(e.from) : `${label(e.from)}~${label(e.to)}`
 
 function calendars(events, withName) {
   const box = el('section', 'panel');
-  box.appendChild(el('h2', '', withName ? '반 달력' : '달력'));
+  const head = el('div', 'panel-head cal-head');
+  head.appendChild(el('h2', '', withName ? '반 달력' : '달력'));
+
+  /*
+   * 수능까지 며칠 남았는지는 이 판을 여는 사람이 늘 세고 있는 숫자다.
+   * 지나갔으면 안 적는다 — 「D+3」은 아무 일도 돕지 않는다.
+   */
+  const suneung = KEY_DATES.find((k) => k.big);
+  const today = new Date();
+  const dday = Math.ceil((new Date(`${suneung.from}T00:00:00+09:00`) - today) / 86400000);
+  if (dday >= 0) {
+    head.appendChild(el('span', 'count num',
+      `수능 ${label(suneung.from)} · D-${dday === 0 ? 'day' : dday}`));
+  }
+
+  /*
+   * **크게 보기** — 달이 화면 폭을 다 쓰고 칸이 높아지며, 칩의 말줄임을 풀어
+   * 글이 다 보이게 한다. 교무실 모니터로 여럿이 같이 볼 때의 판이다.
+   * 이 컴퓨터의 취향이라 브라우저에만 기억한다.
+   */
+  const zoom = el('button', 'btn cal-zoom', bigCal ? '작게 보기' : '크게 보기');
+  zoom.type = 'button';
+  zoom.setAttribute('aria-pressed', String(bigCal));
+  head.appendChild(zoom);
+  box.appendChild(head);
+
   if (withName) {
     box.appendChild(el('p', 'section-label',
       '모의면접이 한 날에 몰리면 여기서 보입니다. 칩을 누르면 그 지원의 카드가 열립니다.'));
   }
 
-  const months = [...new Set(events.map((e) => e.from.slice(0, 7)))].sort();
-  const wrap = el('div', 'months');
+  // 공통 일정의 달은 지원 일정이 없어도 선다 — 수능이 안 보이는 달력은 축이 없다
+  const months = [...new Set([
+    ...events.map((e) => e.from.slice(0, 7)),
+    ...KEY_DATES.map((k) => k.from.slice(0, 7)),
+  ])].sort();
+  const wrap = el('div', `months${bigCal ? ' big' : ''}`);
   for (const ym of months) wrap.appendChild(month(ym, events, withName));
   box.appendChild(wrap);
 
+  zoom.onclick = () => {
+    bigCal = !bigCal;
+    try { localStorage.setItem('board.calBig', bigCal ? '1' : '0'); } catch (err) { /* 그럼 이번만 */ }
+    wrap.classList.toggle('big', bigCal);
+    zoom.textContent = bigCal ? '작게 보기' : '크게 보기';
+    zoom.setAttribute('aria-pressed', String(bigCal));
+  };
+
   const legend = el('div', 'legend');
   for (const [cls, text] of [['', '가는 날'], ['soft', '기간(미확정)'],
-    ['mock', '모의면접'], ['tell', '발표']]) {
+    ['mock', '모의면접'], ['tell', '발표'], ['kev', '공통 일정']]) {
     const item = el('span');
     item.appendChild(el('i', `sw ${cls}`));
     item.appendChild(el('span', null, text));
@@ -309,6 +379,20 @@ function month(ym, events, withName) {
     const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const cell = el('div', 'day');
     cell.appendChild(el('span', 'dn num', String(d)));
+
+    /*
+     * 공통 일정 — 칸의 **윗줄**로 깔린다. 지원의 칩(누르면 카드)과 달리 누를
+     * 카드가 없으니 단추가 아니다. 기간(원서접수 9/7~9/11)은 날마다 윗줄이
+     * 이어지고 이름은 첫날에만 적는다 — 닷새 내리 같은 글자가 서면 소음이다.
+     * 수능만 바탕까지 칠한다. 이 달력에서 하루를 통째로 갖는 날은 그날뿐이다.
+     */
+    for (const k of KEY_DATES.filter((x) => x.from <= iso && iso <= x.to)) {
+      cell.classList.add(k.big ? 'key-big' : 'key');
+      const range = k.from === k.to ? label(k.from) : `${label(k.from)}~${label(k.to)}`;
+      cell.title = `${k.full || k.name} · ${range}${k.note ? ` · ${k.note}` : ''}`;
+      if (iso === k.from) cell.appendChild(el('span', 'kev', k.name));
+    }
+
     for (const e of events.filter((x) => x.from <= iso && iso <= x.to)) {
       /*
        * **`isMock` 으로 봐야 한다.** 칸 이름이 `모의면접1`…`모의면접5` 라서
