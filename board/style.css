@@ -319,6 +319,10 @@ button { font: inherit; color: inherit; }
 .row {
   padding: var(--s3) 0;
   display: grid; gap: var(--s3); align-items: start;
+  /* 좁은 폭에서는 한 칸짜리 격자다. `1fr` 의 기본 최소치가 `auto` 라서 안의 넓은
+     표(학과 검토판)가 칸을 밀어 **본문이 통째로 옆으로 굴렀다**(390px 에서
+     scrollWidth 672). 표는 제 안에서(`.tw`) 굴러야 한다 — ARCHITECTURE §7. */
+  grid-template-columns: minmax(0, 1fr);
 }
 .row + .row { border-top: 1px solid var(--line); }
 @media (min-width: 480px) {
@@ -468,6 +472,45 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
 @media (hover: hover) { .dept-detail .stu-row:hover td, .dept-detail .stu-row:hover th { background: #F3F1ED; } }
 @media (hover: hover) { .stu-chip:hover { background: #F3F1ED; } }
 .stu-chip:active { transform: scale(0.98); }
+
+/* 검토판의 가상 분포 — 접어 둔 어림값 구역.
+   **선 하나로 잰 것과 가정한 것을 가른다.** 두 컷 사이만 실선·앰버 면이고
+   그 밖은 점선·회색 면이다. 색을 더 쓰지 않는다(액센트는 앰버 하나). */
+.dist-fold { grid-column: 1 / -1; margin-top: var(--s4); }
+.dist-fold > summary {
+  cursor: pointer; font-size: var(--t-xs); font-weight: 600; color: var(--amber-ink);
+  padding: var(--s1) 0;
+}
+.dist-fold[open] > summary { margin-bottom: var(--s2); }
+.dist-panel { margin-top: var(--s3); border-top: 1px solid var(--line); padding-top: var(--s2); }
+.dist-panel:first-of-type { border-top: 0; }
+.dist-title { font-size: var(--t-xs); font-weight: 600; }
+/* 한계·읽는 법은 곁말이다. 본문 크기로 두면 곡선보다 커져 구역을 삼킨다. */
+.dist-fold .hint { font-size: var(--t-xs); color: var(--muted); line-height: 1.6; }
+.dist-svg { display: block; width: 100%; height: auto; max-width: 520px; margin: var(--s1) 0; }
+.dist-area-guess { fill: #F1EFEB; }
+.dist-area-known { fill: var(--amber-face); }
+.dist-line-known { fill: none; stroke: var(--amber-ink); stroke-width: 1.6; }
+.dist-line-guess { fill: none; stroke: #A9A49C; stroke-width: 1.1; stroke-dasharray: 3 2.5; }
+.dist-line-year { fill: none; stroke: var(--line-strong); stroke-width: 0.7; opacity: 0.4; }
+.dist-cut { stroke: var(--amber); stroke-width: 0.8; stroke-dasharray: 2 2; }
+.dist-axis { stroke: var(--line-strong); stroke-width: 0.8; }
+.dist-tick { font-size: 8px; fill: var(--muted); text-anchor: middle; font-variant-numeric: tabular-nums; }
+.dist-stem { stroke: var(--text); stroke-width: 1; }
+.dist-dot { fill: var(--surface); stroke: var(--text); stroke-width: 1.2; }
+.dist-num { font-size: 6.5px; fill: var(--text); text-anchor: middle; font-weight: 700; }
+.dist-legend {
+  font-size: var(--t-xs); color: var(--muted); line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 종이에서는 접힌 것을 편다 — 인쇄하면 열려 있어야 보인다. 다만 옅은 면은
+   잉크로는 안 보이니 테두리로 남긴다. */
+@media print {
+  .dist-fold[open] > summary, .dist-fold > summary { color: var(--text); }
+  .dist-area-guess { fill: #FFFFFF; stroke: var(--line-strong); stroke-width: 0.4; }
+  .dist-line-year { display: none; }
+}
 
 .fold-strip { display: flex; flex-wrap: wrap; align-items: center; margin-top: var(--s2); }
 .fold-strip > details { margin: 0 var(--s2) var(--s2) 0; min-width: 0; }

@@ -1054,6 +1054,8 @@ function staleOf(rows, mineRows, app, mojipRows) {
  *          겹침 길이로 재는 까닭 — `교과(일반)` 은 `일반` 도 감싼다. 길이를 안 보면
  *          `일반` 과 `교과일반` 이 비겨서 못 고른다.
  *   cat    이름은 못 맞췄지만 카테고리(교과/종합/논술/실기)가 같은 묶음이 하나뿐
+ *   alive  카테고리가 같은 것이 여럿이지만 **마지막 해까지 이어진 것은 하나뿐**.
+ *          그 전에 끊긴 전형은 올해 뽑는 전형의 작년 자리가 될 수 없다
  *   only   이 학과 입결에 전형이 애초에 하나뿐
  *   none   위 어느 것도 아니면 **고르지 않는다.** 컷·경쟁률·모집을 비운다.
  *
@@ -1178,6 +1180,39 @@ export function pickIpgyeol(rows, app) {
     const hit = keys.filter((k) => groups.get(k).rows
       .some((r) => r.cat === cat || String(r.type).includes(cat)));
     if (hit.length === 1) return take(hit[0], 'cat');
+
+    /*
+     * **작년에 이미 없어진 전형은 올해 전형의 후보가 아니다.** (`alive`)
+     *
+     * 같은 유형이 둘 이상 남았을 때, 그중 **이 학과의 마지막 해까지 이어진 것이
+     * 하나뿐**이면 그것으로 본다. 나머지는 그 전에 끊긴 전형이라 올해 뽑는 전형과
+     * 같은 것일 수 없다.
+     *
+     *     송원대 간호  교과(학생부우수) 2022~2025 → 교과(인성우수) 2026   ← 이어진다
+     *                 교과(지역인재)  2024만 (4명)                     ← 그해로 끝
+     *     2027 모집요강  학생부교과(면접우수자면접전형)
+     *
+     * 이름으로는 `교과면접면접` 이라 어느 쪽과도 안 겹쳐 여태 「가려내지 못했습니다」
+     * 였다. 그런데 지역인재는 2024에 4명 뽑고 끝난 전형이다. 2027 전형의 작년 자리가
+     * 될 수 없다.
+     *
+     * **재서 넣었다.** 2027 모집요강 가운데 입결 학과를 찾은 11,673줄에서 여태
+     * 못 가리던 것이 1,323건이다. 이 규칙으로 **80건**이 하나로 좁혀진다(6.0%).
+     * 좁힌 답이 맞는지는 **모집요강이 스스로 적어 둔 작년 모집인원·70%컷·50%컷**으로
+     * 따로 검산했다 — 그 숫자로 판정이 서는 38건이 **38건 다 같은 답**이고 어긋난
+     * 것이 없다. 나머지 42건은 모집요강에 검산할 숫자가 없어 확인하지 못했다.
+     *
+     * 송원대 간호가 바로 그 자리다. 모집요강이 적어 둔 모집2026 141 · 모집2025 58 ·
+     * 25입결 70%컷 6.25 / 50%컷 6.00 · 24입결 5.50 / 5.30 이 전부 학생부우수→인성우수
+     * 줄과 그대로 맞고, 지역인재(2024 · 4명)와는 하나도 안 맞는다.
+     *
+     * 안전장치 둘. **`markCut` 이면 안 한다** — 면접·서류가 어긋나 지운 자리를 옆
+     * 전형으로 메우지 않는다는 위의 규칙과 같다. 그리고 **끊긴 해가 같으면 안 한다** —
+     * 둘 다 마지막 해까지 이어져 있으면 이 규칙은 아무 말도 못 하는 것이 맞다.
+     */
+    const last = Math.max(...[...groups.values()].map((v) => v.hi));
+    const alive = hit.filter((k) => groups.get(k).hi === last);
+    if (hit.length > 1 && alive.length === 1) return take(alive[0], 'alive');
   }
 
   /*
@@ -1473,7 +1508,7 @@ export function summarize(l, app) {
     alias: l.alias || null,            // 선생님이 손으로 이어 둔 학과가 있으면 그것
     // 숫자가 어느 전형에서 왔는지. 갈래를 가렸으면 그 갈래 이름이다.
     type: stale && stale.heir ? stale.heir.name : picked.type,
-    typeFit: stale && stale.heir ? 'heir' : picked.fit,   // exact|near|cat|only|heir|none
+    typeFit: stale && stale.heir ? 'heir' : picked.fit,   // exact|near|sim|cat|alive|only|heir|none
     among: picked.among || null,       // 못 골랐을 때 후보로 남은 전형 이름들
     stale,                             // 고른 전형이 학과 자료보다 일찍 끊겼으면 {year, deptHi, heirs}
     before: l.before,                  // {type:'유형2', parts, line} | null

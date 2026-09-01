@@ -218,43 +218,71 @@ const phi = (z) => 0.5 * (1 + erf(z / Math.SQRT2));
 const GLOBAL_SIGMA = 0.38;
 const Z70 = 0.524;               // Φ⁻¹(0.70)
 
+const SD_LO = 0.18;
+const SD_HI = 1.5;
+
 /**
- * 작년 합격자 분포에서 내 위치.
+ * 두 분위점으로 합격자 분포를 **어림한 곡선**.
  *
  * 등급50(중앙값)과 등급70(상위 70% 지점)은 합격자 분포의 두 분위점이다.
- * 정규근사로 μ = 등급50, σ = (등급70 − 등급50) ÷ 0.524 를 잡고 Φ((내 등급 − μ)/σ).
+ * 정규근사로 μ = 등급50, σ = (등급70 − 등급50) ÷ 0.524 를 잡는다.
  *
  * 최근 **두 해**를 평균 내서 쓴다. 한 해만 보면 그해 사정에 휘둘리고, 다 보면
  * 오래된 해가 지금을 흐린다.
  *
  * σ 에 상·하한(0.18~1.5)을 두는 까닭 — 두 컷이 거의 붙어 있거나 이상하게 벌어진
  * 학과에서 σ 가 0 에 가까워지거나 터무니없이 커진다. 그러면 위치가 0% 나 100% 로
- * 튄다. 실제 값이 아니라 근사의 부작용이라 눌러 둔다.
+ * 튄다. 실제 값이 아니라 근사의 부작용이라 눌러 둔다. 자주 걸린다 — 두 컷이 다 있는
+ * 64,029줄 가운데 **12.1%(7,728줄)는 두 컷이 똑같이** 적혀 있어 폭이 0 이고,
+ * 폭이 양수인 56,300줄 중에서도 **25.8%가 하한, 7.7%가 상한**에 걸린다.
+ * 그래서 눌렀는지(`clamped`)를 함께 돌려준다.
+ * **폭이 자료가 아니라 한계값에서 온 것이면 화면이 그렇게 말해야 한다.**
+ *
+ * `percentile` 과 학과 탐색의 분포 그림이 **이 함수 하나만** 본다. 식이 두 군데
+ * 있으면 그림과 숫자가 조용히 어긋난다.
+ *
+ * @return {?{mu, sd, raw, clamped, weak, cut50, cut70, years}}
+ *         weak=true 면 50%컷이 없어 전체 중앙값(0.38)으로 폭을 때운 것
+ */
+export function fitCurve(rows) {
+  const have = (rows || []).filter((r) => r.g70 != null).slice(-2);
+  if (!have.length) return null;
+  const cut70 = have.reduce((a, r) => a + r.g70, 0) / have.length;
+  const with50 = have.filter((r) => r.g50 != null);
+  if (!with50.length) {
+    const sd = GLOBAL_SIGMA;
+    return {
+      mu: cut70 - Z70 * sd, sd, raw: null, clamped: false, weak: true,
+      cut50: null, cut70, years: have.map((r) => r.year),
+    };
+  }
+  const cut50 = with50.reduce((a, r) => a + r.g50, 0) / with50.length;
+  const raw = (cut70 - cut50) / Z70;
+  const sd = Math.min(Math.max(raw, SD_LO), SD_HI);
+  return {
+    mu: cut50, sd, raw, clamped: sd !== raw, weak: false,
+    cut50, cut70, years: have.map((r) => r.year),
+  };
+}
+
+/** 표준정규 밀도 — 그림의 높이에만 쓴다. 넓이는 재지 않는다. */
+export function density(x, mu, sd) {
+  return Math.exp(-0.5 * ((x - mu) / sd) ** 2);
+}
+
+/**
+ * 작년 합격자 분포에서 내 위치. 곡선은 `fitCurve` 가 잡는다.
  *
  * @return {?{pct, mu, sd, years, weak}}  weak=true 면 50%컷이 없어 전체 중앙값으로 때운 것
  */
 export function percentile(rows, mine) {
-  if (mine == null || !rows || !rows.length) return null;
-  const have = rows.filter((r) => r.g70 != null).slice(-2);
-  if (!have.length) return null;
-  const cut70 = have.reduce((a, r) => a + r.g70, 0) / have.length;
-  const with50 = have.filter((r) => r.g50 != null);
-  let mu;
-  let sd;
-  let weak = false;
-  if (with50.length) {
-    const cut50 = with50.reduce((a, r) => a + r.g50, 0) / with50.length;
-    mu = cut50;
-    sd = Math.min(Math.max((cut70 - cut50) / Z70, 0.18), 1.5);
-  } else {
-    sd = GLOBAL_SIGMA;
-    mu = cut70 - Z70 * sd;
-    weak = true;
-  }
+  if (mine == null) return null;
+  const f = fitCurve(rows);
+  if (!f) return null;
   return {
-    pct: phi((mine - mu) / sd) * 100,
-    mu, sd, weak,
-    years: have.map((r) => r.year),
+    pct: phi((mine - f.mu) / f.sd) * 100,
+    mu: f.mu, sd: f.sd, weak: f.weak,
+    years: f.years,
   };
 }
 

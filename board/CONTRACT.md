@@ -141,7 +141,9 @@ export 한 행 = 한 건.
   rows:    [ IpRow, ... ],   // 이 학과의 모든 전형·모든 해 (연도별 추이가 쓴다)
   mine:    [ IpRow, ... ],   // 그중 지원한 전형의 줄만 (연도 오름차순)
   type:    "교과(일반)",       // 입결 쪽 전형 이름 — 즐겨찾기와 다를 수 있다
-  typeFit: "exact" | "near" | "sim" | "cat" | "only" | "heir" | "none",
+  typeFit: "exact" | "near" | "sim" | "cat" | "alive" | "only" | "heir" | "none",
+                             // alive = 이름은 못 맞췄고 같은 유형이 여럿인데,
+                             // 그 학과의 마지막 해까지 이어진 전형이 하나뿐이었다
   among:   [ "교과(추천)", "교과(학교장추천)" ],  // none 일 때만. 후보 이름들
   isNew:   true,             // 올해 신설. 모집요강의 작년 칸이 둘 다 비고,
                              // **입결에도 같은 이름이 없을 때만**

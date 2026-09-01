@@ -896,7 +896,7 @@ function figures(app) {
       const to = [s.alias.toUniv || '', s.alias.toDept || ''].filter(Boolean).join(' ');
       left.appendChild(el('div', 'fig-note', `${to} 자료`));
     } else if (left && s.type) {
-      const guessed = s.typeFit === 'cat' || s.typeFit === 'only';
+      const guessed = s.typeFit === 'cat' || s.typeFit === 'only' || s.typeFit === 'alive';
       left.appendChild(el('div', 'fig-note', guessed ? `${s.type} (아마도)` : s.type));
     }
   } else if (s && s.before && s.before.line.g70) {

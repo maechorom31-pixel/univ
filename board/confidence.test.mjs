@@ -9,7 +9,7 @@
  *   3. 들쭉날쭉한 것을 추세라 부르지 않는다
  */
 import { swing, thinness, position, confidence, worthFlagging,
-  percentile, predictCut, stance, pctText } from './confidence.js';
+  percentile, fitCurve, density, predictCut, stance, pctText } from './confidence.js';
 
 let fails = 0;
 const eq = (got, want, label) => {
@@ -182,6 +182,42 @@ console.log('합격자 분포에서 내 위치');
   // 최근 두 해만
   eq(percentile([R2(2022, 9.0, 8.9), R2(2025, 3.2, 3.0), R2(2026, 3.2, 3.0)], 3.0).years,
     [2025, 2026], '오래된 해는 안 본다');
+}
+
+/* ── 곡선은 한 곳에서만 잡는다 ───────────────────────────────────
+ * 학과 탐색의 분포 그림과 `percentile` 이 **같은 `fitCurve`** 를 본다.
+ * 식이 두 군데 있으면 그림과 숫자가 조용히 어긋나고, 어긋나도 아무 데도 안 적힌다.
+ */
+console.log('분포 곡선 (fitCurve)');
+{
+  const R2 = (year, g70, g50) => ({ year, g70, g50, type: '교과' });
+  const rows = [R2(2025, 3.20, 3.00), R2(2026, 3.20, 3.00)];
+  const f = fitCurve(rows);
+  near(f.mu, 3.00, 'μ 는 50%컷');
+  near(f.sd, (3.20 - 3.00) / 0.524, 'σ = (70컷−50컷) ÷ 0.524');
+  eq(f.clamped, false, '한계에 안 걸리면 clamped 는 false');
+  near(f.cut50, 3.00, '잰 두 컷을 그대로 들고 나온다 (50)');
+  near(f.cut70, 3.20, '잰 두 컷을 그대로 들고 나온다 (70)');
+
+  // **폭이 자료가 아니라 한계값에서 왔으면 그렇다고 말해야 한다.**
+  // 두 컷이 똑같이 적힌 줄이 12.1% 라 이 표시가 자주 켜진다.
+  const same = fitCurve([R2(2026, 3.00, 3.00)]);
+  near(same.sd, 0.18, '두 컷이 같으면 σ 는 하한 0.18');
+  eq(same.clamped, true, '눌렀다고 표시한다');
+  eq(fitCurve([R2(2026, 5.00, 2.00)]).clamped, true, '너무 벌어져도 눌렀다고 표시한다');
+  eq(fitCurve([R2(2026, 3.20, null)]).weak, true, '50%컷이 없으면 weak');
+  eq(fitCurve([R2(2026, 3.20, null)]).cut50, null, '없는 50%컷을 지어내지 않는다');
+  eq(fitCurve([]), null, '자료가 없으면 null');
+
+  // percentile 은 fitCurve 위에 Φ 하나만 얹은 것이다 — 둘이 같은 μ·σ 를 써야 한다
+  const pc = percentile(rows, 3.10);
+  near(pc.mu, f.mu, 'percentile 과 μ 가 같다');
+  near(pc.sd, f.sd, 'percentile 과 σ 가 같다');
+
+  // 그림 높이는 봉우리를 1 로 맞춘 밀도다. 넓이는 뜻이 없다.
+  near(density(3.00, 3.00, 0.4), 1, '봉우리에서 1');
+  eq(density(3.40, 3.00, 0.4) < 1, true, '봉우리에서 멀수록 낮다');
+  near(density(2.60, 3.00, 0.4), density(3.40, 3.00, 0.4), '봉우리를 사이에 두고 대칭');
 }
 
 console.log('판정 — 출발점이지 결론이 아니다');
