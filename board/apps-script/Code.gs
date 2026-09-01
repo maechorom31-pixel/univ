@@ -37,7 +37,7 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-09-01';
+var CODE_VER = '2026-09-01b';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
@@ -171,6 +171,9 @@ function doGet(e) {
 function doPost(e) { return doGet(e); }
 
 function handle_(p) {
+  // 설정 탭 메모는 **요청 단위**다. 요청 들머리에서 비워, 어떤 실행 환경에서도
+  // (시험 대역 포함) 묵은 설정이 다음 요청으로 새지 않게 한다.
+  CONFIG_MEMO = null;
   var action = p.action || 'ping';
 
   /*
@@ -222,7 +225,7 @@ function handle_(p) {
 
   switch (action) {
     case 'ping':       return { ok: true, who: who, locked: me.locked, at: now_(), ver: CODE_VER };
-    case 'students':   return loadAll_(me);
+    case 'students':   return loadAll_(me, String(p.fresh || '') === '1');
     case 'setState':   return setState_(p, who);
     case 'setRank':    return setRank_(p, who);
     case 'addNote':    return addNote_(p, who);
@@ -283,15 +286,41 @@ function handle_(p) {
  */
 var DEFAULT_KEY = '84348434';
 
+/**
+ * `설정` 탭을 **요청에 한 번만** 읽는다.
+ * =====================================================================
+ * 여태 한 요청 안에서 설정 탭을 서너 번 따로 읽고 있었다 — 열쇠(C2)를
+ * `teacherKey_` 가, 계정 명단(A열)을 `access_` 가, 원본 주소(B2)를
+ * `sourceBook_` 가 각자. 시트 읽기는 회당 100~300ms 라 이것만으로 요청마다
+ * 수백 ms 를 버렸다. 한 번 읽어 요청 동안 들고 있는다.
+ *
+ * Apps Script 실행은 요청마다 새로 시작하므로 전역 변수는 **요청 안에서만**
+ * 산다 — 요청을 넘어 묵은 값이 남을 길이 없다.
+ */
+var CONFIG_MEMO = null;
+function configTab_() {
+  if (CONFIG_MEMO) return CONFIG_MEMO;
+  var out = { emails: [], b2: '', c2: '' };
+  try {
+    var sh = tab_(SHEET.config);          // 없으면 머리글과 함께 만들어 준다 (설치 편의)
+    var last = sh.getLastRow();
+    if (last >= 2) {
+      var vals = sh.getRange(1, 1, last, 3).getValues();
+      out.b2 = String(vals[1][1] == null ? '' : vals[1][1]).trim();
+      out.c2 = String(vals[1][2] == null ? '' : vals[1][2]).trim();
+      for (var i = 1; i < vals.length; i++) {
+        var email = String(vals[i][0] == null ? '' : vals[i][0]).trim();
+        if (email) out.emails.push(email);
+      }
+    }
+  } catch (err) { /* 못 읽으면 빈 설정 — 여태의 기본 동작과 같다 */ }
+  CONFIG_MEMO = out;
+  return out;
+}
+
 /** 교사 열쇠. 시트 `설정` 탭 C2 에 적어 두면 그것, 비어 있으면 기본값. */
 function teacherKey_() {
-  try {
-    var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.config);
-    var own = sh ? String(sh.getRange('C2').getValue() || '').trim() : '';
-    return own || DEFAULT_KEY;
-  } catch (err) {
-    return DEFAULT_KEY;
-  }
+  return configTab_().c2 || DEFAULT_KEY;
 }
 
 /** 지금 쓰는 열쇠가 저장소에 적힌 기본값인가 — 그러면 보드가 알린다. */
@@ -303,13 +332,11 @@ function access_() {
   var email = '';
   try { email = Session.getActiveUser().getEmail() || ''; } catch (err) { email = ''; }
 
-  var list = rows_(SHEET.config).filter(function (r) {
-    return String(r['이메일'] || '').trim();
-  });
+  var list = configTab_().emails;
   if (!list.length) return { email: email, locked: false };
 
   for (var i = 0; i < list.length; i++) {
-    if (String(list[i]['이메일']).trim().toLowerCase() === email.toLowerCase()) {
+    if (String(list[i]).trim().toLowerCase() === email.toLowerCase()) {
       return { email: email, locked: true };
     }
   }
@@ -847,12 +874,8 @@ function isNaesinName_(name) {
  */
 function sourceBook_() {
   var here = SpreadsheetApp.getActiveSpreadsheet();
-  var ref = '';
-  try {
-    var cell = here.getSheetByName(SHEET.config);
-    // B1 은 머리글 자리다. 값은 바로 아래 B2 에서 읽는다.
-    if (cell) ref = String(cell.getRange('B2').getValue() || '').trim();
-  } catch (err) { ref = ''; }
+  // B1 은 머리글 자리다. 값은 바로 아래 B2 — 설정 탭은 요청에 한 번만 읽는다.
+  var ref = configTab_().b2;
   if (!ref) return { book: here, external: false, why: '' };
 
   var m = ref.match(/[-\w]{25,}/);            // 주소를 통째로 붙여 넣어도 ID만 뽑는다
@@ -969,10 +992,77 @@ function log_(who, action, detail) {
  * 3학년실은 전체를 본다. 대신 화면이 이 컴퓨터에 정해 둔 반을 먼저 보여 주고,
  * 다른 반이나 학년 전체로는 화면에서 바꾼다.
  */
-function loadAll_(me) {
+/* ── 원본 파싱 캐시 ──────────────────────────────────────────────────
+ *
+ * 요청에서 제일 비싼 두 가지가 **원본 파일 열기**(외부면 openById 0.5~1.5초)와
+ * **즐겨찾기 큰 표 읽기·파싱**이다. 그런데 그 내용은 선생님이 엑셀을 갈아끼울
+ * 때만 바뀐다. 파싱 결과를 CacheService 에 5분 캐시한다.
+ *
+ * 무엇을 캐시하고 무엇을 안 하나 —
+ *
+ *   캐시함     원본에서 오는 것: 학생·지원·성적 탭·미인식 칸·버린 줄
+ *   캐시 안 함  살아 움직이는 탭: 배치·메모·결과·일정·입력·별칭·설정.
+ *              담임과 학생이 방금 쓴 것이 다음 요청에 바로 보여야 한다
+ *
+ * 낡음의 한계는 5분이고, 보드의 「새로고침」 단추는 fresh=1 로 캐시를 건너뛴다 —
+ * 엑셀을 갈아끼운 직후에는 그걸 누르면 된다. 자동 새로고침(탭 복귀)은 캐시를 쓴다.
+ *
+ * CacheService 는 키당 100KB 라 gzip 해서 조각으로 나눠 담는다. 쓰는 중에 읽는
+ * 요청이 섞이지 않게 조각 이름에 도장(stamp)을 찍고 meta 가 그 도장을 가리킨다 —
+ * 새 쓰기가 끝나기 전의 읽기는 옛 도장의 온전한 조각을 읽는다.
+ *
+ * **파싱 결과의 모양이 바뀌면 SRC_CACHE_KEY 의 판을 올린다.** 안 올리면 새 코드가
+ * 옛 모양의 캐시를 5분 동안 그대로 내보낸다.
+ */
+var SRC_CACHE_KEY = 'src:v1';
+var SRC_CACHE_SEC = 300;
+
+function cachePut_(key, obj, sec) {
+  try {
+    var json = JSON.stringify(obj);
+    var b64 = Utilities.base64Encode(
+      Utilities.gzip(Utilities.newBlob(json, 'application/octet-stream')).getBytes());
+    var stamp = String(new Date().getTime() % 100000000);
+    var SIZE = 90000;                       // 키당 100KB 한계 아래로
+    var parts = {};
+    var n = 0;
+    for (var i = 0; i < b64.length; i += SIZE) {
+      parts[key + ':' + stamp + ':' + n] = b64.slice(i, i + SIZE);
+      n++;
+    }
+    parts[key + ':meta'] = stamp + '|' + n;
+    CacheService.getScriptCache().putAll(parts, sec);
+  } catch (err) { /* 캐시는 곁들임 — 실패해도 그냥 읽는다 */ }
+}
+
+function cacheGet_(key) {
+  try {
+    var c = CacheService.getScriptCache();
+    var meta = c.get(key + ':meta');
+    if (!meta) return null;
+    var mm = String(meta).split('|');
+    var stamp = mm[0];
+    var n = parseInt(mm[1], 10);
+    if (!(n >= 1)) return null;
+    var names = [];
+    for (var i = 0; i < n; i++) names.push(key + ':' + stamp + ':' + i);
+    var got = c.getAll(names);
+    var b64 = '';
+    for (var j = 0; j < n; j++) {
+      var part = got[names[j]];
+      if (part == null) return null;        // 조각이 하나라도 빠졌으면 없는 것
+      b64 += part;
+    }
+    var blob = Utilities.newBlob(Utilities.base64Decode(b64), 'application/x-gzip');
+    return JSON.parse(Utilities.ungzip(blob).getDataAsString());
+  } catch (err) { return null; }
+}
+
+/** 원본을 실제로 읽어 파싱한다 — 캐시를 안 거치는 본체. */
+function readSource_() {
   var src = sourceSheet_();
-  var known = false;
   var srcName = src.getName();
+  var known = false;
   for (var j = 0; j < SOURCE_SHEETS.length; j++) {
     if (srcName.indexOf(SOURCE_SHEETS[j]) >= 0) known = true;
   }
@@ -980,23 +1070,55 @@ function loadAll_(me) {
   var parsed = parseFavorites_(src.getDataRange().getValues());
   var grades = gradeRows_(src);
   return {
-    ok: true, who: me.email || '이름 없는 접속', locked: me.locked, at: now_(),
-    sourceSheet: srcName, sourceKnown: known,
-    sourceBook: book.external ? src.getParent().getName() : '',
-    sourceWarn: book.why || '',
+    srcName: srcName, known: known,
+    bookName: book.external ? src.getParent().getName() : '',
+    warn: book.why || '',
     students: parsed.students, apps: parsed.apps,
     unknownCols: parsed.unknownCols, skipped: parsed.skipped,
     dropped: parsed.dropped || [],
+    problem: parsed.problem || '',
+    grades: grades.rows, gradeProblem: grades.problem,
+    parsedAt: now_()
+  };
+}
+
+/**
+ * 원본 파싱 결과 — 캐시가 있으면 그것, 없으면 읽어서 담아 둔다.
+ * @param {boolean} fresh  참이면 캐시를 건너뛰고 읽은 결과로 캐시를 갈아 둔다
+ */
+function sourceParsed_(fresh) {
+  if (!fresh) {
+    var hit = cacheGet_(SRC_CACHE_KEY);
+    if (hit) { hit.cached = true; return hit; }
+  }
+  var out = readSource_();
+  cachePut_(SRC_CACHE_KEY, out, SRC_CACHE_SEC);
+  out.cached = false;
+  return out;
+}
+
+function loadAll_(me, fresh) {
+  var sp = sourceParsed_(fresh);
+  return {
+    ok: true, who: me.email || '이름 없는 접속', locked: me.locked, at: now_(),
+    sourceSheet: sp.srcName, sourceKnown: sp.known,
+    sourceBook: sp.bookName,
+    sourceWarn: sp.warn,
+    students: sp.students, apps: sp.apps,
+    unknownCols: sp.unknownCols, skipped: sp.skipped,
+    dropped: sp.dropped,
     // 머리글을 못 찾았으면 왜인지 — 조용히 「0명」이 되지 않게 한다
-    parseProblem: parsed.problem || '',
+    parseProblem: sp.problem,
     // 저장소에 적힌 기본 열쇠를 쓰고 있으면 보드가 알린다 — 빗장이지 잠금이 아니다
     openToAll: usingDefaultKey_(),
+    // 원본을 캐시에서 읽었으면 언제 파싱한 것인지 — 화면이 필요하면 적을 수 있다
+    cached: Boolean(sp.cached), parsedAt: sp.parsedAt || '',
     state: rows_(SHEET.state), notes: rows_(SHEET.note),
     results: rows_(SHEET.result), dates: rows_(SHEET.date),
     fields: rows_(SHEET.field),
     aliases: rows_(SHEET.alias),
-    grades: grades.rows,
-    gradeProblem: grades.problem
+    grades: sp.grades,
+    gradeProblem: sp.gradeProblem
   };
 }
 
@@ -1208,7 +1330,7 @@ function hakOfToken_(token) {
 
 /** 그 지원이 정말 이 학생 것인지 확인한다. 남의 것을 고치지 못하게. */
 function ownsApp_(hak, id) {
-  var parsed = parseFavorites_(sourceSheet_().getDataRange().getValues());
+  var parsed = sourceParsed_();   // 캐시 사용 — 지원 목록은 엑셀을 갈 때만 바뀐다
   for (var i = 0; i < parsed.apps.length; i++) {
     if (parsed.apps[i].id === String(id)) return parsed.apps[i].hak === hak;
   }
@@ -1419,7 +1541,7 @@ function approveField_(p, who) {
 
 /** 반 전체 토큰을 한 번에 발급한다. 이미 있으면 그대로 둔다. */
 function issueAll_(p, who) {
-  var parsed = parseFavorites_(sourceSheet_().getDataRange().getValues());
+  var parsed = sourceParsed_();   // 캐시 사용
   var only = String(p.cls || '').trim();
   var have = {};
   rows_(SHEET.share).forEach(function (r) { have[String(r.hak)] = String(r.token); });
@@ -1481,7 +1603,7 @@ function studentView_(token) {
   }
 
   var hak = String(hit.hak);
-  var parsed = parseFavorites_(sourceSheet_().getDataRange().getValues());
+  var parsed = sourceParsed_();   // 캐시 사용 — 학생 링크가 제일 자주 두드리는 자리다
   var me = null;
   for (var s = 0; s < parsed.students.length; s++) {
     if (parsed.students[s].hak === hak) { me = parsed.students[s]; break; }

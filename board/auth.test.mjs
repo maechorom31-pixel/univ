@@ -21,6 +21,7 @@ import { dirname, resolve } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 import { createHash } from 'node:crypto';
+import { gzipSync, gunzipSync } from 'node:zlib';
 
 const Utilities = {
   DigestAlgorithm: { SHA_1: 'SHA_1' }, Charset: { UTF_8: 'utf8' },
@@ -37,6 +38,33 @@ const Utilities = {
     return '2026-09-01T00:00:00+09:00';
   },
   getUuid: () => 'x',
+  /*
+   * 원본 파싱 캐시(cachePut_/cacheGet_)가 쓰는 압축·부호화 — node 의 zlib 로 흉내
+   * 낸다. 왕복이 실제로 맞는지 아래 「원본 파싱 캐시」 시험이 잰다.
+   */
+  newBlob: (data, _type) => ({ __data: data }),
+  gzip: (blob) => ({ getBytes: () => [...gzipSync(Buffer.from(blob.__data, 'utf8'))] }),
+  ungzip: (blob) => ({
+    getDataAsString: () => gunzipSync(Buffer.from(Uint8Array.from(blob.__data))).toString('utf8'),
+  }),
+  base64Encode: (bytes) => Buffer.from(Uint8Array.from(bytes)).toString('base64'),
+  base64Decode: (b64) => [...Buffer.from(b64, 'base64')],
+};
+
+/* CacheService 대역 — 만료는 흉내 내지 않는다. 지우기는 시험이 직접 한다. */
+const cacheStore = new Map();
+const CacheService = {
+  getScriptCache: () => ({
+    get: (k) => (cacheStore.has(k) ? cacheStore.get(k) : null),
+    getAll: (ks) => {
+      const o = {};
+      for (const k of ks) if (cacheStore.has(k)) o[k] = cacheStore.get(k);
+      return o;
+    },
+    put: (k, v) => cacheStore.set(k, String(v)),
+    putAll: (obj) => { for (const k of Object.keys(obj)) cacheStore.set(k, String(obj[k])); },
+    remove: (k) => cacheStore.delete(k),
+  }),
 };
 // 「모든 사용자」 배포에서 구글은 접속자 계정을 안 알려 준다 — 실제로 이렇게 던진다
 const Session = { getActiveUser: () => ({ getEmail: () => { throw new Error('no permission'); } }) };
@@ -81,9 +109,9 @@ const ContentService = { MimeType: {}, createTextOutput: (t) => ({ setMimeType: 
 
 
 const src = readFileSync(resolve(HERE, 'apps-script/Code.gs'), 'utf8');
-const G = new Function('Utilities', 'SpreadsheetApp', 'ContentService', 'LockService', 'Session',
-  `${src}\nreturn { handle_, access_, HEADERS, SHEET };`
-)(Utilities, SpreadsheetApp, ContentService, { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) }, Session);
+const G = new Function('Utilities', 'SpreadsheetApp', 'ContentService', 'LockService', 'Session', 'CacheService',
+  `${src}\nreturn { handle_, access_, HEADERS, SHEET, cachePut_, cacheGet_ };`
+)(Utilities, SpreadsheetApp, ContentService, { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) }, Session, CacheService);
 
 let fails = 0;
 const eq = (got, want, label) => {
@@ -295,6 +323,52 @@ console.log('\n서버와 화면이 같은 이름을 쓰나');
     /const DEFAULT_KEY = '([^']*)'/),
   '기본 열쇠가 서버·통신에서 같다');
 }
+}
+
+/* ── 원본 파싱 캐시 — 제일 비싼 읽기를 5분 아낀다 ─────────────────── */
+console.log('\n원본 파싱 캐시');
+{
+  // 압축·조각·도장(stamp)의 왕복 — 키당 100KB 한계를 넘는 크기로 잰다
+  cacheStore.clear();
+  // 되풀이 글은 gzip 이 다 눌러 버려 조각이 하나가 된다 — 안 눌리는 자료로 잰다
+  let seed = 'seed';
+  const rand = () => (seed = createHash('sha1').update(seed).digest('hex'));
+  const big = { rows: Array.from({ length: 6000 }, () => rand()) };
+  G.cachePut_('t', big, 300);
+  eq(G.cacheGet_('t'), big, '큰 것도 조각으로 나눠 담고 그대로 꺼낸다');
+  eq([...cacheStore.keys()].filter((k) => k.startsWith('t:')).length > 2, true,
+    '실제로 여러 조각이다 (한 키 100KB 한계)');
+
+  // 조각이 하나라도 밀려났으면 통째로 없는 것 — 반쪽짜리를 절대 안 내놓는다
+  const chunk = [...cacheStore.keys()].find((k) => /^t:\d+:0$/.test(k));
+  cacheStore.delete(chunk);
+  eq(G.cacheGet_('t'), null, '조각이 빠지면 캐시가 없는 것으로 친다');
+
+  // students 요청이 캐시를 쓰나 — 원본 시트 읽기 횟수를 직접 센다
+  cacheStore.clear();
+  let srcReads = 0;
+  const origRange = sheets['다운로드 원본'].getDataRange;
+  sheets['다운로드 원본'].getDataRange = () => { srcReads += 1; return origRange(); };
+
+  G.handle_({ action: 'students', key: '84348434' });
+  G.handle_({ action: 'students', key: '84348434' });
+  eq(srcReads, 1, '두 번째 요청은 원본을 다시 읽지 않는다');
+
+  // 살아 있는 탭은 캐시 밖 — 방금 적은 메모가 캐시된 응답에도 바로 실린다
+  sheets['메모'].appendRow(['m9', '3101', '', '캐시 중에 적은 메모', 'N', '담임', '2026-09-01']);
+  const live = G.handle_({ action: 'students', key: '84348434' });
+  eq(live.notes.some((n) => String(n.noteId) === 'm9'), true,
+    '배치·메모·결과는 캐시하지 않는다 — 방금 쓴 것이 바로 보인다');
+  eq(live.cached, true, '원본은 캐시에서 왔다고 응답에 적는다');
+
+  // 새로고침(fresh=1)은 캐시를 건너뛰고 그 결과로 캐시를 갈아 둔다
+  const fresh = G.handle_({ action: 'students', key: '84348434', fresh: '1' });
+  eq(srcReads, 2, 'fresh=1 은 원본을 다시 읽는다');
+  eq(fresh.cached, false, '새로 읽었다고 적는다');
+  G.handle_({ action: 'students', key: '84348434' });
+  eq(srcReads, 2, '그 다음 요청은 갈아 둔 캐시를 쓴다');
+
+  sheets['다운로드 원본'].getDataRange = origRange;
 }
 
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');

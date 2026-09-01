@@ -135,9 +135,10 @@ document.getElementById('try-demo').onclick = async () => {
   showSetup(false);
 };
 
-document.getElementById('reload').onclick = () => connect();
+// 새로고침 단추만 서버의 원본 파싱 캐시를 건너뛴다 — 엑셀을 갈아끼운 직후용
+document.getElementById('reload').onclick = () => connect(true);
 
-async function connect() {
+async function connect(fresh) {
   if (!api.configured()) {
     setConn('설정 필요', 'off');
     who.textContent = 'Apps Script 주소를 넣으면 우리 반 지원 현황이 나옵니다.';
@@ -146,7 +147,7 @@ async function connect() {
   }
   setConn('불러오는 중');
   try {
-    await store.load();
+    await store.load({ fresh });
     setConn('연결됨', 'on');
     who.textContent = store.state.who ? `${store.state.who} 로 연결` : '연결됨';
   } catch (err) {

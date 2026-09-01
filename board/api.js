@@ -191,7 +191,8 @@ export async function call(action, params, opts = {}) {
   throw last;
 }
 
-export const students = () => call('students', {}, { timeout: 45000 });
+// fresh 가 참이면 서버가 원본 파싱 캐시를 건너뛴다 (Code.gs sourceParsed_)
+export const students = (fresh) => call('students', fresh ? { fresh: 1 } : {}, { timeout: 45000 });
 // setState 는 setRank 로 통일했다. 서버 쪽 setState_ 는 옛 화면을 위해 남아 있다.
 /** 순위 옮기기 — 맞바꾸기까지 서버가 한 번에 한다. board/CONTRACT.md §2.4 */
 export const setRank = (s) => call('setRank', s);

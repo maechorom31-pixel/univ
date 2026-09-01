@@ -80,14 +80,23 @@ export function live() {
   return !offline;
 }
 
-export async function load() {
+export async function load(opts) {
   state.error = '';
   offline = false;
-  const data = await api.students();
+  /*
+   * **서버와 공개 자료를 동시에 부른다.** 예전에는 서버 응답(2~6초)을 다 기다린
+   * 뒤에야 입결(압축 1.3MB)을 받기 시작해서, 체감 로딩이 둘의 **합**이었다.
+   * 둘은 서로 독립이라 같이 시작하면 **긴 쪽 하나**가 된다.
+   *
+   * fresh 는 서버의 원본 파싱 캐시를 건너뛴다 — 「새로고침」 단추만 켠다.
+   * 엑셀을 갈아끼운 직후 그 단추를 누르면 5분 캐시를 기다릴 일이 없다.
+   */
+  const wait = api.students(opts && opts.fresh);
+  enrich();
+  const data = await wait;
   apply(data);
   state.ready = true;
   emit('change', 'data');
-  enrich();                 // 공개 자료는 기다리지 않고 뒤에서 받는다
   return state;
 }
 
