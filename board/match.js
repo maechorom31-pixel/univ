@@ -770,6 +770,23 @@ function isSplit(a, b) {
   return /^[0-9I]+$/.test(long.slice(short.length));
 }
 
+/**
+ * 꼬리에 번호가 붙은 이름인가, 그리고 둘이 **쪼개진 형제**인가.
+ *
+ * `isSplit` 은 부모(`종합학교생활`)가 자료에 남아 있을 때만 잡는다. 그런데
+ * 부모가 사라지고 가지만 둘 남는 일이 있다 — 강남대 `종합학교생활1`·`종합학교생활2`.
+ * 서로 앞머리가 아니라서 `isSplit` 이 못 잡는다. 꼬리 번호를 떼고 줄기가 같으면
+ * 형제로 본다.
+ */
+const stemOf = (k) => String(k).replace(/[0-9I]+$/, '');
+const numbered = (k) => /[0-9I]+$/.test(String(k));
+function siblings(a, b) {
+  if (a === b) return false;
+  if (isSplit(a, b)) return true;
+  const sa = stemOf(a);
+  return sa.length >= 2 && sa === stemOf(b) && (numbered(a) || numbered(b));
+}
+
 export function typeGroups(rows) {
   const g = new Map();
   for (const r of rows || []) {
@@ -1034,6 +1051,93 @@ function staleOf(rows, mineRows, app, mojipRows) {
   };
 }
 
+/* ── 모집요강이 스스로 적어 둔 작년 숫자로 가리기 (`figures`) ────────
+ *
+ * 이름으로도 못 가리고 유형으로도 못 좁혔을 때 마지막으로 두드리는 곳이다.
+ *
+ * **모집요강 한 줄은 저마다 제 지난 세 해를 적고 있다** — 모집2026·2025·2024 과
+ * 그 해의 70%컷·50%컷. 그건 대학이 「이 전형의 작년은 이것이었다」고 직접 말한
+ * 것이라, 이름이 바뀌었든 말든 그대로 쓸 수 있다. 그 숫자와 맞는 입결 묶음을 찾는다.
+ *
+ * 재 봤다 — 이름이 이미 확실히 붙은(`exact`) 자리에 이 규칙을 돌려 답을 견주는
+ * 방식이다. **가드 없이는 못 쓴다.** 아래처럼 조여 가며 쟀다.
+ *
+ *   가드 없음                     6,587건 중 어긋남 132 (2.00%)
+ *   + 유형(교과/종합/논술)이 같을 것  4,985건 중 어긋남 120 (2.41%)
+ *   + 쪼개진 형제가 보이면 물러남    4,180건 중 어긋남  19 (0.45%)
+ *   + **2등과 2점 이상 벌어질 것**   4,108건 중 어긋남 **1 (0.02%)**
+ *
+ * 남은 하나는 규칙의 실패가 아니라 **자료가 얽힌 자리**다 — 초당대 간호는
+ * 「일반고(~2025)」가 2026에 「일반학생」으로 이름을 바꾸면서 **새 「일반고」가
+ * 따로 생겼다.** 이름은 2026을, 숫자는 2025·2024를 가리키니 둘 다 반쯤 맞다.
+ * 그리고 그 자리는 이름이 이미 붙는 곳이라 이 갈래가 애초에 닿지 않는다.
+ *
+ * 여태 못 가리던 1,243건 가운데 **261건(21.0%)** 이 이걸로 좁혀진다.
+ *
+ * 가드 넷을 다 건다.
+ *
+ *   1. **모집요강 줄을 이름으로 맞췄을 때만**(`mojip.byName`). 아니면 옆 전형의
+ *      지난 세 해를 이 전형의 것인 양 읽는 것이라, 숫자가 통째로 오염된다
+ *   2. **유형이 같은 후보만** 센다. 논술 지원에 교과 컷이 붙던 자리다
+ *      (경희대 의상 논술 → 교과(지역균형) 이 이 가드 없이 나왔다)
+ *   3. **쪼개진 흔적이 보이면 물러난다.** 모집요강이 쪼개지기 **전** 값을 적어 두어
+ *      가지가 아니라 부모를 가리킨다. 번호 꼬리가 붙은 이름이 후보에 있거나
+ *      둘이 형제면 아무 말도 안 한다
+ *   4. **2점 이상 맞고 2등과 2점 이상 벌어질 것.** 우연히 한둘 겹치는 것과 가른다
+ */
+
+/** 한 묶음이 모집요강의 지난 세 해와 몇 개나 맞나. 해마다 가장 잘 맞는 줄로 센다. */
+function figureScore(group, hist) {
+  let n = 0;
+  for (const h of hist) {
+    if (h.quota == null && h.cut70 == null && h.cut50 == null) continue;
+    let best = 0;
+    for (const r of group.rows) {
+      if (r.year !== h.year) continue;
+      let c = 0;
+      if (h.quota != null && r.quota != null && Number(h.quota) === Number(r.quota)) c += 1;
+      if (h.cut70 != null && r.g70 != null && Math.abs(h.cut70 - r.g70) <= 0.005) c += 1;
+      if (h.cut50 != null && r.g50 != null && Math.abs(h.cut50 - r.g50) <= 0.005) c += 1;
+      if (c > best) best = c;
+    }
+    n += best;
+  }
+  return n;
+}
+
+const FIG_MIN = 2;      // 이만큼은 맞아야 한다
+const FIG_GAP = 2;      // 2등과 이만큼 벌어져야 한다
+
+/**
+ * @param {Map} groups   typeGroups 결과
+ * @param {string[]} keys 유형까지 이미 걸러 둔 후보
+ * @param {?string} want  지원한 전형의 정규화 이름
+ * @param {Array} mojip   pickMojip 결과 (byName 표시가 붙어 있다)
+ * @return {?string} 고른 묶음 키. 못 고르면 null
+ */
+function pickByFigures(groups, keys, want, mojip) {
+  if (keys.length < 2) return null;
+  // 가드 1 — 모집요강 줄을 이름으로 맞추지 못했으면 그 숫자는 이 전형의 것이 아니다
+  if (!mojip || !mojip.byName || !mojip[0] || !mojip[0].hist) return null;
+  const hist = mojip[0].hist;
+
+  // 가드 3 — 쪼개진 흔적이 보이면 물러난다
+  const names = keys.flatMap((k) => groups.get(k).keys);
+  for (const a of names) {
+    if (numbered(a)) return null;
+    if (want && siblings(want, a)) return null;
+    for (const b of names) if (siblings(a, b)) return null;
+  }
+  if (want && numbered(want)) return null;
+
+  const scored = keys.map((k) => ({ k, n: figureScore(groups.get(k), hist) }))
+    .sort((a, b) => b.n - a.n);
+  // 가드 4
+  if (scored[0].n < FIG_MIN) return null;
+  if (scored[1] && scored[0].n - scored[1].n < FIG_GAP) return null;
+  return scored[0].k;
+}
+
 /**
  * 지원한 전형의 입결 줄만 고른다.
  * =====================================================================
@@ -1056,13 +1160,15 @@ function staleOf(rows, mineRows, app, mojipRows) {
  *   cat    이름은 못 맞췄지만 카테고리(교과/종합/논술/실기)가 같은 묶음이 하나뿐
  *   alive  카테고리가 같은 것이 여럿이지만 **마지막 해까지 이어진 것은 하나뿐**.
  *          그 전에 끊긴 전형은 올해 뽑는 전형의 작년 자리가 될 수 없다
+ *   figures 이름으로도 못 가렸을 때, **모집요강이 스스로 적어 둔 지난 세 해**
+ *          (모집인원·70%컷·50%컷)와 맞는 묶음이 뚜렷이 하나일 때만
  *   only   이 학과 입결에 전형이 애초에 하나뿐
  *   none   위 어느 것도 아니면 **고르지 않는다.** 컷·경쟁률·모집을 비운다.
  *
  * 돌려주는 것은 고른 묶음의 행들(연도 오름차순)과 어떻게 골랐는지다.
  * 나머지 전형도 버리지 않는다 — 연도별 추이는 여전히 전부 보여 준다.
  */
-export function pickIpgyeol(rows, app) {
+export function pickIpgyeol(rows, app, mojip) {
   const groups = typeGroups(rows);
   let keys = [...groups.keys()];
   if (!keys.length) return { rows: [], fit: 'none', type: null };
@@ -1213,6 +1319,13 @@ export function pickIpgyeol(rows, app) {
     const last = Math.max(...[...groups.values()].map((v) => v.hi));
     const alive = hit.filter((k) => groups.get(k).hi === last);
     if (hit.length > 1 && alive.length === 1) return take(alive[0], 'alive');
+
+    /*
+     * 이름도 유형도 못 가렸다. 마지막으로 **모집요강이 스스로 적어 둔 지난 세 해**를
+     * 본다 — 위 `pickByFigures` 의 가드 넷을 다 통과할 때만 고른다.
+     */
+    const fig = pickByFigures(groups, hit, want, mojip);
+    if (fig) return take(fig, 'figures');
   }
 
   /*
@@ -1433,7 +1546,7 @@ export function summarize(l, app) {
    * 머리 숫자(컷·경쟁률·모집)는 **지원한 전형의 줄**에서만 온다.
    * 못 가려내면 비운다 — 옆 전형의 숫자를 대신 앉히지 않는다. pickIpgyeol 참고.
    */
-  const picked = pickIpgyeol(rows, app || {});
+  const picked = pickIpgyeol(rows, app || {}, l.mojip);
   const isNew = isNewThisYear(l.mojip, picked);
 
   /*
@@ -1508,7 +1621,7 @@ export function summarize(l, app) {
     alias: l.alias || null,            // 선생님이 손으로 이어 둔 학과가 있으면 그것
     // 숫자가 어느 전형에서 왔는지. 갈래를 가렸으면 그 갈래 이름이다.
     type: stale && stale.heir ? stale.heir.name : picked.type,
-    typeFit: stale && stale.heir ? 'heir' : picked.fit,   // exact|near|sim|cat|alive|only|heir|none
+    typeFit: stale && stale.heir ? 'heir' : picked.fit,   // exact|near|sim|cat|alive|figures|only|heir|none
     among: picked.among || null,       // 못 골랐을 때 후보로 남은 전형 이름들
     stale,                             // 고른 전형이 학과 자료보다 일찍 끊겼으면 {year, deptHi, heirs}
     before: l.before,                  // {type:'유형2', parts, line} | null
@@ -1902,6 +2015,12 @@ function dropCatTwins(rows) {
  * data/mojip2027.json 을 조회용 색인으로 바꾼다.
  * 문자열 사전 방식이라 textCols 에 든 열은 strings 에서 꺼내야 한다.
  */
+/** 기준 칸이 그 분위의 **등급** 컷인가. 「환산70%컷」은 점수라 뺀다. */
+const pctCut = (label, p) => {
+  const t = String(label || '');
+  return t.includes(String(p)) && !t.includes('환산');
+};
+
 export function indexMojip(doc) {
   const c = Object.fromEntries(doc.columns.map((name, i) => [name, i]));
   const text = new Set(doc.textCols || []);
@@ -1935,6 +2054,26 @@ export function indexMojip(doc) {
       quota25: val(r, '모집2025'), quota24: val(r, '모집2024'),
       rate26: val(r, '경쟁2026'), rate25: val(r, '경쟁2025'), rate24: val(r, '경쟁2024'),
       cut70: val(r, '입결1_26'), cut50: val(r, '입결2_26'),
+      /*
+       * **모집요강은 저마다 제 지난 세 해를 적어 두고 있다.** 그걸 그대로 실어
+       * 둔다 — `pickIpgyeol` 의 `figures` 갈래가 이름으로 못 가렸을 때 본다.
+       *
+       * 기준 칸을 반드시 함께 본다. 「70%컷(최종)」만 등급이고 「평균(최종)」·
+       * 「80%컷」·「최저(최종)」은 다른 잣대다(2025 기준 칸만 해도 여섯 가지다).
+       * **「환산70%컷」은 등급이 아니라 점수라 빼야 한다** — 등급 칸과 견주면
+       * 700 과 5.6 을 견주는 셈이 된다.
+       */
+      hist: [
+        { year: 2026, quota: val(r, '모집2026'),
+          cut70: pctCut(val(r, '입결1기준26'), 70) ? val(r, '입결1_26') : null,
+          cut50: pctCut(val(r, '입결2기준26'), 50) ? val(r, '입결2_26') : null },
+        { year: 2025, quota: val(r, '모집2025'),
+          cut70: pctCut(val(r, '입결1기준25'), 70) ? val(r, '입결1_25') : null,
+          cut50: pctCut(val(r, '입결2기준25'), 50) ? val(r, '입결2_25') : null },
+        { year: 2024, quota: val(r, '모집2024'),
+          cut70: pctCut(val(r, '입결1기준24'), 70) ? val(r, '입결1_24') : null,
+          cut50: pctCut(val(r, '입결2기준24'), 50) ? val(r, '입결2_24') : null },
+      ],
       // 추합은 연도별로 다 있다(76·65·62%) — 충원 추이를 그릴 수 있는 자리다
       filled26: val(r, '추합26'), filled25: val(r, '추합25'), filled24: val(r, '추합24'),
       minReq: val(r, '수능최저'), stages: val(r, '전형단계'),

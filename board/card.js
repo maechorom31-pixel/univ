@@ -829,6 +829,7 @@ function ipgyeolSource(s) {
     case 'sim': return `입결 · ${s.type} · 이름이 닮아 같은 전형으로 봤습니다`;
     case 'cat': return `입결 · ${s.type} · 전형 이름은 못 맞추고 유형만 같습니다`;
     case 'alive': return `입결 · ${s.type} · 이름은 못 맞췄지만 작년까지 이어진 전형이 이것뿐입니다`;
+    case 'figures': return `입결 · ${s.type} · 이름이 아니라 모집요강이 적어 둔 작년 모집인원·컷으로 맞췄습니다`;
     case 'only': return `입결 · ${s.type} · 이 학과 입결에 전형이 이것 하나뿐입니다`;
     case 'heir': return `입결 · ${s.type} · ${s.stale.was}에서 갈라져 나온 전형입니다`;
     default: return '입결 · 지원한 전형을 가려내지 못했습니다';

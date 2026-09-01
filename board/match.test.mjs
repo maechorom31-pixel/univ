@@ -402,6 +402,59 @@ console.log('지원한 전형의 입결 줄 고르기');
     { typeSub: '학생부교과(면접우수자전형)', typeCat: '학생부위주(교과)' });
   eq(mg.fit, 'none', '서류형밖에 없으면 면접형 지원은 비운다 — alive 로도 안 메운다');
 
+  /*
+   * **모집요강이 스스로 적어 둔 지난 세 해로 가리기** (`figures`).
+   * 경성대 경영이 그 자리다 — 모집요강 「일반계고교과」가 글자로는 어느 쪽과도
+   * 안 맞는데, 저가 적어 둔 26/25/24 숫자가 「교과(일반계교과)」와 전부 맞는다.
+   */
+  const rq = (year, type, g70, g50, quota) => ({
+    year, type, g70, g50, quota, cat: type.includes('종합') ? '종합' : '교과',
+  });
+  const ks = [
+    rq(2024, '교과(일반계교과)', 4.2, null, 60), rq(2025, '교과(일반계교과)', 4.0, 3.8, 60),
+    rq(2026, '교과(일반계교과)', 4.0, 3.9, 60),
+    rq(2024, '교과(일반계면접)', 4.6, null, 28), rq(2025, '교과(일반계면접)', 4.6, 4.4, 27),
+    rq(2026, '교과(일반계면접)', 4.0, 3.9, 27),
+  ];
+  const mj = (hist, byName = true) => {
+    const out = [{ hist }];
+    out.byName = byName;
+    return out;
+  };
+  const HIST = [
+    { year: 2026, quota: 60, cut70: 4.0, cut50: 3.9 },
+    { year: 2025, quota: 60, cut70: 4.0, cut50: 3.8 },
+    { year: 2024, quota: 60, cut70: 4.2, cut50: null },
+  ];
+  const app2 = { typeSub: '학생부교과(일반계고교과전형)', typeCat: '학생부위주(교과)' };
+  const fg = pickIpgyeol(ks, app2, mj(HIST));
+  eq(fg.fit, 'figures', '모집요강이 적어 둔 작년 숫자로 가린다');
+  eq(fg.type, '교과(일반계교과)', '숫자가 다 맞는 쪽');
+
+  // **모집요강 줄을 이름으로 못 맞췄으면 그 숫자는 이 전형의 것이 아니다**
+  eq(pickIpgyeol(ks, app2, mj(HIST, false)).fit, 'none', 'byName 이 아니면 숫자를 안 본다');
+  eq(pickIpgyeol(ks, app2, null).fit, 'none', '모집요강이 없으면 안 본다');
+
+  // **2등과 2점 이상 벌어져야 한다** — 우연히 겹치는 것과 가른다
+  const thin = [{ year: 2026, quota: null, cut70: 4.0, cut50: 3.9 }];
+  eq(pickIpgyeol(ks, app2, mj(thin)).fit, 'none',
+    '2026 컷이 두 전형에서 같아 비기면 고르지 않는다');
+
+  /*
+   * **쪼개진 흔적이 보이면 물러난다.** 모집요강이 쪼개지기 전 값을 적어 두어
+   * 가지가 아니라 부모를 가리킨다 — 강남대 「학교생활우수자Ⅰ·Ⅱ」가 그랬다.
+   */
+  const split = [
+    rq(2025, '종합(학교생활1)', 4.0, 3.8, 60), rq(2026, '종합(학교생활1)', 4.0, 3.9, 60),
+    rq(2025, '종합(학교생활2)', 5.0, 4.8, 20), rq(2026, '종합(학교생활2)', 5.1, 4.9, 20),
+  ];
+  eq(pickIpgyeol(split, { typeSub: '학생부종합(무슨전형)', typeCat: '학생부위주(종합)' },
+    mj(HIST)).fit, 'none', '번호 꼬리가 붙은 후보가 있으면 숫자를 안 믿는다');
+
+  // **유형이 어긋나면 애초에 후보가 아니다** — 논술에 교과 컷이 붙던 자리다
+  eq(pickIpgyeol(ks, { typeSub: '논술(논술우수자)', typeCat: '논술위주' }, mj(HIST)).fit,
+    'none', '논술 지원에 교과 컷을 숫자로 붙이지 않는다');
+
   const g = pickIpgyeol([r(2026, '교과(일반)', 3.2)], { typeSub: '전혀다른것', typeCat: '' });
   eq(g.fit, 'only', '전형이 하나뿐이고 내 유형을 못 가렸으면 그것');
 
