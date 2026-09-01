@@ -34,7 +34,7 @@ const stub = new Proxy({}, { get: () => () => { throw new Error('시트 API는 �
 const src = readFileSync(resolve(HERE, 'apps-script/Code.gs'), 'utf8');
 const load = new Function(
   'Utilities', 'SpreadsheetApp', 'ContentService', 'LockService', 'Session',
-  `${src}\nreturn { parseFavorites_, parseDates_, parseQuota_, readHeader_, appId_ };`
+  `${src}\nreturn { parseFavorites_, parseDates_, parseQuota_, readHeader_, appId_, parseGradeRows_ };`
 );
 const G = load(Utilities, stub, stub, stub, stub);
 
@@ -164,6 +164,37 @@ console.log('\n시나리오');
   // 머리글이 한참 아래 있어도 찾는다
   const deep = [...Array.from({ length: 32 }, () => []), H2, ROW()];
   eq(G.readHeader_(deep).headerAt, 32, '머리글이 32행이어도 찾는다');
+}
+
+/* ── 성적 탭 — 학년 전체 전교과 일반등급 ─────────────────────────── */
+console.log('성적 탭 파서');
+{
+  const sheet = [
+    ['학년', '반', '번호', '이름', '일반등급'],
+    ['3', '5', '3', '가상갑', '1.03'],
+    ['3', '1', '15', '가상을', '3.5'],
+    ['3', '2', '9', '가상병', '0'],          // 0 은 「안 적음」 — null 이어야 한다
+    ['', '', '', '', ''],                     // 빈 줄은 건너뛴다
+    ['합계', '', '', '', '4.5'],              // 숫자 아닌 반·번호는 자료가 아니다
+  ];
+  const got = G.parseGradeRows_(sheet);
+  eq(got.rows.length, 3, '  세 줄을 읽는다');
+  eq(got.rows[0], { hak: '3503', name: '가상갑', grade: 1.03 }, '  학번은 학년+반+번호 두 자리');
+  eq(got.rows[1].hak, '3115', '  번호 두 자리는 그대로');
+  eq(got.rows[2].grade, null, '  등급 0 은 값이 아니라 안 적음');
+
+  // 머리글이 첫 줄이 아니어도, 학년 칸이 없어도 (3학년으로 본다)
+  const messy = [
+    ['2027 대비 성적'],
+    ['반', '번호', '성명', '전교과'],
+    ['5', '3', '가상갑', '2.5'],
+  ];
+  const got2 = G.parseGradeRows_(messy);
+  eq(got2.rows, [{ hak: '3503', name: '가상갑', grade: 2.5 }], '  머리글을 이름으로 찾는다 · 학년 없으면 3');
+
+  // 엉뚱한 시트면 왜 못 읽었는지 말한다
+  eq(G.parseGradeRows_([['아무', '관계없는', '표']]).problem.length > 0, true, '  머리글을 못 찾으면 말한다');
+  eq(G.parseGradeRows_([]).rows.length, 0, '  빈 시트는 조용히 빈 목록');
 }
 
 /* ── 실제 시트 ───────────────────────────────────────────────────── */

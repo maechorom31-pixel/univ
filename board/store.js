@@ -40,6 +40,9 @@ export const state = {
   // `${id}|${hak}|${field}` → { value, status }. 생년월일은 id 가 빈 문자열이다
   fields: new Map(),
   source: { name: '', known: true },   // 어느 탭을 읽었나
+  gradeSheet: new Map(),  // hak → { name, grade } — 「성적」 탭의 학년 전체 명단
+  gradeWarn: [],          // 성적 탭과 즐겨찾기의 이름이 다른 학번 [{hak, fav, sheet}]
+  gradeProblem: '',       // 성적 탭이 있는데 머리글을 못 읽었으면 그 사유
   unknownCols: [],
   skipped: 0,
   dropped: [],
@@ -116,6 +119,41 @@ function apply(data) {
   state.openToAll = Boolean(data.openToAll);
   state.students = new Map((data.students || []).map((s) => [s.hak, s]));
   state.apps = new Map((data.apps || []).map((a) => [a.id, a]));
+  /*
+   * 「성적」 탭 — 학년 전체의 전교과 일반등급 명단 (Code.gs gradeRows_).
+   *
+   * 즐겨찾기에 전교과가 없는 학생의 전교과를 여기서 채운다. 관심대학 리스트의
+   * 내등급은 전형별 환산이라, 종합전형은 0(=없음)으로 온다 — 그 지원의 위치
+   * 어림은 이 전교과로 대신한다(gradeOf). **이름이 다르면 붙이지 않는다** —
+   * 반이 바뀌었거나 번호가 밀렸을 수 있고, 남의 성적이 붙는 것이 빈 것보다
+   * 나쁘다. 점검 화면이 그 학번을 보여 준다.
+   */
+  state.gradeSheet = new Map();
+  state.gradeWarn = [];
+  state.gradeProblem = String(data.gradeProblem || '');
+  for (const g of data.grades || []) {
+    if (!g || !g.hak) continue;
+    state.gradeSheet.set(String(g.hak), {
+      name: String(g.name || '').trim(),
+      grade: g.grade == null || g.grade === '' ? null : Number(g.grade),
+    });
+  }
+  for (const stu of state.students.values()) {
+    const g = state.gradeSheet.get(String(stu.hak));
+    if (!g) continue;
+    const favName = String(stu.name || '').trim();
+    if (g.name && favName && g.name !== favName) {
+      state.gradeWarn.push({ hak: String(stu.hak), fav: favName, sheet: g.name });
+      continue;
+    }
+    const n = stu.naesin || (stu.naesin = {});
+    const have = Number(n['전교과'] ?? n['전교과(100)']);
+    if (!(Number.isFinite(have) && have > 0)
+      && Number.isFinite(g.grade) && g.grade > 0) {
+      n['전교과'] = g.grade;
+      stu.gradeFrom = '성적 시트';       // 카드가 출처를 적는다
+    }
+  }
   state.notes = data.notes || [];
   // 선생님이 시트에 적어 둔 결과. 즐겨찾기가 준 값 위에 덮어쓴다 —
   // 예비번호가 도는 12월에는 대교협보다 담임이 먼저 안다.
@@ -218,6 +256,26 @@ export function select(next) {
 export function classes() {
   return [...new Set([...state.students.values()].map((s) => s.cls))]
     .sort((a, b) => String(a).localeCompare(String(b), 'ko', { numeric: true }));
+}
+
+/**
+ * 셈에 쓸 학생 등급 하나 — **잣대를 함께** 돌려준다.
+ *
+ * 환산이 있으면 환산이다. 없으면(관심대학 리스트가 종합전형 등에 0 을 주는 자리 —
+ * Code.gs score_ 가 0 을 「안 적음」으로 걸러 null 이 된다) 전교과 일반등급으로
+ * **대신**한다. 화면은 scale 을 반드시 적어야 한다 — 전교과는 대학 반영교과
+ * 환산과 다른 잣대라, 안 적으면 어림이 잰 값처럼 읽힌다(ARCHITECTURE §6).
+ *
+ * @return {{value: ?number, scale: ?('환산'|'전교과')}}
+ */
+export function gradeOf(app) {
+  const conv = app && app.myScore ? Number(app.myScore.grade) : NaN;
+  if (Number.isFinite(conv) && conv > 0) return { value: conv, scale: '환산' };
+  const stu = state.students.get(String(app && app.hak));
+  const n = (stu && stu.naesin) || {};
+  const whole = Number(n['전교과'] ?? n['전교과(100)']);
+  if (Number.isFinite(whole) && whole > 0) return { value: whole, scale: '전교과' };
+  return { value: null, scale: null };
 }
 
 export function studentsOf(cls) {

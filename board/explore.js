@@ -139,8 +139,12 @@ function deptDetail({ list, order }) {
       tr.appendChild(el('td', '', x.app.typeSub || x.app.typeName || '—'));
       const whole = Number((x.student.naesin || {})['전교과'] ?? (x.student.naesin || {})['전교과(100)']);
       tr.appendChild(el('td', 'num', Number.isFinite(whole) ? g2(whole) : '—'));
+      /*
+       * `Number(null)` 은 0 이다 — myScore 가 비면(종합전형 등) 환산 칸에
+       * 0.00 이 찍혀 1등급보다 좋은 성적으로 읽힌다. 등급에 0 은 없다.
+       */
       const conv = Number(x.app.myScore && x.app.myScore.grade);
-      tr.appendChild(el('td', 'num', Number.isFinite(conv) ? g2(conv) : '—'));
+      tr.appendChild(el('td', 'num', Number.isFinite(conv) && conv > 0 ? g2(conv) : '—'));
       const go = () => goStudent(x.student.hak);
       tr.onclick = go;
       tr.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
@@ -206,7 +210,11 @@ const TOP = 16;          // 봉우리 y
 const STEM = 11;         // 학생 막대가 닿는 y
 const PAD = 8;
 
-/** 사람 하나에 점 하나. 같은 학과에 전형을 달리 두 번 넣어도 한 번만 센다. */
+/**
+ * 사람 하나에 점 하나. 같은 학과에 전형을 달리 두 번 넣어도 한 번만 센다.
+ * 등급은 store.gradeOf 하나로 잰다 — 환산이 없으면(종합전형 등) 전교과로
+ * 대신하고 잣대를 함께 적는다. 카드의 어림과 같은 값이어야 한다.
+ */
 function marksOf(students, rows, curve) {
   const seen = new Set();
   const out = [];
@@ -214,15 +222,12 @@ function marksOf(students, rows, curve) {
     const hak = String(x.student.hak);
     if (seen.has(hak)) continue;
     seen.add(hak);
-    const conv = Number(x.app.myScore && x.app.myScore.grade);
-    const whole = Number((x.student.naesin || {})['전교과']
-      ?? (x.student.naesin || {})['전교과(100)']);
-    const g = Number.isFinite(conv) ? conv : (Number.isFinite(whole) ? whole : null);
-    if (g == null) continue;
-    const est = curve ? percentile(rows, g) : null;
+    const g = store.gradeOf(x.app);
+    if (g.value == null) continue;
+    const est = curve ? percentile(rows, g.value) : null;
     out.push({
-      hak, name: tidy(x.student.name), g,
-      scale: Number.isFinite(conv) ? '환산' : '전교과',
+      hak, name: tidy(x.student.name), g: g.value,
+      scale: g.scale,
       pct: est ? est.pct : null,
     });
   }
@@ -560,9 +565,10 @@ function deptRow({ univ, dept, list, n }) {
   const whole = [...new Map(list.map((x) => [String(x.student.hak),
     Number((x.student.naesin || {})['전교과'] ?? (x.student.naesin || {})['전교과(100)'])])).values()]
     .filter(Number.isFinite);
+  // Number(null)=0 — myScore 가 빈 지원이 섞이면 환산 범위 아래끝이 0.00 이 된다
   const conv = [...new Map(list.map((x) => [String(x.student.hak),
     Number(x.app.myScore && x.app.myScore.grade)])).values()]
-    .filter(Number.isFinite);
+    .filter((v) => Number.isFinite(v) && v > 0);
   // 전교과(전형 무관 공통 잣대)가 있으면 그걸로, 없으면 전형별 환산으로 — 잣대를 적는다
   const grades = whole.length === n ? whole : conv;
   const scale = whole.length === n ? '전교과' : '환산';

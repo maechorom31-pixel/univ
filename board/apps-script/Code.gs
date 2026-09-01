@@ -37,12 +37,13 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-08-31';
+var CODE_VER = '2026-09-01';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
 var SHEET = {
   config:  '설정',      // 쓸 수 있는 교사 계정
+  grade:   '성적',      // 학년 전체 전교과 일반등급 — 원본 파일이나 이 파일에 둔다
   state:   '배치',      // 6칸 배치
   note:    '메모',
   result:  '결과',
@@ -530,6 +531,85 @@ function score_(v) {
   return (isNaN(n) || n === 0) ? null : n;
 }
 
+/**
+ * 「성적」 탭 파서 — 학년 전체의 전교과 일반등급 명단.
+ * =====================================================================
+ * 관심대학 리스트는 내등급(환산성적)을 **전형마다** 주는데, 종합전형은 교과 환산이
+ * 없어 0 으로 온다. 그 자리를 채울 잣대가 필요해서, 선생님이 학년 전체의
+ * 일반등급(전교과)을 「성적」 탭에 붙여 둔다. 보드는 이걸로
+ *
+ *   1. 즐겨찾기에 전교과가 없는 학생의 전교과를 채우고
+ *   2. 환산이 0(=없음)인 지원의 **셈**(위치 어림)을 전교과로 대신한다 —
+ *      화면은 어느 잣대인지 반드시 적는다
+ *
+ * 머리글은 자리로 집지 않고 **이름으로 찾는다** — 반·번호·이름이 다 있는 줄이
+ * 머리글이다. 등급 칸은 「일반등급」·「전교과」·「등급」 중 처음 만나는 것.
+ * 학년 칸이 없으면 3학년으로 본다(이 보드는 3학년실 도구다).
+ *
+ * @param {Array<Array>} values  시트 2차원 배열
+ * @return {{rows:Array<{hak,name,grade}>, problem:string}}
+ */
+function parseGradeRows_(values) {
+  values = values || [];
+  var head = -1, col = {};
+  for (var r = 0; r < Math.min(values.length, 6); r++) {
+    var m = {};
+    for (var c = 0; c < (values[r] || []).length; c++) {
+      var t = txt_(values[r][c]);
+      if (t === '학년') m.grade = c;
+      else if (t === '반') m.cls = c;
+      else if (t === '번호') m.no = c;
+      else if (t === '이름' || t === '성명') m.name = c;
+      else if (m.score == null && /등급|전교과/.test(t)) m.score = c;
+    }
+    if (m.cls != null && m.no != null && m.name != null && m.score != null) {
+      head = r; col = m; break;
+    }
+  }
+  if (head < 0) {
+    return { rows: [], problem: values.length
+      ? '「성적」 탭에서 반·번호·이름·등급 머리글을 찾지 못했습니다.' : '' };
+  }
+  var rows = [];
+  for (var i = head + 1; i < values.length; i++) {
+    var row = values[i] || [];
+    var cls = txt_(row[col.cls]);
+    var no = txt_(row[col.no]);
+    if (!/^\d+$/.test(cls) || !/^\d+$/.test(no)) continue;
+    var g = col.grade != null ? txt_(row[col.grade]) : '3';
+    if (!/^\d+$/.test(g)) g = '3';
+    rows.push({
+      hak: g + cls + pad2_(parseInt(no, 10)),
+      name: txt_(row[col.name]),
+      grade: score_(row[col.score]),     // 0 은 「안 적음」 — score_ 가 거른다
+    });
+  }
+  return { rows: rows, problem: '' };
+}
+
+/**
+ * 「성적」 탭을 찾아 읽는다. **원본 파일(관심대학 리스트) 먼저, 이 파일 다음.**
+ * 선생님이 성적을 원본 파일에 붙여 두었으니 그쪽이 먼저다. 어디에도 없으면
+ * 빈 목록 — 성적 없이도 보드는 여태처럼 돈다.
+ */
+function gradeRows_() {
+  try {
+    var books = [];
+    try {
+      var src = sourceSheet_();
+      if (src && src.getParent) books.push(src.getParent());
+    } catch (e) { /* 원본을 못 열어도 이 파일은 본다 */ }
+    books.push(SpreadsheetApp.getActiveSpreadsheet());
+    for (var i = 0; i < books.length; i++) {
+      var sh = books[i] && books[i].getSheetByName(SHEET.grade);
+      if (!sh) continue;
+      var parsed = parseGradeRows_(sh.getDataRange().getValues());
+      if (parsed.rows.length || parsed.problem) return parsed;
+    }
+  } catch (e) { /* 성적은 곁들임이다 — 실패해도 보드를 막지 않는다 */ }
+  return { rows: [], problem: '' };
+}
+
 /** 「Y」·「있음」 → true, 「N」·「없음」 → false, 그 밖에는 null(모른다). */
 function yn_(v) {
   var t = String(v == null ? '' : v).trim().toUpperCase();
@@ -890,6 +970,7 @@ function loadAll_(me) {
   }
   var book = src.__book || { external: false, why: '' };
   var parsed = parseFavorites_(src.getDataRange().getValues());
+  var grades = gradeRows_();
   return {
     ok: true, who: me.email || '이름 없는 접속', locked: me.locked, at: now_(),
     sourceSheet: srcName, sourceKnown: known,
@@ -905,7 +986,9 @@ function loadAll_(me) {
     state: rows_(SHEET.state), notes: rows_(SHEET.note),
     results: rows_(SHEET.result), dates: rows_(SHEET.date),
     fields: rows_(SHEET.field),
-    aliases: rows_(SHEET.alias)
+    aliases: rows_(SHEET.alias),
+    grades: grades.rows,
+    gradeProblem: grades.problem
   };
 }
 

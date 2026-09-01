@@ -393,7 +393,8 @@ export function detailPanel(app, student, onClose) {
   const naesin = (student && student.naesin) || {};
   const mine = app.myScore || {};
   body.appendChild(rows('성적', [
-    ['내 전교과', g2(naesin['전교과'] ?? naesin['전교과(100)']), '즐겨찾기'],
+    ['내 전교과', g2(naesin['전교과'] ?? naesin['전교과(100)']),
+      student && student.gradeFrom === '성적 시트' ? '성적 시트' : '즐겨찾기'],
     ['내 환산 등급', g2(mine.grade), '즐겨찾기'],
     ['내 환산 점수', mine.score != null ? String(mine.score) : null, '즐겨찾기'],
     isCollege
@@ -606,8 +607,12 @@ export function detailPanel(app, student, onClose) {
   /* 9. 연도별 추이 */
   body.appendChild(trend(s));
 
-  /* 9.5 이 숫자를 얼마나 믿을 수 있나 */
-  body.appendChild(howSure(s, mine.grade));
+  /*
+   * 9.5 이 숫자를 얼마나 믿을 수 있나.
+   * 환산이 없으면(종합전형 등 — 관심대학 리스트가 0 을 주는 자리) 전교과
+   * 일반등급으로 **대신 재고**, 어느 잣대인지 안에서 적는다 (store.gradeOf).
+   */
+  body.appendChild(howSure(s, store.gradeOf(app)));
 
   /* 10. 결과 — 보고 적는다 */
   body.appendChild(result(app));
@@ -1000,12 +1005,24 @@ function estimate(c) {
  * 대신 정말 셀 수 있는 것을 적는다 — 해마다 얼마나 움직였나, 몇 명을 뽑나,
  * 어느 쪽으로 가고 있나, 내 점수가 어디쯤인가.
  */
-function howSure(s, mine) {
+function howSure(s, grade) {
   const wrap = el('div', 'detail-block');
+  const mine = grade && grade.value != null ? grade.value : null;
   const c = confidence(s, mine, normType);
   if (!c) return wrap;
 
   wrap.appendChild(el('h3', '', '이 컷을 어떻게 읽나'));
+
+  /*
+   * **어느 잣대로 쟀는지 적는다.** 환산이 없어 전교과로 대신 쟀으면 그렇다고
+   * 말해야 한다 — 전교과는 대학 반영교과 환산과 다른 잣대라, 안 적으면
+   * 아래 위치·어림이 환산으로 잰 값처럼 읽힌다.
+   */
+  if (mine != null && grade.scale === '전교과') {
+    wrap.appendChild(el('p', 'hint',
+      '환산 등급이 없어(종합전형 등) 전교과 일반등급으로 대신 쟀습니다.'
+      + ' 대학 반영교과 환산과는 다를 수 있습니다.'));
+  }
 
   /*
    * **내 위치를 맨 위에 둔다.** 상담에서 처음 묻는 것이 그것이다 — 「이 학생이

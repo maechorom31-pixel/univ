@@ -66,6 +66,7 @@ function render() {
       linked ? `못 붙인 학과가 없습니다. 손으로 이어 둔 것 ${linked}건이 쓰이고 있습니다.`
         : '못 붙인 학과가 없습니다.'));
     if (linked) main.appendChild(aliasList());
+    main.appendChild(gradePanel());     // 이 길로 나가도 성적 탭 경고는 보인다
     return;
   }
 
@@ -122,6 +123,56 @@ function render() {
   }
 
   if (linked) main.appendChild(aliasList());
+  main.appendChild(gradePanel());
+}
+
+/*
+ * 「성적」 탭 점검 — 이름이 다르면 성적을 붙이지 않았다는 것을 **보여 준다.**
+ *
+ * 성적 탭과 즐겨찾기는 학번(학년·반·번호)으로 잇는데, 반이 바뀌었거나 번호가
+ * 밀렸으면 같은 학번에 다른 사람이 선다. 그때 조용히 붙이면 남의 성적으로
+ * 위치를 재는 것이라, 붙이지 않고 여기서 학번을 보여 준다. 시트에서 학번이나
+ * 이름을 고치면 다음 불러오기에 붙는다. 아무 문제 없으면 아무것도 안 그린다.
+ */
+function gradePanel() {
+  const frag = document.createDocumentFragment();
+  if (store.state.gradeProblem) {
+    const box = el('section', 'panel miss');
+    box.appendChild(el('h2', '', '성적 탭'));
+    box.appendChild(el('p', 'hint', store.state.gradeProblem));
+    frag.appendChild(box);
+  }
+  const warn = store.state.gradeWarn || [];
+  if (!warn.length) return frag;
+  const box = el('section', 'panel miss');
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '성적 탭과 이름이 다른 학번'));
+  head.appendChild(el('span', 'count num', `${warn.length}명`));
+  box.appendChild(head);
+  box.appendChild(el('p', 'hint',
+    '학번은 같은데 이름이 달라 성적을 붙이지 않았습니다 —'
+    + ' 남의 성적이 붙는 것이 빈 것보다 나쁩니다.'
+    + ' 성적 탭이나 즐겨찾기의 학번·이름을 맞춰 주세요.'));
+  const tw = el('div', 'tw');
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const hr = document.createElement('tr');
+  for (const t of ['학번', '즐겨찾기 이름', '성적 탭 이름']) hr.appendChild(el('th', '', t));
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  for (const w of warn) {
+    const tr = document.createElement('tr');
+    tr.appendChild(el('th', 'rowhead num', w.hak));
+    tr.appendChild(el('td', '', w.fav));
+    tr.appendChild(el('td', '', w.sheet));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  tw.appendChild(table);
+  box.appendChild(tw);
+  frag.appendChild(box);
+  return frag;
 }
 
 /* ── 한 묶음 ────────────────────────────────────────────────────── */
