@@ -307,6 +307,9 @@ button { font: inherit; color: inherit; }
   border: 1px solid var(--line); border-radius: 4px;
   padding: 1px 6px; margin: 2px; color: var(--muted); white-space: nowrap;
 }
+/* 좁은 폭에서 .row 는 한 칸 격자다 — 그대로 두면 꼬리표가 가로로 늘어나
+   **입력칸처럼** 보인다(학생이 누르고 적으려 든다). 제 크기로 세운다. */
+.row > .pill { justify-self: start; align-self: center; }
 .pill.mark { border-color: var(--amber); background: var(--amber-face); color: var(--text); }
 .pill.warn { border-color: var(--err); color: var(--err); }
 .pill.wait { border-style: dashed; }
@@ -358,6 +361,12 @@ body.student .wrap { max-width: 640px; }
 }
 body.student .btn { font-size: var(--t-xs); min-height: 44px; padding: 0 var(--s4); }
 body.student .pill { font-size: 13px; padding: 3px 8px; }
+/* 학생 머리줄은 단추가 「인쇄」 하나뿐이라 좁은 폰에서도 제목 옆에 선다.
+   보드는 단추가 넷이라 좁으면 줄을 바꿔야 해서 전역 규칙은 그대로 둔다. */
+body.student .bar-in { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+/* 학생 화면의 줄은 글 한 덩이 + 꼬리표(또는 단추 하나)뿐이라 좁은 폰에서도
+   두 칸으로 둔다 — 한 칸으로 쌓으면 줄 높이만 두 배가 된다. */
+body.student .row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
 
 /* 코앞에 닥친 것. 맨 위에 한 덩이만. 지원철에는 아예 안 나온다. */
 .soon { border-color: var(--amber); background: var(--amber-face); }

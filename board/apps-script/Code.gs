@@ -37,7 +37,7 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-09-01b';
+var CODE_VER = '2026-09-01c';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
@@ -1609,6 +1609,28 @@ function studentView_(token) {
     if (parsed.students[s].hak === hak) { me = parsed.students[s]; break; }
   }
   if (!me) return { ok: false, error: '지원 내역을 찾지 못했습니다. 담임 선생님께 문의하세요.' };
+
+  /*
+   * 「성적」 탭의 전교과 — **이 학생 것 하나만** 실어 준다. 보드는 store 가
+   * 병합하는데 학생 화면은 서버가 준 student 를 그대로 쓰니, 여기서 안 채우면
+   * 같은 학생이 교사 화면에는 전교과가 있고 제 화면에는 빈칸인 어긋남이 난다.
+   * 이름이 다르면 안 붙인다(보드와 같은 규칙 — 남의 성적이 빈 것보다 나쁘다).
+   * me 는 캐시가 들고 있는 객체일 수 있어 **베껴서** 고친다.
+   */
+  var gRow = null;
+  for (var gi = 0; gi < (parsed.grades || []).length; gi++) {
+    if (String(parsed.grades[gi].hak) === hak) { gRow = parsed.grades[gi]; break; }
+  }
+  if (gRow && Number(gRow.grade) > 0
+    && (!gRow.name || !me.name || String(gRow.name).trim() === String(me.name).trim())) {
+    var haveWhole = me.naesin && (Number(me.naesin['전교과']) > 0 || Number(me.naesin['전교과(100)']) > 0);
+    if (!haveWhole) {
+      me = JSON.parse(JSON.stringify(me));
+      me.naesin = me.naesin || {};
+      me.naesin['전교과'] = Number(gRow.grade);
+      me.gradeFrom = '성적 시트';
+    }
+  }
 
   var mine = function (arr) {
     return (arr || []).filter(function (r) { return String(r.hak) === hak; });

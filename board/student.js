@@ -22,6 +22,7 @@ import {
   fillTrend, outsideLimit,
 } from './match.js';
 import { josa, rate1, isoDay, minReqShort, methodLine, interviewShare, methodHasInterview } from './text.js';
+import { suneungDday } from './keydates.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';
@@ -72,6 +73,9 @@ export async function start(token, demoData) {
   // 선생님이 저장까지 눌러 보며 확인할 수 있다.
   offline = Boolean(demoData);
   render();
+  // 공개 자료(입결·모집요강)는 서버 응답과 **동시에** 받는다 — 보드와 같은 이유다.
+  // 서로 독립이라 직렬로 이으면 체감 로딩이 둘의 합이 된다.
+  const pub = loadPublic();
   try {
     const data = demoData || await api.call('student', { token }, { timeout: 45000 });
     apply(data);
@@ -79,7 +83,7 @@ export async function start(token, demoData) {
     state.error = err.message;
   }
   render();
-  loadPublic();
+  await pub;
 }
 
 function apply(data) {
@@ -245,7 +249,10 @@ function render() {
   }
 
   const s = state.student;
-  $('#who').textContent = `${s.hak} ${tidy(s.name)}`;
+  // 수능 D-n — 학생이 매일 세는 숫자다. 지났으면 안 적는다(keydates.js).
+  const dd = suneungDday();
+  $('#who').textContent = `${s.hak} ${tidy(s.name)}`
+    + (dd ? ` · 수능 D-${dd.days === 0 ? 'day' : dd.days}` : '');
 
   if (state.notice) main.appendChild(note(state.notice));
 

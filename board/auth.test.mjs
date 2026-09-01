@@ -371,5 +371,35 @@ console.log('\n원본 파싱 캐시');
   sheets['다운로드 원본'].getDataRange = origRange;
 }
 
+/* ── 학생 응답에도 「성적」 탭의 전교과가 실린다 ──────────────────── */
+console.log('\n학생 응답의 전교과');
+{
+  // 즐겨찾기 원본에는 내신 칸이 없다 — 성적 탭이 유일한 전교과 출처인 상황
+  sheets['성적'] = mkSheet([
+    ['학년', '반', '번호', '이름', '일반등급'],
+    ['3', '1', '1', '김가나', '3.42'],
+    ['3', '1', '2', '박다른', '5.10'],   // 이다라(3102)와 이름이 다르다 — 붙으면 안 된다
+  ]);
+  cacheStore.clear();                     // 성적 탭 없이 만들어진 캐시를 비운다
+
+  const v = G.handle_({ action: 'student', token: 'tokA' });
+  eq(v.ok, true, '학생 링크가 열린다');
+  eq(v.student.naesin['전교과'], 3.42, '성적 탭의 전교과가 학생 본인 화면에도 실린다');
+  eq(v.student.gradeFrom, '성적 시트', '어디서 왔는지 적는다');
+
+  // 이름이 다르면 안 붙는다 — 보드와 같은 규칙. 남의 성적이 빈 것보다 나쁘다.
+  sheets['공유'].appendRow(['3102', 'tokB', '2099-01-01', '']);
+  cacheStore.clear();
+  const v2 = G.handle_({ action: 'student', token: 'tokB' });
+  eq(v2.ok, true, '둘째 학생 링크도 열린다');
+  eq(v2.student.naesin['전교과'], undefined, '학번이 같아도 이름이 다르면 성적을 안 붙인다');
+
+  // 교사 응답(grades)에도 실려서 보드가 병합·경고에 쓴다
+  const all = G.handle_({ action: 'students', key: '84348434' });
+  eq(all.grades.length, 2, '교사 응답에는 성적 탭 전체가 실린다');
+  delete sheets['성적'];
+  cacheStore.clear();
+}
+
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');
 process.exit(fails ? 1 : 0);

@@ -22,6 +22,7 @@
 import * as store from './store.js';
 import { catOf, outsideLimit } from './match.js';
 import { methodHasInterview } from './text.js';
+import { KEY_DATES, suneungDday } from './keydates.js';
 
 /** 가야 하는 것 — 겹치면 한 곳은 포기해야 한다 */
 const ATTEND = ['면접', '실기', '논술', '적성'];
@@ -42,32 +43,6 @@ const KINDS = [...ATTEND, ...NOTICE, MOCK, ...MOCKS];
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
-/*
- * 2027학년도 공통 일정 — **모두에게 같은 날.**
- * =====================================================================
- * 지원마다 다른 면접·논술과 달리 이건 학년 전체의 축이다. 수능이 달력에 없으면
- * 「수능 전인가 후인가」를 다른 데서 세어 와야 한다.
- *
- * 출처 — 교육부 2027학년도 수능 시행일 발표(수능·예비소집·성적 통지),
- * 대교협 2027학년도 대입전형 기본사항(원서접수·발표 마감·등록·충원).
- * 발표 마감 12/18 은 이 저장소의 전형일정표 자료와도 맞는다(마감일 발표가 302개교).
- * **해가 바뀌면 이 표부터 간다.**
- */
-/*
- * 칸에 적는 이름(name)은 좁은 칸(두 달 나란일 때 44px)에 맞춰 짧게, 온이름(full)은
- * 제목(title)에 둔다 — 잘린 「원서…」는 읽는 사람에게 아무 말도 안 한다.
- */
-const KEY_DATES = [
-  { from: '2026-09-07', to: '2026-09-11', name: '원서접수',
-    full: '수시 원서접수', note: '대학마다 이 기간 안에서 3일 이상' },
-  { from: '2026-11-18', to: '2026-11-18', name: '예비소집', full: '수능 예비소집' },
-  { from: '2026-11-19', to: '2026-11-19', name: '수능', big: true },
-  { from: '2026-12-11', to: '2026-12-11', name: '성적 통지', full: '수능 성적 통지' },
-  { from: '2026-12-18', to: '2026-12-18', name: '발표 마감', full: '수시 합격자 발표 마감' },
-  { from: '2026-12-21', to: '2026-12-23', name: '수시 등록', full: '수시 합격자 등록' },
-  { from: '2026-12-24', to: '2026-12-29', name: '미등록 충원', full: '수시 미등록 충원 합격 통보' },
-  { from: '2026-12-30', to: '2026-12-30', name: '충원 마감', full: '충원 합격 등록 마감' },
-];
 
 /* 크게 보기 — 이 컴퓨터의 취향이라 브라우저에 기억한다. 시트에는 안 적는다. */
 let bigCal = false;
@@ -310,12 +285,10 @@ function calendars(events, withName) {
    * 수능까지 며칠 남았는지는 이 판을 여는 사람이 늘 세고 있는 숫자다.
    * 지나갔으면 안 적는다 — 「D+3」은 아무 일도 돕지 않는다.
    */
-  const suneung = KEY_DATES.find((k) => k.big);
-  const today = new Date();
-  const dday = Math.ceil((new Date(`${suneung.from}T00:00:00+09:00`) - today) / 86400000);
-  if (dday >= 0) {
+  const dd = suneungDday();
+  if (dd) {
     head.appendChild(el('span', 'count num',
-      `수능 ${label(suneung.from)} · D-${dday === 0 ? 'day' : dday}`));
+      `수능 ${label(dd.date)} · D-${dd.days === 0 ? 'day' : dd.days}`));
   }
 
   /*
