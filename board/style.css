@@ -546,36 +546,49 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
 
 /* 달력은 좁은 폭에서 한 달씩 세로로 쌓는다.
    최소폭을 강제하면 320px 화면에서 화면 밖으로 밀린다. */
-.months { display: grid; gap: var(--s4); }
-@media (min-width: 720px) {
-  .months { grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); }
-}
+/* 달은 하나씩, 위에서 아래로 — 다단으로 나란히 놓으면 칸이 44px 까지 좁아져
+   칩이 「숭실…」로 잘린다. 안 보이는 글씨는 없는 글씨다. */
+.months { display: grid; gap: var(--s5); grid-template-columns: minmax(0, 1fr); }
 .month-h {
-  font-size: var(--t-xs); font-weight: 600; color: var(--muted);
+  font-size: var(--t-sm); font-weight: 700;
   margin-bottom: var(--s2);
 }
-.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); }
-.cal > * { background: var(--surface); min-height: 3.4rem; padding: 3px 4px; min-width: 0; }
+/* 좁은 폰에서는 달이 제 칸 안에서 옆으로 구른다(§7) — 최소 폭 아래로 줄이면
+   칸이 40px 이 되어 한글이 한 자씩 세로로 깨진다. */
+.month .mw { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); min-width: 616px; }
+.cal > * { background: var(--surface); min-height: 4.4rem; padding: 4px 5px; min-width: 0; }
+/* 주말은 바탕을 반 단계만 낮춘다 — 훑는 눈이 주 단위 리듬을 잡는다 */
+.cal .day.we { background: #FBF9F6; }
+/* 지나간 날은 숫자만 옅게 — 오늘이 어디쯤인지 세지 않아도 보인다. 칩은 그대로 */
+.cal .day.past .dn { color: #B8B3AB; }
+/* 오늘 — 숫자에 앰버 고리 하나. 색을 더 쓰지 않고 오늘만 세운다 */
+.cal .day.today .dn {
+  color: var(--text); font-weight: 700;
+  display: inline-block; min-width: 1.5em; text-align: center;
+  border: 1.5px solid var(--amber); border-radius: 999px; padding: 0 3px;
+}
 .cal .dow {
   min-height: 0; background: var(--surface-2, #F3F1ED); text-align: center;
   font-size: var(--t-xs); color: var(--muted); padding: 3px 0;
 }
-.cal .off { background: #F5F3F0; min-height: 3.4rem; }
-.cal .dn { font-size: var(--t-xs); color: var(--muted); display: block; }
+.cal .off { background: #F5F3F0; min-height: 4.4rem; }
+.cal .dn { font-size: var(--t-xs); color: var(--muted); display: block; margin-bottom: 1px; }
+/* 칩은 잘라내지 않고 접는다 — 달이 화면 폭을 다 쓰니 칸이 넉넉하고,
+   좁은 폰에서 여러 줄이 되더라도 글이 다 보이는 쪽이 맞다. */
 .cal .ev {
-  display: block; width: 100%; font-size: 11px; line-height: 1.35; margin-top: 2px;
+  display: block; width: 100%; font-size: var(--t-xs); line-height: 1.4; margin-top: 3px;
   overflow-wrap: break-word;
-  padding: 1px 3px; border-radius: 3px; border: 0;
+  padding: 2px 5px; border-radius: 4px; border: 0;
   background: var(--amber-face); color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   /* 단추가 됐다 — 브라우저 기본 글꼴·가운데 정렬을 되돌린다 */
   font-family: inherit; text-align: left; cursor: pointer;
 }
-.cal .ev > span { display: block; overflow: hidden; text-overflow: ellipsis; }
+.cal .ev > span { display: block; }
 /* 학과 줄 — 대학·종류 밑에 작게. 기능성 텍스트 하한 11px 을 지킨다. */
 .cal .ev .d {
   display: block; font-style: normal; font-size: 11px; font-weight: 400;
-  color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--muted);
 }
 .cal .ev:focus-visible { outline: 2px solid var(--amber-ink); outline-offset: 1px; }
 .cal .ev.soft { background: transparent; border: 1px dashed var(--amber); }
@@ -595,19 +608,6 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
 .cal .day.key-big .dn { color: var(--text); font-weight: 700; }
 .cal .day.key-big .kev { font-size: var(--t-xs); }
 
-/* 크게 보기 — 달이 화면 폭을 다 쓰고, 칩의 말줄임이 풀려 글이 다 보인다.
-   교무실 모니터로 여럿이 같이 볼 때의 판. */
-/* 달력 머리줄은 세 칸이다 — 제목 · 수능 D-n · 크게 보기 단추 */
-.cal-head { grid-template-columns: 1fr auto auto; align-items: center; }
-.cal-zoom { padding: 3px 10px; font-size: var(--t-xs); }
-.months.big { grid-template-columns: 1fr; }
-.months.big .cal > * { min-height: 5.8rem; padding: 4px 6px; }
-.months.big .cal .dow { min-height: 0; }
-.months.big .month-h { font-size: var(--t-sm); color: var(--text); }
-.months.big .cal .ev,
-.months.big .cal .ev > span,
-.months.big .cal .ev .d { white-space: normal; overflow: visible; text-overflow: clip; }
-.months.big .cal .ev { font-size: var(--t-xs); line-height: 1.45; }
 
 .legend {
   display: grid; grid-auto-flow: column; justify-content: start;

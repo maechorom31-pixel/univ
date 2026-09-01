@@ -44,9 +44,6 @@ const KINDS = [...ATTEND, ...NOTICE, MOCK, ...MOCKS];
 const DOW = ['일', '월', '화', '수', '목', '금', '토'];
 
 
-/* 크게 보기 — 이 컴퓨터의 취향이라 브라우저에 기억한다. 시트에는 안 적는다. */
-let bigCal = false;
-try { bigCal = localStorage.getItem('board.calBig') === '1'; } catch (err) { /* 사생활 모드 */ }
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -278,7 +275,7 @@ const span = (e) => (e.fixed ? label(e.from) : `${label(e.from)}~${label(e.to)}`
 
 function calendars(events, withName) {
   const box = el('section', 'panel');
-  const head = el('div', 'panel-head cal-head');
+  const head = el('div', 'panel-head');
   head.appendChild(el('h2', '', withName ? '반 달력' : '달력'));
 
   /*
@@ -291,15 +288,6 @@ function calendars(events, withName) {
       `수능 ${label(dd.date)} · D-${dd.days === 0 ? 'day' : dd.days}`));
   }
 
-  /*
-   * **크게 보기** — 달이 화면 폭을 다 쓰고 칸이 높아지며, 칩의 말줄임을 풀어
-   * 글이 다 보이게 한다. 교무실 모니터로 여럿이 같이 볼 때의 판이다.
-   * 이 컴퓨터의 취향이라 브라우저에만 기억한다.
-   */
-  const zoom = el('button', 'btn cal-zoom', bigCal ? '작게 보기' : '크게 보기');
-  zoom.type = 'button';
-  zoom.setAttribute('aria-pressed', String(bigCal));
-  head.appendChild(zoom);
   box.appendChild(head);
 
   if (withName) {
@@ -312,17 +300,15 @@ function calendars(events, withName) {
     ...events.map((e) => e.from.slice(0, 7)),
     ...KEY_DATES.map((k) => k.from.slice(0, 7)),
   ])].sort();
-  const wrap = el('div', `months${bigCal ? ' big' : ''}`);
+  /*
+   * **달은 하나씩, 위에서 아래로.** 처음에는 두 달을 나란히 놓았는데(268px 최소
+   * 다단) 칸이 44px 까지 좁아져 칩이 「숭실…」「320…」으로 잘렸다 — 안 보이는
+   * 글씨는 없는 글씨다. 다단을 버리니 「크게 보기」 단추도 할 일이 없어 걷었다.
+   * 판은 하나고, 그 하나에서 글이 다 보인다.
+   */
+  const wrap = el('div', 'months');
   for (const ym of months) wrap.appendChild(month(ym, events, withName));
   box.appendChild(wrap);
-
-  zoom.onclick = () => {
-    bigCal = !bigCal;
-    try { localStorage.setItem('board.calBig', bigCal ? '1' : '0'); } catch (err) { /* 그럼 이번만 */ }
-    wrap.classList.toggle('big', bigCal);
-    zoom.textContent = bigCal ? '작게 보기' : '크게 보기';
-    zoom.setAttribute('aria-pressed', String(bigCal));
-  };
 
   const legend = el('div', 'legend');
   for (const [cls, text] of [['', '가는 날'], ['soft', '기간(미확정)'],
@@ -348,9 +334,15 @@ function month(ym, events, withName) {
   const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
   for (let i = 0; i < first.getUTCDay(); i += 1) grid.appendChild(el('div', 'off'));
 
+  // 오늘(한국 시각) — 훑는 눈의 기준점. 지난 날은 숫자만 옅어진다.
+  const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   for (let d = 1; d <= days; d += 1) {
     const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const cell = el('div', 'day');
+    const dow = (first.getUTCDay() + d - 1) % 7;
+    if (dow === 0 || dow === 6) cell.classList.add('we');
+    if (iso === today) cell.classList.add('today');
+    else if (iso < today) cell.classList.add('past');
     cell.appendChild(el('span', 'dn num', String(d)));
 
     /*
@@ -406,7 +398,18 @@ function month(ym, events, withName) {
     }
     grid.appendChild(cell);
   }
-  box.appendChild(grid);
+  // 마지막 날 뒤도 빈 칸으로 채운다 — 안 채우면 격자 바탕(선 색)이 그대로 드러나
+  // 마지막 줄만 짙은 회색 덩어리로 끝난다.
+  const tail = (first.getUTCDay() + days) % 7;
+  if (tail) for (let i = tail; i < 7; i += 1) grid.appendChild(el('div', 'off'));
+  /*
+   * 좁은 폰에서는 달이 **제 칸 안에서 옆으로 구른다.** 390px 에 일곱 칸을 우겨
+   * 넣으면 칸이 40px 이 되어 글자가 한 자씩 세로로 깨진다 — 잘라내기(「숭실…」)의
+   * 반대쪽 구덩이다. 최소 폭을 못박고 넘치면 이 상자가 구른다. 본문은 안 구른다.
+   */
+  const mw = el('div', 'mw');
+  mw.appendChild(grid);
+  box.appendChild(mw);
   return box;
 }
 
