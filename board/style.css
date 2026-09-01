@@ -453,8 +453,11 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
 }
 .moves-note .dismiss { margin-left: var(--s3); padding: 2px 10px; }
 .back-explore { color: var(--amber-ink); }
-.explore-row .uni-name { font-weight: 700; text-decoration: none; }
-@media (hover: hover) { .explore-row .uni-name:hover { text-decoration: underline; } }
+/* 대학·학과 두 줄 — 대학이 위, 학과가 아래. 카드·점검판과 같은 차례다. */
+.explore-row .uni-name { font-weight: 700; text-decoration: none; text-align: left; padding: 0; }
+.explore-row .uni-name .u, .explore-row .uni-name .d { display: block; }
+.explore-row .uni-name .d { font-weight: 600; }
+@media (hover: hover) { .explore-row .uni-name:hover .d { text-decoration: underline; } }
 .explore-row .cutline { color: var(--muted); }
 
 /* 탐색 — 학과 한 줄에 학생 칩들. 칩은 누르면 그 학생 보드로 간다. */

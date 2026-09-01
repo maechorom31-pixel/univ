@@ -517,7 +517,15 @@ function deptRow({ univ, dept, list, n }) {
    * 어긋났다. 검토판은 전형별 자료 표와 학생 표 — 학과가 주인공이다.
    */
   let detail = null;
-  const nameBtn = el('button', 'linkish uni-name', `${univ} ${dept}`);
+  /*
+   * 대학과 학과를 **두 줄로** 적는다. 한 줄로 이으면 「국립목포대학교(목포)
+   * 자율전공학부」처럼 긴 이름이 좁은 칸에서 아무 데서나 접혀 줄마다 키가 다르고,
+   * 훑는 눈이 학과 이름을 찾아 헤맨다. 카드·점검판이 이미 쓰는 꼴(대학 위,
+   * 학과 아래)과도 맞는다. 단추 하나라 누르는 자리는 두 줄 다다.
+   */
+  const nameBtn = el('button', 'linkish uni-name');
+  nameBtn.appendChild(el('span', 'u', univ));
+  nameBtn.appendChild(el('span', 'd', dept));
   nameBtn.type = 'button';
   nameBtn.title = '전형별 자료·학생 검토판 펴기';
   nameBtn.setAttribute('aria-expanded', 'false');
