@@ -118,6 +118,20 @@ button { font: inherit; color: inherit; }
 .layout > * { min-width: 0; }
 @media (min-width: 900px) {
   .layout { grid-template-columns: 268px minmax(0, 1fr); align-items: start; }
+  .roster-fold { display: none; }
+}
+/* 좁은 폭에서는 학생 목록이 본문 위에 서서, 탭 하나 바꾸려 해도 명단을 지나
+   내려가야 했다. 접어 두고 머리줄에 지금 고른 학생만 남긴다 — 누르면 편다.
+   학생을 고르면 저절로 접힌다. */
+@media (max-width: 899px) {
+  .layout > aside:not(.open) #tabs,
+  .layout > aside:not(.open) #scope,
+  .layout > aside:not(.open) #roster { display: none; }
+  .roster-fold {
+    display: inline-block; font-size: var(--t-xs); color: var(--amber-ink);
+    background: none; border: 0; padding: 4px 0; min-height: 32px; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px; font: inherit; font-size: var(--t-xs);
+  }
 }
 
 .panel {
@@ -177,6 +191,14 @@ button { font: inherit; color: inherit; }
 }
 .todo-panel { border-color: var(--amber); }
 .todo-row .univ { font-weight: 600; }
+/* 확인할 것은 한 판 — 갈래 소제목 한 줄, 줄은 촘촘히. 아침마다 보는 자리라
+   설명은 제목(title)에 두고 눈에는 학생·대학·값·단추만 남긴다. */
+.todo-panel .stack .row { padding: var(--s2) 0; }
+.todo-group {
+  font-size: var(--t-xs); font-weight: 600; color: var(--amber-ink);
+  padding: var(--s3) 0 var(--s1); cursor: help;
+}
+.todo-group + .row { border-top: 0; }
 
 /* ── 학생 머리글 ──────────────────────────────────────────────── */
 
@@ -296,11 +318,14 @@ button { font: inherit; color: inherit; }
 /* 자리 옮기기 상자와 「자세히」. 카드 안에서도 목록 줄에서도 같은 모양이다. */
 .move { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); align-items: center; }
 .move .btn { white-space: nowrap; }
-.card select, .move select {
-  font: inherit; font-size: var(--t-xs); padding: 4px var(--s2);
+/* 고름 상자는 어디서든 16px·34px 이상 — 그 아래면 iOS 가 포커스에 화면을 확대하고,
+   데스크톱에서도 26px 짜리 상자는 누르기 전에 찾아야 했다. */
+select {
+  font: inherit; font-size: 16px; min-height: 34px; padding: 2px var(--s2);
   border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
   max-width: 100%;
 }
+.card select, .move select { font-size: 14px; min-height: 32px; }
 
 .pill {
   font-size: var(--t-xs); font-variant-numeric: tabular-nums;
@@ -476,7 +501,7 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
   /* 학과 이름 칸을 고정하고 칩들이 나머지를 차지한다 — 줄마다 시작점이 맞아야 훑힌다 */
   .explore-row { grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); align-items: start; }
 }
-.stu-chip { cursor: pointer; background: var(--surface); padding: 3px 8px; }
+.stu-chip { cursor: pointer; background: var(--surface); padding: 5px 10px; min-height: 32px; }
 /* 검토판 — 줄 전체 폭으로 펼쳐진다. 표 둘(전형별 자료·학생)이 나란히 쌓인다 */
 .dept-detail { grid-column: 1 / -1; cursor: default; }
 .dept-detail .tw + .tw { margin-top: var(--s3); }
@@ -561,7 +586,7 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
 /* 주말은 바탕을 반 단계만 낮춘다 — 훑는 눈이 주 단위 리듬을 잡는다 */
 .cal .day.we { background: #FBF9F6; }
 /* 지나간 날은 숫자만 옅게 — 오늘이 어디쯤인지 세지 않아도 보인다. 칩은 그대로 */
-.cal .day.past .dn { color: #B8B3AB; }
+.cal .day.past .dn { color: #7A756E; }   /* 흰 바탕 4.57:1 — 옅되 읽힌다 */
 /* 오늘 — 숫자에 앰버 고리 하나. 색을 더 쓰지 않고 오늘만 세운다 */
 .cal .day.today .dn {
   color: var(--text); font-weight: 700;

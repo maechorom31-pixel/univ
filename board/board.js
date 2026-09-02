@@ -445,19 +445,9 @@ function render() {
  * 눈에 안 띈다. 결과와 같은 자리에 같은 꼴로 둔다 — 담임이 아침에 보는 곳이 여기다.
  */
 function waitingDates() {
-  const wrap = el('div');
   const list = store.pendingDates(store.selection.cls);
-  if (!list.length) return wrap;
-
-  const box = el('section', 'panel todo-panel');
-  const head = el('div', 'panel-head');
-  head.appendChild(el('h2', '', '학생이 넣은 날짜'));
-  head.appendChild(el('span', 'count num', `${list.length}건`));
-  box.appendChild(head);
-  box.appendChild(el('p', 'section-label',
-    '확인해야 겹침 판정에 쓰입니다. 확인 전에는 「겹칠 수 있음」까지만 봅니다.'));
-
-  const stack = el('div', 'stack');
+  if (!list.length) return null;
+  const rows = [];
   for (const x of list) {
     const row = el('div', 'row todo-row');
     const txt = el('div', 'txt');
@@ -481,28 +471,17 @@ function waitingDates() {
       render();
     };
     row.appendChild(ok);
-    stack.appendChild(row);
+    rows.push(row);
   }
-  box.appendChild(stack);
-  wrap.appendChild(box);
-  return wrap;
+  return { label: '넣은 날짜', rows,
+    why: '확인해야 겹침 판정에 쓰입니다. 확인 전에는 「겹칠 수 있음」까지만 봅니다.' };
 }
 
 /** 학생이 적고 아직 확인 안 된 칸 — 수험번호·최종경쟁률·생년월일. */
 function waitingFields() {
-  const wrap = el('div');
   const list = store.pendingFields(store.selection.cls);
-  if (!list.length) return wrap;
-
-  const box = el('section', 'panel todo-panel');
-  const head = el('div', 'panel-head');
-  head.appendChild(el('h2', '', '학생이 적은 칸'));
-  head.appendChild(el('span', 'count num', `${list.length}건`));
-  box.appendChild(head);
-  box.appendChild(el('p', 'section-label',
-    '원서를 내고 나서야 알 수 있는 값입니다. 맞으면 눌러 확인해 주세요.'));
-
-  const stack = el('div', 'stack');
+  if (!list.length) return null;
+  const rows = [];
   for (const x of list) {
     const row = el('div', 'row todo-row');
     const txt = el('div', 'txt');
@@ -524,11 +503,10 @@ function waitingFields() {
       render();
     };
     row.appendChild(ok);
-    stack.appendChild(row);
+    rows.push(row);
   }
-  box.appendChild(stack);
-  wrap.appendChild(box);
-  return wrap;
+  return { label: '적은 칸', rows,
+    why: '원서를 내고 나서야 알 수 있는 값입니다. 맞으면 눌러 확인해 주세요.' };
 }
 
 /**
@@ -542,19 +520,9 @@ function waitingFields() {
  * 선생님이 메모를 하나 달면 저절로 빠진다. 그래서 단추가 「열기」 하나다.
  */
 function waitingNotes() {
-  const wrap = el('div');
   const list = store.unansweredNotes(store.selection.cls);
-  if (!list.length) return wrap;
-
-  const box = el('section', 'panel todo-panel');
-  const head = el('div', 'panel-head');
-  head.appendChild(el('h2', '', '학생이 적은 메모'));
-  head.appendChild(el('span', 'count num', `${list.length}건`));
-  box.appendChild(head);
-  box.appendChild(el('p', 'section-label',
-    '학생이 마지막으로 적은 것입니다. 카드를 열어 메모를 하나 달면 목록에서 빠집니다.'));
-
-  const stack = el('div', 'stack');
+  if (!list.length) return null;
+  const rows = [];
   for (const x of list) {
     const row = el('div', 'row todo-row');
     const txt = el('div', 'txt');
@@ -575,30 +543,17 @@ function waitingNotes() {
       if (x.app) openDetail(x.app, go);
     };
     row.appendChild(go);
-    stack.appendChild(row);
+    rows.push(row);
   }
-  box.appendChild(stack);
-  wrap.appendChild(box);
-  return wrap;
+  return { label: '적은 메모', rows,
+    why: '학생이 마지막으로 적은 것입니다. 카드를 열어 메모를 하나 달면 목록에서 빠집니다.' };
 }
 
-function waitingPanel() {
-  const wrap = el('div');
-  wrap.appendChild(waitingDates());
-  wrap.appendChild(waitingFields());
-  wrap.appendChild(waitingNotes());
+/** 학생이 발표를 보고 적어 둔 결과 — 카드를 열어 「맞습니다」를 누르면 확인된다. */
+function waitingResults() {
   const list = store.pendingResults(store.selection.cls);
-  if (!list.length) return wrap;
-
-  const box = el('section', 'panel todo-panel');
-  const head = el('div', 'panel-head');
-  head.appendChild(el('h2', '', '학생이 적은 결과'));
-  head.appendChild(el('span', 'count num', `${list.length}건`));
-  box.appendChild(head);
-  box.appendChild(el('p', 'section-label',
-    '학생이 발표를 보고 적어 둔 것입니다. 카드를 열어 「맞습니다」를 누르면 확인됩니다.'));
-
-  const stack = el('div', 'stack');
+  if (!list.length) return null;
+  const rows = [];
   for (const x of list) {
     const row = el('div', 'row todo-row');
     const txt = el('div', 'txt');
@@ -626,7 +581,43 @@ function waitingPanel() {
       openDetail(x.app, go);
     };
     row.appendChild(go);
-    stack.appendChild(row);
+    rows.push(row);
+  }
+  return { label: '적은 결과', rows,
+    why: '학생이 발표를 보고 적어 둔 것입니다. 카드를 열어 「맞습니다」를 누르면 확인됩니다.' };
+}
+
+/**
+ * **확인할 것 — 한 판.**
+ *
+ * 예전에는 날짜·칸·메모·결과가 **판 넷**이었다. 저마다 제목·설명 문단·건수를 달고
+ * 있어서, 아침에 학생 넷이 한 줄씩만 적어 놓아도 판 넷이 700px 을 먹고 6칸이
+ * 화면 아래로 밀려났다 — 보드의 주인공이 첫 화면에서 안 보였다.
+ *
+ * 한 판에 묶고 갈래는 작은 소제목 한 줄로 가른다. 설명 문단은 소제목의 제목
+ * (title)로 내려보낸다 — 매일 보는 사람에게 매일 같은 설명은 소음이다.
+ */
+function waitingPanel() {
+  const wrap = el('div');
+  const groups = [waitingDates(), waitingFields(), waitingNotes(), waitingResults()]
+    .filter(Boolean);
+  if (!groups.length) return wrap;
+
+  const total = groups.reduce((n, g) => n + g.rows.length, 0);
+  const box = el('section', 'panel todo-panel');
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '확인할 것'));
+  head.appendChild(el('span', 'count num', `${total}건`));
+  box.appendChild(head);
+  box.appendChild(el('p', 'section-label',
+    '학생이 적은 것입니다. 날짜·칸은 「맞습니다」로 확인하고, 메모·결과는 카드를 열어 답합니다.'));
+
+  const stack = el('div', 'stack');
+  for (const g of groups) {
+    const sub = el('div', 'todo-group', `${g.label} · ${g.rows.length}건`);
+    sub.title = g.why;
+    stack.appendChild(sub);
+    for (const row of g.rows) stack.appendChild(row);
   }
   box.appendChild(stack);
   wrap.appendChild(box);

@@ -57,6 +57,8 @@
         <h2>학생</h2>
         <span class="count" id="roster-count"></span>
       </div>
+      <!-- 좁은 폭에서만 보인다 — 명단을 접고 지금 고른 학생만 남긴다 -->
+      <button class="roster-fold" id="roster-fold" type="button" aria-expanded="false">명단 펴기</button>
       <div class="tabs" id="tabs"></div>
       <p class="scope" id="scope"></p>
       <ul class="roster" id="roster"></ul>
@@ -137,6 +139,25 @@ document.getElementById('try-demo').onclick = async () => {
 
 // 새로고침 단추만 서버의 원본 파싱 캐시를 건너뛴다 — 엑셀을 갈아끼운 직후용
 document.getElementById('reload').onclick = () => connect(true);
+
+/*
+ * 좁은 폭의 학생 목록 접기. 펴면 명단, 접으면 「지금 고른 학생 · 펴기」 한 줄.
+ * 명단에서 학생을 누르면 저절로 접힌다 — 고르고 나면 볼 것은 보드다.
+ */
+const aside = document.querySelector('.layout > aside');
+const fold = document.getElementById('roster-fold');
+const foldText = () => {
+  const s = store.state.students.get(store.selection.hak);
+  const who = s ? `${s.hak} ${s.name}` : (store.selection.cls ? `${store.selection.cls}반` : '학년 전체');
+  const open = aside.classList.contains('open');
+  fold.textContent = open ? '명단 접기' : `${who} · 명단 펴기`;
+  fold.setAttribute('aria-expanded', String(open));
+};
+fold.onclick = () => { aside.classList.toggle('open'); foldText(); };
+document.getElementById('roster').addEventListener('click', (e) => {
+  if (e.target.closest('button')) { aside.classList.remove('open'); setTimeout(foldText, 0); }
+});
+store.on('change', () => setTimeout(foldText, 0));
 
 async function connect(fresh) {
   if (!api.configured()) {
