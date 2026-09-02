@@ -393,7 +393,7 @@ export function detailPanel(app, student, onClose) {
   const naesin = (student && student.naesin) || {};
   const mine = app.myScore || {};
   body.appendChild(rows('성적', [
-    ['내 전교과', g2(naesin['전교과'] ?? naesin['전교과(100)']),
+    ['내 전교과', g2(store.wholeGrade(student)),
       student && student.gradeFrom === '성적 시트' ? '성적 시트' : '즐겨찾기'],
     ['내 환산 등급', g2(mine.grade), '즐겨찾기'],
     ['내 환산 점수', mine.score != null ? String(mine.score) : null, '즐겨찾기'],

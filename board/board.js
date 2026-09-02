@@ -17,7 +17,7 @@
  */
 import * as store from './store.js';
 import { detailPanel } from './card.js';
-import { normType, outsideLimit } from './match.js';
+import { normType, outsideLimit, isGuessedFit } from './match.js';
 import { josa, rate1, minReqShort, methodLine, interviewShare } from './text.js';
 
 const RANKS = [1, 2, 3, 4, 5, 6];
@@ -849,8 +849,7 @@ function figures(app, student) {
        * 이름으로 맞춘 게 아니라 유형만 보고(cat) 또는 전형이 하나뿐이라(only) 고른 것이면
        * 마우스를 올려야 보이는 곳에 숨기지 않는다. 전체의 3% 라 시끄럽지도 않다.
        */
-      if (s.typeFit === 'cat' || s.typeFit === 'only'
-          || s.typeFit === 'alive' || s.typeFit === 'figures') {
+      if (isGuessedFit(s.typeFit)) {
         head.appendChild(el('div', 'fig-note', `${s.type} · 전형을 이름으로 맞추지 못했습니다`));
       }
     }

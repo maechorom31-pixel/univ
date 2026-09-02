@@ -155,11 +155,8 @@ function apply(data) {
       state.gradeWarn.push({ hak: String(stu.hak), fav: favName, sheet: g.name });
       continue;
     }
-    const n = stu.naesin || (stu.naesin = {});
-    const have = Number(n['전교과'] ?? n['전교과(100)']);
-    if (!(Number.isFinite(have) && have > 0)
-      && Number.isFinite(g.grade) && g.grade > 0) {
-      n['전교과'] = g.grade;
+    if (wholeGrade(stu) == null && Number.isFinite(g.grade) && g.grade > 0) {
+      (stu.naesin || (stu.naesin = {}))['전교과'] = g.grade;
       stu.gradeFrom = '성적 시트';       // 카드가 출처를 적는다
     }
   }
@@ -277,13 +274,22 @@ export function classes() {
  *
  * @return {{value: ?number, scale: ?('환산'|'전교과')}}
  */
+/**
+ * 학생의 전교과 등급 하나. 즐겨찾기가 `전교과` 또는 `전교과(100)` 으로 주고,
+ * 0 은 「안 적음」이다 — 이 규칙을 여기 한 곳에만 둔다.
+ * @return {?number}
+ */
+export function wholeGrade(student) {
+  const n = (student && student.naesin) || {};
+  const v = Number(n['전교과'] ?? n['전교과(100)']);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 export function gradeOf(app) {
   const conv = app && app.myScore ? Number(app.myScore.grade) : NaN;
   if (Number.isFinite(conv) && conv > 0) return { value: conv, scale: '환산' };
-  const stu = state.students.get(String(app && app.hak));
-  const n = (stu && stu.naesin) || {};
-  const whole = Number(n['전교과'] ?? n['전교과(100)']);
-  if (Number.isFinite(whole) && whole > 0) return { value: whole, scale: '전교과' };
+  const whole = wholeGrade(state.students.get(String(app && app.hak)));
+  if (whole != null) return { value: whole, scale: '전교과' };
   return { value: null, scale: null };
 }
 

@@ -137,8 +137,8 @@ function deptDetail({ list, order }) {
       tr.appendChild(el('th', 'rowhead', `${x.student.hak} ${tidy(x.student.name)}`));
       tr.appendChild(el('td', '', slotWord(x.app)));
       tr.appendChild(el('td', '', x.app.typeSub || x.app.typeName || '—'));
-      const whole = Number((x.student.naesin || {})['전교과'] ?? (x.student.naesin || {})['전교과(100)']);
-      tr.appendChild(el('td', 'num', Number.isFinite(whole) ? g2(whole) : '—'));
+      const whole = store.wholeGrade(x.student);
+      tr.appendChild(el('td', 'num', whole != null ? g2(whole) : '—'));
       /*
        * `Number(null)` 은 0 이다 — myScore 가 비면(종합전형 등) 환산 칸에
        * 0.00 이 찍혀 1등급보다 좋은 성적으로 읽힌다. 등급에 0 은 없다.
@@ -343,7 +343,9 @@ function distPanel(p, lo, hi) {
   } else {
     bits.push(`70%컷 ${g2(p.f.cut70)} (${yrs}) · 50%컷이 없어 폭은 전체 중앙값 0.38 로 때웠습니다`);
   }
-  if (p.f.clamped) {
+  if (p.f.inverted) {
+    bits.push('50%컷과 70%컷이 뒤집혀 있어 폭을 알 수 없습니다 — 한계값(0.18)으로 그렸습니다');
+  } else if (p.f.clamped) {
     bits.push(p.f.raw < p.f.sd
       ? '두 컷이 거의 붙어 있어 폭은 자료가 아니라 한계값(0.18)입니다'
       : '두 컷이 너무 벌어져 폭을 한계값(1.5)으로 눌렀습니다');
@@ -563,8 +565,8 @@ function deptRow({ univ, dept, list, n }) {
     if (sum && sum.cut != null) cuts.push({ type: t, cut: Number(sum.cut), year: sum.year });
   }
   const whole = [...new Map(list.map((x) => [String(x.student.hak),
-    Number((x.student.naesin || {})['전교과'] ?? (x.student.naesin || {})['전교과(100)'])])).values()]
-    .filter(Number.isFinite);
+    store.wholeGrade(x.student)])).values()]
+    .filter((v) => v != null);
   // Number(null)=0 — myScore 가 빈 지원이 섞이면 환산 범위 아래끝이 0.00 이 된다
   const conv = [...new Map(list.map((x) => [String(x.student.hak),
     Number(x.app.myScore && x.app.myScore.grade)])).values()]

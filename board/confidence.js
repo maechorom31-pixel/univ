@@ -261,6 +261,9 @@ export function fitCurve(rows) {
   const sd = Math.min(Math.max(raw, SD_LO), SD_HI);
   return {
     mu: cut50, sd, raw, clamped: sd !== raw, weak: false,
+    // 등급은 작을수록 좋으니 cut50 < cut70 이 정상. 뒤집혀 있으면 폭을 알 수 없는
+    // 것이지 「붙어 있는」 것이 아니다 — 화면이 그렇게 말해야 한다(position 과 같은 판정).
+    inverted: raw < 0,
     cut50, cut70, years: have.map((r) => r.year),
   };
 }

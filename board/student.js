@@ -19,7 +19,7 @@ import * as api from './api.js';
 import {
   link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule,
   summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
-  fillTrend, outsideLimit,
+  fillTrend, outsideLimit, isGuessedFit,
 } from './match.js';
 import { josa, rate1, isoDay, minReqShort, methodLine, interviewShare, methodHasInterview } from './text.js';
 import { suneungDday } from './keydates.js';
@@ -903,8 +903,7 @@ function figures(app) {
       const to = [s.alias.toUniv || '', s.alias.toDept || ''].filter(Boolean).join(' ');
       left.appendChild(el('div', 'fig-note', `${to} 자료`));
     } else if (left && s.type) {
-      const guessed = s.typeFit === 'cat' || s.typeFit === 'only'
-        || s.typeFit === 'alive' || s.typeFit === 'figures';
+      const guessed = isGuessedFit(s.typeFit);
       left.appendChild(el('div', 'fig-note', guessed ? `${s.type} (아마도)` : s.type));
     }
   } else if (s && s.before && s.before.line.g70) {

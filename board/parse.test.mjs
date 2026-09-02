@@ -192,6 +192,16 @@ console.log('성적 탭 파서');
   const got2 = G.parseGradeRows_(messy);
   eq(got2.rows, [{ hak: '3503', name: '가상갑', grade: 2.5 }], '  머리글을 이름으로 찾는다 · 학년 없으면 3');
 
+  // **나이스 꼴 표** — 과목별 등급이 앞에 서도 「일반등급」을 집어야 한다.
+  // 부분일치로 첫 「…등급」을 집으면 모든 학생의 전교과가 국어 등급이 된다.
+  const neis = [
+    ['학년', '반', '번호', '성명', '국어등급', '수학등급', '일반등급'],
+    ['3', '5', '3', '가상갑', '1', '4', '2.31'],
+  ];
+  eq(G.parseGradeRows_(neis).rows[0].grade, 2.31, '  과목 등급이 앞에 서도 일반등급을 집는다');
+  const only = [['반', '번호', '이름', '3학년 등급합'], ['5', '3', '가상갑', '3.7']];
+  eq(G.parseGradeRows_(only).rows[0].grade, 3.7, '  정확한 이름이 없을 때만 부분일치로 내려간다');
+
   // 엉뚱한 시트면 왜 못 읽었는지 말한다
   eq(G.parseGradeRows_([['아무', '관계없는', '표']]).problem.length > 0, true, '  머리글을 못 찾으면 말한다');
   eq(G.parseGradeRows_([]).rows.length, 0, '  빈 시트는 조용히 빈 목록');

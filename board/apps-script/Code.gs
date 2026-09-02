@@ -37,7 +37,7 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-09-01c';
+var CODE_VER = '2026-09-01d';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
@@ -578,16 +578,27 @@ function score_(v) {
  */
 function parseGradeRows_(values) {
   values = values || [];
+  /*
+   * 등급 칸은 **이름이 정확히 맞는 것을 먼저** 집는다. 처음에는 「등급」이 들어간
+   * 첫 칸을 집었는데, 나이스 꼴 표(국어등급·수학등급·…·일반등급)에서는 국어등급이
+   * 먼저 와서 **모든 학생의 전교과가 국어 등급**이 될 뻔했다 — 남의 성적이 붙는
+   * 것만큼 나쁜, 제 성적이 딴 과목으로 붙는 자리다. 부분일치는 정확한 이름이
+   * 하나도 없을 때만 쓴다.
+   */
+  var SCORE_RANK = { '일반등급': 0, '전교과': 1, '전교과등급': 1, '전교과 등급': 1, '등급': 2 };
   var head = -1, col = {};
   for (var r = 0; r < Math.min(values.length, 6); r++) {
-    var m = {};
+    var m = {}, best = 99;
     for (var c = 0; c < (values[r] || []).length; c++) {
       var t = txt_(values[r][c]);
       if (t === '학년') m.grade = c;
       else if (t === '반') m.cls = c;
       else if (t === '번호') m.no = c;
       else if (t === '이름' || t === '성명') m.name = c;
-      else if (m.score == null && /등급|전교과/.test(t)) m.score = c;
+      else {
+        var rank = SCORE_RANK[t] != null ? SCORE_RANK[t] : (/등급|전교과/.test(t) ? 3 : null);
+        if (rank != null && rank < best) { best = rank; m.score = c; }
+      }
     }
     if (m.cls != null && m.no != null && m.name != null && m.score != null) {
       head = r; col = m; break;
@@ -635,12 +646,17 @@ function gradeRows_(src) {
       }
     } catch (e) { /* 부모를 못 짚어도 이 파일은 본다 */ }
     if (!books.length) books.push(active);
+    // 첫 파일의 성적 탭이 비었거나 머리글이 이상해도 **다음 파일은 본다.**
+    // 사유는 어느 파일에서도 명단이 안 나왔을 때만 돌려준다.
+    var firstProblem = '';
     for (var i = 0; i < books.length; i++) {
       var sh = books[i] && books[i].getSheetByName(SHEET.grade);
       if (!sh) continue;
       var parsed = parseGradeRows_(sh.getDataRange().getValues());
-      if (parsed.rows.length || parsed.problem) return parsed;
+      if (parsed.rows.length) return parsed;
+      if (parsed.problem && !firstProblem) firstProblem = parsed.problem;
     }
+    return { rows: [], problem: firstProblem };
   } catch (e) { /* 성적은 곁들임이다 — 실패해도 보드를 막지 않는다 */ }
   return { rows: [], problem: '' };
 }
@@ -1086,13 +1102,24 @@ function readSource_() {
  * 원본 파싱 결과 — 캐시가 있으면 그것, 없으면 읽어서 담아 둔다.
  * @param {boolean} fresh  참이면 캐시를 건너뛰고 읽은 결과로 캐시를 갈아 둔다
  */
+/**
+ * 캐시 키에 **원본 파일 주소(설정 B2)** 를 품는다. 안 품으면 선생님이 B2 를 새
+ * 파일로 바꿔도 5분 동안 옛 파일의 학생·지원이 그대로 나온다 — 학생 링크와
+ * 쓰기 검증(ownsApp_)까지. 주소가 바뀌면 키가 바뀌어 저절로 새로 읽는다.
+ */
+function srcCacheKey_() {
+  var ref = String(configTab_().b2 || '').replace(/[^A-Za-z0-9_-]/g, '');
+  return SRC_CACHE_KEY + ':' + (ref ? ref.slice(-24) : 'here');
+}
+
 function sourceParsed_(fresh) {
+  var key = srcCacheKey_();
   if (!fresh) {
-    var hit = cacheGet_(SRC_CACHE_KEY);
+    var hit = cacheGet_(key);
     if (hit) { hit.cached = true; return hit; }
   }
   var out = readSource_();
-  cachePut_(SRC_CACHE_KEY, out, SRC_CACHE_SEC);
+  cachePut_(key, out, SRC_CACHE_SEC);
   out.cached = false;
   return out;
 }

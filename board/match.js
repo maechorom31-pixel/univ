@@ -1168,6 +1168,15 @@ function pickByFigures(groups, keys, want, mojip) {
  * 돌려주는 것은 고른 묶음의 행들(연도 오름차순)과 어떻게 골랐는지다.
  * 나머지 전형도 버리지 않는다 — 연도별 추이는 여전히 전부 보여 준다.
  */
+/**
+ * 이름으로 맞춘 게 아니라 **어림으로 고른** 갈래들. 화면 셋(보드 카드 머리·학생
+ * 화면·카드 상세)이 「전형을 이름으로 맞추지 못했습니다」를 붙일지 이걸로 정한다 —
+ * 갈래를 더할 때 세 군데를 따로 고치다 한 곳을 빠뜨리면 그 화면만 조용히 경고가
+ * 사라진다.
+ */
+export const GUESSED_FITS = new Set(['cat', 'only', 'alive', 'figures']);
+export const isGuessedFit = (fit) => GUESSED_FITS.has(fit);
+
 export function pickIpgyeol(rows, app, mojip) {
   const groups = typeGroups(rows);
   let keys = [...groups.keys()];
@@ -1316,16 +1325,23 @@ export function pickIpgyeol(rows, app, mojip) {
      * 전형으로 메우지 않는다는 위의 규칙과 같다. 그리고 **끊긴 해가 같으면 안 한다** —
      * 둘 다 마지막 해까지 이어져 있으면 이 규칙은 아무 말도 못 하는 것이 맞다.
      */
-    const last = Math.max(...[...groups.values()].map((v) => v.hi));
-    const alive = hit.filter((k) => groups.get(k).hi === last);
-    if (hit.length > 1 && alive.length === 1) return take(alive[0], 'alive');
-
     /*
-     * 이름도 유형도 못 가렸다. 마지막으로 **모집요강이 스스로 적어 둔 지난 세 해**를
-     * 본다 — 위 `pickByFigures` 의 가드 넷을 다 통과할 때만 고른다.
+     * 이름도 유형도 못 가렸다. **대학이 스스로 적어 둔 숫자**(`figures`)를 먼저 본다 —
+     * 위 `pickByFigures` 의 가드 넷을 다 통과할 때만 고른다. 검산 가능한 38건에서
+     * `alive` 와 늘 같은 답이라 차례를 바꿔도 결과는 같고, 앞으로 올 자료에서 둘이
+     * 갈리면 대학의 말이 이긴다.
      */
     const fig = pickByFigures(groups, hit, want, mojip);
     if (fig) return take(fig, 'figures');
+
+    /*
+     * 재 봤다 — `alive` 가 버린 후보가 마지막 해 **바로 전해**까지 있던 26건 중
+     * 검산 가능한 11건이 전부 일치했다. 「끊긴 지 2해 이상」 조건은 얻는 것 없이
+     * 26건을 잃으므로 걸지 않는다.
+     */
+    const last = Math.max(...[...groups.values()].map((v) => v.hi));
+    const alive = hit.filter((k) => groups.get(k).hi === last);
+    if (hit.length > 1 && alive.length === 1) return take(alive[0], 'alive');
   }
 
   /*

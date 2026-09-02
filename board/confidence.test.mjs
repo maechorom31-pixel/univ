@@ -205,6 +205,10 @@ console.log('분포 곡선 (fitCurve)');
   near(same.sd, 0.18, '두 컷이 같으면 σ 는 하한 0.18');
   eq(same.clamped, true, '눌렀다고 표시한다');
   eq(fitCurve([R2(2026, 5.00, 2.00)]).clamped, true, '너무 벌어져도 눌렀다고 표시한다');
+  // 뒤집힌 컷(70%컷 < 50%컷)은 「붙어 있는」 게 아니라 **폭을 알 수 없는** 것이다
+  const inv = fitCurve([R2(2026, 3.00, 3.40)]);
+  eq(inv.inverted, true, '뒤집힌 컷은 inverted 로 표시한다');
+  eq(fitCurve([R2(2026, 3.20, 3.00)]).inverted, false, '정상이면 false');
   eq(fitCurve([R2(2026, 3.20, null)]).weak, true, '50%컷이 없으면 weak');
   eq(fitCurve([R2(2026, 3.20, null)]).cut50, null, '없는 50%컷을 지어내지 않는다');
   eq(fitCurve([]), null, '자료가 없으면 null');

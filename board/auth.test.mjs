@@ -95,6 +95,7 @@ const mkSheet = (rows = []) => ({
   setFrozenRows: () => {},
   getDataRange: () => ({ getValues: () => rows }),
   getName: () => 'src',
+  getParent: () => book,           // 실제 시트는 부모 파일을 돌려준다 — 외부 원본 경로가 쓴다
   appendRow: (line) => rows.push(line),
   deleteRow: (n) => rows.splice(n - 1, 1),
 });
@@ -367,6 +368,13 @@ console.log('\n원본 파싱 캐시');
   eq(fresh.cached, false, '새로 읽었다고 적는다');
   G.handle_({ action: 'students', key: '84348434' });
   eq(srcReads, 2, '그 다음 요청은 갈아 둔 캐시를 쓴다');
+
+  // **원본 주소(설정 B2)가 바뀌면 캐시가 안 맞는다** — 옛 파일의 학생을 5분 더
+  // 내보내지 않는다. 대역의 openById 는 같은 파일을 돌려주니 읽기 횟수로 잰다.
+  sheets['설정'] = mkSheet([G.HEADERS['설정'], ['', 'https://docs.google.com/spreadsheets/d/abcdefghijklmnopqrstuvwxyz1234567/edit', '']]);
+  G.handle_({ action: 'students', key: '84348434' });
+  eq(srcReads, 3, 'B2 를 바꾸면 캐시 키가 달라져 원본을 새로 읽는다');
+  sheets['설정'] = mkSheet([G.HEADERS['설정']]);
 
   sheets['다운로드 원본'].getDataRange = origRange;
 }
