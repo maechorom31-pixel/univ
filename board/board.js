@@ -1141,10 +1141,9 @@ function mover(app) {
       const there = store.occupants(app.hak, Number(value.slice(5)));
       if (there.length > 1) label = `${text} — 둘이 고민 중`;
       else if (there.length) label = `${text} ⇄ ${shortName(there[0])}`;
-    } else if (value === current && store.pairOf(app)) {
-      // 고르개 폭이 좁아 짝 이름까지 적으면 잘린다 — 짝은 카드 머리와 바로 옆 카드가 말한다
-      label = `${text} · 같이 고민`;
     }
+    // 짝인 카드의 현재 항목은 그냥 「5순위」 — 고르개가 좁아 「· 같이 고민」이 「· 같이」로
+    // 잘려 보였다. 짝이라는 것은 카드 머리와 바로 옆 카드가 이미 말한다.
     o.value = value; o.textContent = label;
     if (value === current) o.selected = true;
     if (value.indexOf('rank:') === 0 && value !== current

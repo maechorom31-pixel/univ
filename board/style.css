@@ -583,6 +583,11 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
 
 /* 순위 고르개. 학생 화면의 다른 입력칸과 같은 줄 모양을 쓴다. */
 .field.rank-pick select { font-size: 16px; }   /* iOS 가 확대하지 않는 최소 크기 */
+/* 고르개는 제일 긴 항목만큼 넓어지려 한다 — 「6순위 · ○○대학교와 같이 고민」이
+   들어오자 320px 카드를 뚫고 나가 화면이 가로로 밀렸다. 열을 카드 폭에 묶고
+   고르개 자체도 그 안에 가둔다. 펼친 목록은 브라우저가 알아서 온전히 보여 준다. */
+.field.rank-pick { grid-template-columns: minmax(0, 1fr); }
+.field.rank-pick select { width: 100%; max-width: 100%; min-width: 0; }
 
 .mycard { border-top: 1px solid var(--line); padding: var(--s4) 0; }
 .mycard:first-of-type { border-top: 0; padding-top: var(--s2); }

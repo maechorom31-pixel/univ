@@ -59,6 +59,8 @@ const el = (tag, cls, text) => {
 };
 const tidy = (s) => String(s || '').replace(/ (?=[^ ]{1,4}$)/, ' ');
 const shortUniv = (n) => String(n || '').replace(/\s*[-–—]\s*.*$/, '');
+/* 짝 이름은 캠퍼스 괄호까지 떼고 — 「한국외국어대학교(서울)와 같이 고민」은 고르개 한 줄에 안 든다 */
+const plainUniv = (n) => shortUniv(n).replace(/\(.*/, '');
 const g2 = (n) => (n == null ? null : Number(n).toFixed(2));
 const label = (iso) => {
   const [y, m, d] = String(iso).split('-').map(Number);
@@ -762,7 +764,7 @@ function rankPicker(app) {
   for (const r of RANKS) {
     const there = atRank(r, app);
     if (now.slot === 'rank' && now.rank === r) {
-      opt(`rank:${r}`, mate ? `${r}순위 · ${tidy(shortUniv(mate.univ))}와 같이 고민` : `${r}순위`);
+      opt(`rank:${r}`, mate ? `${r}순위 · ${plainUniv(mate.univ)}와 같이 고민` : `${r}순위`);
       continue;
     }
     if (there.length > 1) { opt(`rank:${r}`, `${r}순위 — 둘이 고민 중`).disabled = true; continue; }
@@ -772,7 +774,7 @@ function rankPicker(app) {
      * 칸이 있다. 하나를 「아직 안 정함」으로 내리면 6칸이 「정했다」고 거짓말을
      * 한다. 한 칸에 둘까지. 정해지면 하나를 옮긴다.
      */
-    if (there.length === 1) opt(`pair:${r}`, `${r}순위 · ${tidy(shortUniv(there[0].univ))}와 같이 고민`);
+    if (there.length === 1) opt(`pair:${r}`, `${r}순위 · ${plainUniv(there[0].univ)}와 같이 고민`);
   }
   sel.value = now.slot === 'rank' ? `rank:${now.rank}` : 'pool';
   sel.onchange = () => { moveRank(app, sel.value); };
@@ -854,7 +856,7 @@ async function moveRank(app, value) {
       ? `${name}${josa(taken.dept, '과', '와')} ${was.rank}순위를 맞바꿨습니다.`
       : `${name}${josa(taken.dept, '은', '는')} 순위에서 내렸습니다.`;
   } else if (pair && there.length) {
-    state.notice = `${tidy(shortUniv(there[0].univ))}${josa(shortUniv(there[0].univ), '과', '와')} ${rank}순위에 같이 두었습니다. 정해지면 하나를 옮겨 주세요.`;
+    state.notice = `${plainUniv(there[0].univ)}${josa(plainUniv(there[0].univ), '과', '와')} ${rank}순위에 같이 두었습니다. 정해지면 하나를 옮겨 주세요.`;
   }
   render();
 
@@ -1060,7 +1062,7 @@ function card(app) {
   if (place.slot === 'rank') {
     const mate = pairOf(app);
     // 짝 이름은 학과가 아니라 대학으로 — 같은 학과 둘을 놓고 고민하는 일이 흔하다
-    box.appendChild(el('div', 'rank', mate ? `${place.rank}순위 · ${tidy(shortUniv(mate.univ))}와 같이 고민` : `${place.rank}순위`));
+    box.appendChild(el('div', 'rank', mate ? `${place.rank}순위 · ${plainUniv(mate.univ)}와 같이 고민` : `${place.rank}순위`));
   }
   /*
    * 머리에 「자세히」를 둔다. 카드 전체를 누르게 하면 안 된다 — 카드 안이
