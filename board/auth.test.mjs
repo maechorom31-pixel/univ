@@ -243,6 +243,33 @@ sheets['설정'] = mkSheet([G.HEADERS['설정']]);
 
   const r4 = G.handle_({ action: 'setRank', key: K, id: 'A', hak: '3101', slot: 'rank', rank: 9 });
   eq(r4.ok, false, '1~6 밖은 안 받는다');
+
+  /*
+   * **한 칸에 둘 — 「같이 고민」.** 지금 배치: A=2, C=1, B=후보.
+   * pair 를 켜면 찬 칸에 밀어내지 않고 나란히 든다. 셋째는 거절. pair 없이
+   * 둘이 든 칸에 놓는 것도 거절. 짝의 하나가 다른 찬 칸으로 가면 밀려난 쪽은
+   * 짝이 남은 칸이 아니라 후보로 간다.
+   */
+  const r5 = G.handle_({ action: 'setRank', key: K, id: 'B', hak: '3101', slot: 'rank', rank: 2, pair: 1 });
+  eq(r5.ok, true, '후보 B 를 2순위에 A 와 같이 둔다');
+  eq([place('A').rank, place('B').rank], [2, 2], 'A·B 가 나란히 2순위다 — 아무도 밀려나지 않는다');
+
+  sheets['배치'].appendRow(['D', '3101', 'pool', '', '담임', '2026-09-01T00:00:00+09:00']);
+  const r6 = G.handle_({ action: 'setRank', key: K, id: 'D', hak: '3101', slot: 'rank', rank: 2, pair: 1 });
+  eq([r6.ok, r6.full], [false, true], '셋째는 안 받는다');
+  const r6b = G.handle_({ action: 'setRank', key: K, id: 'D', hak: '3101', slot: 'rank', rank: 2 });
+  eq([r6b.ok, r6b.full], [false, true], 'pair 없이 둘이 든 칸에 놓는 것도 거절한다');
+  eq(place('D').slot, 'pool', '거절했으니 D 는 그대로 후보다');
+
+  // A(2순위, B 와 짝)를 C 가 있는 1순위로 — 맞바꾸기. C 는 2순위(B 가 남아 있다)가 아니라 후보로.
+  const r7 = G.handle_({ action: 'setRank', key: K, id: 'A', hak: '3101', slot: 'rank', rank: 1 });
+  eq(r7.ok, true, '짝의 하나를 다른 찬 칸으로 옮긴다');
+  eq([place('A').rank, place('B').rank, place('C').slot], [1, 2, 'pool'],
+    '밀려난 C 는 짝이 남은 2순위로 가지 않고 후보로 내려간다');
+
+  // 짝이 없는 칸에서의 맞바꾸기는 그대로다: B(2, 혼자) → 1(A) 이면 A 가 2 로.
+  const r8 = G.handle_({ action: 'setRank', key: K, id: 'B', hak: '3101', slot: 'rank', rank: 1 });
+  eq([r8.ok, place('B').rank, place('A').rank], [true, 1, 2], '혼자 든 칸끼리는 예전처럼 맞바꾼다');
 }
 
 /*

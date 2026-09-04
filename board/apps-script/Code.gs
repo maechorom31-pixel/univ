@@ -1180,6 +1180,14 @@ function setState_(p, who) {
  * 그래서 **맞바꾸기를 통째로 서버가 한다.** 잠금 안에서 지금 배치를 읽고, 밀려날
  * 카드를 찾고, 둘을 한꺼번에 쓴다. 중간이 없으니 끼어들 자리도 없다.
  *
+ * **한 칸에 둘까지 — 「같이 고민」(`pair`).** 끝까지 둘 사이에서 못 정하는 칸이
+ * 있다. 그때 하나를 후보로 내리면 보드가 「정했다」고 거짓말을 한다. `pair` 를
+ * 켜서 보내면 찬 칸에 밀어내지 않고 **나란히** 넣는다. 셋째는 안 받는다 —
+ * 둘도 못 정한 칸에 셋을 두면 그건 후보 목록이지 6칸이 아니다. `pair` 없이
+ * 둘이 든 칸에 놓는 것도 거절한다 — 어느 쪽을 밀어낼지 서버가 정할 일이 아니다.
+ * 짝의 하나가 다른 찬 칸으로 가면 밀려난 카드는 짝이 남은 칸으로 들어가지
+ * 않고 후보로 내려간다 — 그 칸은 아직 차 있다.
+ *
  * 거기에 **한 발 늦은 화면을 되돌린다.** 화면은 마지막으로 본 배치의 시각(`seen`)을
  * 같이 보낸다. 그 사이에 누가 이 학생의 배치를 건드렸으면 쓰지 않고 그렇다고
  * 말한다 — 덮어쓰고 나서 알리는 것보다 낫다. `seen` 을 안 보내면 검사하지 않는다
@@ -1218,29 +1226,43 @@ function setRank_(p, who) {
       };
     }
 
+    var pair = p.pair === true || p.pair === 1 || p.pair === '1' || p.pair === 'true';
     var was = null;
-    var taken = null;
+    var there = [];          // 그 칸에 이미 든 다른 카드들 (0~2)
     for (var j = 0; j < mine.length; j++) {
       if (String(mine[j].id) === String(p.id)) was = mine[j];
       else if (slot === 'rank' && String(mine[j].slot) === 'rank'
-        && parseInt(mine[j].rank, 10) === rank) taken = mine[j];
+        && parseInt(mine[j].rank, 10) === rank) there.push(mine[j]);
     }
+    if (slot === 'rank' && there.length >= 2) {
+      return { ok: false, full: true,
+        error: rank + '순위에는 이미 둘이 같이 고민 중입니다. 하나를 먼저 옮겨 주세요.' };
+    }
+    var taken = (slot === 'rank' && !pair && there.length) ? there[0] : null;
 
     var now = now_();
     var writes = [{ id: p.id, hak: p.hak, slot: slot, rank: rank, by: who, at: now }];
     /*
      * 밀려난 카드는 **누른 카드가 있던 자리로** 간다. 순위끼리면 맞바꾸기가 되고,
      * 후보에서 올라온 것이면 밀려난 쪽이 후보로 내려간다. 조용히 사라지지 않는다.
+     * 다만 누른 카드가 짝의 하나였으면 그 칸은 아직 차 있다 — 후보로 내린다.
      */
     if (taken) {
-      var backSlot = was && String(was.slot) === 'rank' ? 'rank' : 'pool';
-      var backRank = backSlot === 'rank' ? parseInt(was.rank, 10) : '';
+      var wasRank = was && String(was.slot) === 'rank' ? parseInt(was.rank, 10) : null;
+      var stillThere = false;
+      for (var q = 0; q < mine.length; q++) {
+        if (String(mine[q].id) !== String(p.id) && String(mine[q].slot) === 'rank'
+          && parseInt(mine[q].rank, 10) === wasRank) stillThere = true;
+      }
+      var backSlot = wasRank && !stillThere ? 'rank' : 'pool';
+      var backRank = backSlot === 'rank' ? wasRank : '';
       writes.push({
         id: taken.id, hak: p.hak, slot: backSlot, rank: backRank, by: who, at: now
       });
     }
     for (var w = 0; w < writes.length; w++) upsert_(SHEET.state, ['id'], writes[w]);
     log_(who, 'setRank', p.hak + ' ' + p.id + ' → ' + slot + (rank ? ('#' + rank) : '')
+      + (pair && there.length ? ' (같이 고민)' : '')
       + (taken ? (' (밀려남 ' + taken.id + ')') : ''));
     return { ok: true, at: now, moved: writes };
   } finally {
@@ -1396,7 +1418,7 @@ function studentAction_(action, p) {
    * 바꾸면 그만이다. 확인을 걸면 학생은 「바꿨는데 안 바뀐다」고 읽는다.
    * 누가 바꿨는지는 `by` 에 「3201 학생」으로 남아 담임이 안다.
    */
-  if (action === 'studentRank') return setRank_({ id: p.id, hak: hak, slot: p.slot, rank: p.rank, seen: p.seen }, who);
+  if (action === 'studentRank') return setRank_({ id: p.id, hak: hak, slot: p.slot, rank: p.rank, pair: p.pair, seen: p.seen }, who);
   /*
    * **학번을 서버가 채운다 — 토큰에서 온 값으로.**
    *

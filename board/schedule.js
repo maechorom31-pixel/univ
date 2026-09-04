@@ -112,6 +112,10 @@ export function clashes(events) {
       const b = attend[j];
       if (a.hak !== b.hak || a.app.id === b.app.id) continue;
       if (!overlaps(a, b)) continue;
+      // 같은 순위 칸에 「같이 고민」 중인 둘은 결국 하나만 낸다 — 서로 겹칠 일이 없다.
+      const pa = store.placementOf(a.app.id);
+      const pb = store.placementOf(b.app.id);
+      if (pa.slot === 'rank' && pb.slot === 'rank' && pa.rank === pb.rank) continue;
       /*
        * **학생이 넣고 아직 확인 안 된 날짜로 「겹침」을 확정하지 않는다.**
        * pending 을 두는 까닭이 애초에 그것이다 — 잘못 적은 날짜 하나로 여섯 칸 판단이

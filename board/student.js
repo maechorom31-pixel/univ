@@ -607,6 +607,56 @@ function clashPanel() {
 
 const RANKS = [1, 2, 3, 4, 5, 6];
 
+/** 그 순위에 든 지원들 — 둘까지 든다(「같이 고민」). `except` 는 빼고 센다. */
+const atRank = (r, except) => state.apps.filter((a) => a !== except
+  && (state.placement.get(String(a.id)) || {}).slot === 'rank'
+  && (state.placement.get(String(a.id)) || {}).rank === r);
+/** 같은 칸을 나눠 쓰는 짝. 없으면 null. */
+const pairOf = (app) => {
+  const p = state.placement.get(String(app.id)) || {};
+  return p.slot === 'rank' ? (atRank(p.rank, app)[0] || null) : null;
+};
+
+/**
+ * 6칸 안의 숫자 한 줄과 꼬리표 — 교사 6칸과 같은 뜻이다.
+ * 여섯 칸을 나란히 보며 「어디가 빠듯한가」를 견주는 자리라, 컷·내 환산과
+ * 최저·단계·면접일이 칸 안에 있어야 한다. 자세한 것은 아래 카드가 맡는다.
+ */
+function slotFigures(box, app) {
+  const s = summaryOf(app);
+  const mine = app.myScore || {};
+  const fig = el('div', 'slot-fig');
+  const put = (k, v) => {
+    if (v == null) return;
+    fig.appendChild(el('span', 'k', k));
+    fig.appendChild(el('b', 'num', String(v)));
+  };
+  put('70%컷', s && s.cut != null ? g2(s.cut) : null);
+  put('내', mine.grade != null ? g2(mine.grade) : null);
+  if (fig.children.length) box.appendChild(fig);
+
+  const pills = el('div', 'pills mini');
+  const pin = (text, kind, title) => {
+    const p = el('span', `pill${kind ? ' ' + kind : ''}`, text);
+    if (title) p.title = title;
+    pills.appendChild(p);
+  };
+  const minTxt = app.minReqText || (s && s.mojip && s.mojip.minReq) || '';
+  if (minTxt || app.minReq === true) {
+    const short = minReqShort(minTxt);
+    pin(short ? `최저 ${short}` : '최저 있음', 'mark', minTxt);
+  }
+  const share = s ? interviewShare(s.mojip) : null;
+  if (s && s.stages > 1) pin(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`);
+  else if (share != null) pin(`면접 ${share}%`);
+  const iv = dateOf(app, '면접');
+  if (iv) {
+    pin(`면접 ${label(iv.from)}`,
+      iv.status === 'confirmed' || iv.status === 'source' ? 'mark' : 'wait');
+  }
+  if (pills.children.length) box.appendChild(pills);
+}
+
 /**
  * **여섯 칸 — 비어 있어도 그린다.**
  *
@@ -614,63 +664,37 @@ const RANKS = [1, 2, 3, 4, 5, 6];
  * 숫자는 아래 카드에 있고, 여기는 「어디를 몇 순위로 넣었나」만 말한다.
  */
 function slotGrid(ranked, tray = []) {
-  const at = (r) => ranked.find((a) => (state.placement.get(String(a.id)) || {}).rank === r);
+  const at = (r) => ranked.filter((a) => (state.placement.get(String(a.id)) || {}).rank === r);
+  // 찬 칸 수다 — 한 칸에 둘이 「같이 고민」 중이어도 한 칸이다
+  const filled = new Set(ranked.map((a) => state.placement.get(String(a.id)).rank)).size;
   const wrap = el('section', 'panel');
   const head = el('div', 'panel-head');
   head.appendChild(el('h2', '', '지원 6칸'));
   head.appendChild(el('span', 'count num',
-    `${ranked.length}/6${tray.length ? ` · 전문대 ${tray.length}` : ''}`));
+    `${filled}/6${tray.length ? ` · 전문대 ${tray.length}` : ''}`));
   wrap.appendChild(head);
   const grid = el('div', ranked.length ? 'slots mine' : 'slots mine thin');
   for (const r of RANKS) {
-    const app = at(r);
-    const box = el('div', app ? 'slot-card' : 'slot-card empty');
-    box.appendChild(el('div', 'rank', `${r}순위`));
-    if (app) {
-      box.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
-      box.appendChild(el('div', 'dept', tidy(app.dept)));
-      /*
-       * **훑는 눈에 숫자 한 줄과 꼬리표를 준다** — 교사 6칸과 같은 뜻이다.
-       * 여섯 칸을 나란히 보며 「어디가 빠듯한가」를 견주는 자리라, 컷·내 환산과
-       * 최저·단계·면접일이 칸 안에 있어야 한다. 자세한 것은 아래 카드가 맡는다.
-       */
-      const s = summaryOf(app);
-      const mine = app.myScore || {};
-      const fig = el('div', 'slot-fig');
-      const put = (k, v) => {
-        if (v == null) return;
-        fig.appendChild(el('span', 'k', k));
-        fig.appendChild(el('b', 'num', String(v)));
-      };
-      put('70%컷', s && s.cut != null ? g2(s.cut) : null);
-      put('내', mine.grade != null ? g2(mine.grade) : null);
-      if (fig.children.length) box.appendChild(fig);
-
-      const pills = el('div', 'pills mini');
-      const pin = (text, kind, title) => {
-        const p = el('span', `pill${kind ? ' ' + kind : ''}`, text);
-        if (title) p.title = title;
-        pills.appendChild(p);
-      };
-      const minTxt = app.minReqText || (s && s.mojip && s.mojip.minReq) || '';
-      if (minTxt || app.minReq === true) {
-        const short = minReqShort(minTxt);
-        pin(short ? `최저 ${short}` : '최저 있음', 'mark', minTxt);
-      }
-      const share = s ? interviewShare(s.mojip) : null;
-      if (s && s.stages > 1) pin(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`);
-      else if (share != null) pin(`면접 ${share}%`);
-      const iv = dateOf(app, '면접');
-      if (iv) {
-        pin(`면접 ${label(iv.from)}`,
-          iv.status === 'confirmed' || iv.status === 'source' ? 'mark' : 'wait');
-      }
-      if (pills.children.length) box.appendChild(pills);
-      dragify(box, app);
-    } else {
-      box.appendChild(el('div', 'dept', '비어 있음'));
-    }
-    dropify(box, (dragged) => (app && dragged.id === app.id ? null : `rank:${r}`));
+    const here = at(r);
+    const box = el('div', here.length ? (here.length > 1 ? 'slot-card pair' : 'slot-card') : 'slot-card empty');
+    box.appendChild(el('div', 'rank', here.length > 1 ? `${r}순위 · 같이 고민` : `${r}순위`));
+    /*
+     * **한 칸에 둘이 들면 한 칸 안에 세로로 선다** — 사이에 「또는」. 끝까지
+     * 둘 사이에서 못 정하는 칸이 있다. 고르개의 「같이 고민」으로 넣고, 정해지면
+     * 하나를 옮긴다. 끌기는 안쪽 덩이(`.slot-app`)마다 따로 — 칸째 끌면 어느
+     * 쪽을 옮기는지 알 수 없다.
+     */
+    here.forEach((app, i) => {
+      if (i) box.appendChild(el('div', 'or', '또는'));
+      const part = el('div', 'slot-app');
+      part.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
+      part.appendChild(el('div', 'dept', tidy(app.dept)));
+      box.appendChild(part);
+      slotFigures(part, app);
+      dragify(part, app);
+    });
+    if (!here.length) box.appendChild(el('div', 'dept', '비어 있음'));
+    dropify(box, (dragged) => (here.includes(dragged) ? null : `rank:${r}`));
     grid.appendChild(box);
   }
   wrap.appendChild(grid);
@@ -732,11 +756,21 @@ function rankPicker(app) {
     return o;
   };
   opt('pool', '아직 안 정함');
+  const mate = pairOf(app);
   for (const r of RANKS) {
-    const taken = state.apps.find((a) => a.id !== app.id
-      && (state.placement.get(String(a.id)) || {}).slot === 'rank'
-      && (state.placement.get(String(a.id)) || {}).rank === r);
-    opt(`rank:${r}`, taken ? `${r}순위 ⇄ ${tidy(taken.dept)}` : `${r}순위`);
+    const there = atRank(r, app);
+    if (now.slot === 'rank' && now.rank === r) {
+      opt(`rank:${r}`, mate ? `${r}순위 · ${tidy(shortUniv(mate.univ))}와 같이 고민` : `${r}순위`);
+      continue;
+    }
+    if (there.length > 1) { opt(`rank:${r}`, `${r}순위 — 둘이 고민 중`).disabled = true; continue; }
+    opt(`rank:${r}`, there.length ? `${r}순위 ⇄ ${tidy(there[0].dept)}` : `${r}순위`);
+    /*
+     * **「같이 고민」 — 밀어내지 않고 나란히.** 끝까지 둘 사이에서 못 정하는
+     * 칸이 있다. 하나를 「아직 안 정함」으로 내리면 6칸이 「정했다」고 거짓말을
+     * 한다. 한 칸에 둘까지. 정해지면 하나를 옮긴다.
+     */
+    if (there.length === 1) opt(`pair:${r}`, `${r}순위 · ${tidy(shortUniv(there[0].univ))}와 같이 고민`);
   }
   sel.value = now.slot === 'rank' ? `rank:${now.rank}` : 'pool';
   sel.onchange = () => { moveRank(app, sel.value); };
@@ -784,20 +818,29 @@ function dropify(node, where) {
 
 async function moveRank(app, value) {
   if (state.busy) return;
-  const [slot, rankText] = String(value).split(':');
+  const [kind, rankText] = String(value).split(':');
+  // `pair:3` 은 3순위에 「같이 고민」 — 밀어내지 않고 나란히
+  const pair = kind === 'pair';
+  const slot = pair ? 'rank' : kind;
   const rank = rankText ? Number(rankText) : null;
   const was = state.placement.get(String(app.id)) || { slot: 'pool', rank: null };
-  const taken = slot === 'rank'
-    ? state.apps.find((a) => a.id !== app.id
-      && (state.placement.get(String(a.id)) || {}).slot === 'rank'
-      && (state.placement.get(String(a.id)) || {}).rank === rank)
-    : null;
+  if (slot === 'rank' && was.slot === 'rank' && was.rank === rank) return;
+  const there = slot === 'rank' ? atRank(rank, app) : [];
+  // 둘이 든 칸은 못 받는다 — 어느 쪽을 밀어낼지는 사람이 정할 일이다
+  if (there.length > 1) {
+    state.notice = `${rank}순위에는 이미 둘이 같이 고민 중입니다. 하나를 먼저 옮겨 주세요.`;
+    render();
+    return;
+  }
+  const taken = !pair && there.length ? there[0] : null;
+  // 밀려난 것은 누른 카드가 있던 자리로 — 다만 거기 짝이 남아 있으면 「아직 안 정함」으로
+  const backToRank = was.slot === 'rank' && !pairOf(app);
 
   // 화면부터 옮긴다. 실패하면 되돌린다.
   const before = new Map(state.placement);
   state.placement.set(String(app.id), { slot, rank: slot === 'rank' ? rank : null });
   if (taken) {
-    state.placement.set(String(taken.id), was.slot === 'rank'
+    state.placement.set(String(taken.id), backToRank
       ? { slot: 'rank', rank: was.rank }
       : { slot: 'pool', rank: null });
   }
@@ -805,9 +848,11 @@ async function moveRank(app, value) {
   state.notice = '';
   if (taken) {
     const name = tidy(taken.dept);
-    state.notice = was.slot === 'rank'
+    state.notice = backToRank
       ? `${name}${josa(taken.dept, '과', '와')} ${was.rank}순위를 맞바꿨습니다.`
       : `${name}${josa(taken.dept, '은', '는')} 순위에서 내렸습니다.`;
+  } else if (pair && there.length) {
+    state.notice = `${tidy(shortUniv(there[0].univ))}${josa(shortUniv(there[0].univ), '과', '와')} ${rank}순위에 같이 두었습니다. 정해지면 하나를 옮겨 주세요.`;
   }
   render();
 
@@ -816,6 +861,7 @@ async function moveRank(app, value) {
     const res = await api.call('studentRank', {
       token: state.token, id: app.id, slot,
       rank: slot === 'rank' ? rank : '',
+      pair: pair ? 1 : '',
       seen: state.seen || '',
     });
     if (res && res.at) state.seen = String(res.at);
@@ -1009,7 +1055,11 @@ function card(app) {
   const box = el('article', 'mycard');
   box.dataset.id = app.id;          // 「적으러 가기」가 이 닻으로 내려온다
   const place = state.placement.get(String(app.id)) || {};
-  if (place.slot === 'rank') box.appendChild(el('div', 'rank', `${place.rank}순위`));
+  if (place.slot === 'rank') {
+    const mate = pairOf(app);
+    // 짝 이름은 학과가 아니라 대학으로 — 같은 학과 둘을 놓고 고민하는 일이 흔하다
+    box.appendChild(el('div', 'rank', mate ? `${place.rank}순위 · ${tidy(shortUniv(mate.univ))}와 같이 고민` : `${place.rank}순위`));
+  }
   /*
    * 머리에 「자세히」를 둔다. 카드 전체를 누르게 하면 안 된다 — 카드 안이
    * 온통 입력칸(순위·날짜·결과·메모)이라 누르려던 것과 열리는 것이 싸운다.

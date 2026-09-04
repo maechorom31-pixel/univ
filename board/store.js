@@ -518,7 +518,7 @@ export function summary(app) {
  * `seen` 은 이 학생 배치를 마지막으로 본 시각이다. 그 사이에 저쪽이 바꿨으면
  * 서버가 안 쓰고 그렇다고 말한다 — 덮어쓰고 나서 알리는 것보다 낫다.
  */
-export async function placeMany(moves) {
+export async function placeMany(moves, opts = {}) {
   const before = moves.map(({ id }) => [String(id), placementOf(id)]);
   for (const { id, slot, rank } of moves) {
     if (!state.apps.get(String(id))) throw new Error('지원 내역을 찾지 못했습니다.');
@@ -532,6 +532,8 @@ export async function placeMany(moves) {
     const res = await api.setRank({
       id: head.id, hak: app.hak, slot: head.slot,
       rank: head.slot === 'rank' ? head.rank : '',
+      // 「같이 고민」 — 찬 칸에 밀어내지 않고 나란히 넣는다. 서버가 둘까지만 받는다.
+      pair: opts.pair ? 1 : '',
       seen: state.seen.get(String(app.hak)) || '',
     });
     if (res && res.at) state.seen.set(String(app.hak), String(res.at));
@@ -935,11 +937,36 @@ export async function removeNote(noteId) {
   }
 }
 
-/** 같은 학생 안에서 그 순위를 이미 쓰고 있는 지원. 없으면 null. */
+/**
+ * 같은 학생 안에서 그 순위에 든 지원들 — **둘까지** 들 수 있다(「같이 고민」).
+ * 끝까지 둘 사이에서 못 정하는 칸이 있어서다. 하나를 후보로 내리면 보드가
+ * 「정했다」고 거짓말을 한다. 셋은 안 된다 — 그건 후보 목록이지 6칸이 아니다.
+ */
+export function occupants(hak, rank) {
+  return appsOf(hak).filter((app) => {
+    const p = placementOf(app.id);
+    return p.slot === 'rank' && p.rank === rank;
+  });
+}
+
+/** 그 순위에 든 첫 지원. 없으면 null. 둘이 들었을 수 있으니 셀 때는 `occupants`. */
 export function occupant(hak, rank) {
+  return occupants(hak, rank)[0] || null;
+}
+
+/** 이 지원과 같은 순위 칸을 나눠 쓰는 짝. 없으면 null. */
+export function pairOf(app) {
+  const p = placementOf(app.id);
+  if (p.slot !== 'rank') return null;
+  return occupants(app.hak, p.rank).find((a) => a.id !== app.id) || null;
+}
+
+/** 채운 순위 칸 수(0~6) — 카드 수가 아니다. 한 칸에 둘이 들어도 한 칸이다. */
+export function filledRanks(hak) {
+  const set = new Set();
   for (const app of appsOf(hak)) {
     const p = placementOf(app.id);
-    if (p.slot === 'rank' && p.rank === rank) return app;
+    if (p.slot === 'rank' && p.rank) set.add(p.rank);
   }
-  return null;
+  return set.size;
 }

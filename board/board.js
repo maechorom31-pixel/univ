@@ -140,7 +140,9 @@ function renderRoster() {
   }
   for (const s of students) {
     const apps = store.appsOf(s.hak);
-    const ranked = apps.filter((a) => store.placementOf(a.id).slot === 'rank').length;
+    // 찬 칸 수다 — 한 칸에 둘이 「같이 고민」 중이어도 한 칸이다.
+    const ranked = store.filledRanks(s.hak);
+    const cards = apps.filter((a) => store.placementOf(a.id).slot === 'rank').length;
     const li = el('li');
     const b = el('button');
     b.setAttribute('aria-current', String(s.hak === store.selection.hak));
@@ -148,7 +150,7 @@ function renderRoster() {
     b.appendChild(el('span', 'hak num', s.hak));
     b.appendChild(el('span', 'nm', tidy(s.name)));
     const cnt = el('span', `cnt${ranked >= 6 ? ' full' : ''}`, `${ranked}/6`);
-    cnt.title = `확정 ${ranked}건 · 지원 ${apps.length}건`;
+    cnt.title = `순위 ${ranked}칸${cards > ranked ? ` (같이 고민 ${cards - ranked}칸)` : ''} · 지원 ${apps.length}건`;
     b.appendChild(cnt);
 
     // 12월에는 6칸 숫자보다 「확인할 게 있나」가 급하다.
@@ -313,7 +315,8 @@ function render() {
   }
   const general = apps.filter((a) => !outsideLimit(a));
   const others = apps.filter((a) => outsideLimit(a));
-  const at = (r) => general.find((a) => {
+  // 한 칸에 둘까지 든다(「같이 고민」). 순서는 즐겨찾기 순 그대로.
+  const at = (r) => general.filter((a) => {
     const p = store.placementOf(a.id);
     return p.slot === 'rank' && p.rank === r;
   });
@@ -328,26 +331,39 @@ function render() {
    *
    * 대신 비었을 때는 칸을 낮게 그려(`slots thin`) 아래 후보 목록을 가리지 않는다.
    */
-  const placed = RANKS.map(at).filter(Boolean);
+  const placed = RANKS.flatMap(at);
   main.appendChild(label('지원 6칸'));
   const slots = el('div', placed.length ? 'slots' : 'slots thin');
   for (const r of RANKS) {
-    const app = at(r);
+    const here = at(r);
+    /*
+     * **한 칸에 둘이 들면 한 자리에 세로로 선다** — 사이에 「또는」. 끝까지
+     * 둘 사이에서 못 정하는 칸이 있고, 그때 하나를 후보로 내리면 보드가
+     * 「정했다」고 거짓말을 한다. 격자 한 칸(`.slot`)이 그 둘을 함께 안는다.
+     * 혼자 든 칸에는 끌기 중에만 「같이 고민 — 여기 놓기」 띠가 나타난다.
+     */
+    const cell = el('div', here.length > 1 ? 'slot pair' : 'slot');
     /*
      * 6칸 카드도 후보 목록(cardRow)과 같이 한 장씩 감싼다. 목록만 감싸 놓으면
      * 순위에 올라간 카드가 터지는 순간 render() 가 멈춰 보드가 통째로 빈다 —
      * 막으려던 바로 그 실패가 제일 눈에 띄는 자리에서 다시 난다.
      */
-    try {
-      slots.appendChild(app ? card(app, r, student) : emptySlot(r));
-    } catch (err) {
-      const box = el('div', 'card broken');
-      box.appendChild(el('div', 'rank', `${r}순위`));
-      box.appendChild(el('div', 'univ', tidy((app && app.univ) || '대학 없음')));
-      box.appendChild(el('p', 'warn', '이 카드를 그리지 못했습니다. 선생님께 알려 주세요.'));
-      box.title = String((err && err.message) || err);
-      slots.appendChild(box);
-    }
+    if (!here.length) cell.appendChild(emptySlot(r));
+    here.forEach((app, i) => {
+      if (i) cell.appendChild(el('div', 'or', '또는'));
+      try {
+        cell.appendChild(card(app, r, student, here.length > 1));
+      } catch (err) {
+        const box = el('div', 'card broken');
+        box.appendChild(el('div', 'rank', `${r}순위`));
+        box.appendChild(el('div', 'univ', tidy(app.univ || '대학 없음')));
+        box.appendChild(el('p', 'warn', '이 카드를 그리지 못했습니다. 선생님께 알려 주세요.'));
+        box.title = String((err && err.message) || err);
+        cell.appendChild(box);
+      }
+    });
+    if (here.length === 1) cell.appendChild(pairDrop(r, here[0]));
+    slots.appendChild(cell);
   }
   main.appendChild(slots);
 
@@ -660,8 +676,13 @@ function dragSource(box, app) {
     e.dataTransfer.setData('text/plain', app.id);
     e.dataTransfer.effectAllowed = 'move';
     box.classList.add('dragging');
+    // 끌기 중에만 보이는 놓기 자리(「같이 고민」 띠)가 이 표시를 본다
+    document.body.classList.add('dragging');
   });
-  box.addEventListener('dragend', () => box.classList.remove('dragging'));
+  box.addEventListener('dragend', () => {
+    box.classList.remove('dragging');
+    document.body.classList.remove('dragging');
+  });
 }
 
 /**
@@ -720,7 +741,7 @@ function markEnrolled(box, app) {
   box.title = [box.title, '이 학교에 등록했습니다'].filter(Boolean).join(' · ');
 }
 
-function card(app, rank, student) {
+function card(app, rank, student, paired) {
   const box = el('div', 'card');
   markMemo(box, app);
   markEnrolled(box, app);
@@ -730,7 +751,7 @@ function card(app, rank, student) {
   openable(box, app);
 
   if (rank === 'tray') box.appendChild(el('div', 'rank', '전문대 지원'));
-  else if (rank) box.appendChild(el('div', 'rank', `${rank}순위`));
+  else if (rank) box.appendChild(el('div', 'rank', paired ? `${rank}순위 · 같이 고민` : `${rank}순위`));
   box.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
   box.appendChild(figures(app, student));
@@ -1079,12 +1100,32 @@ function mover(app) {
      */
     let label = text;
     if (value.indexOf('rank:') === 0 && value !== current) {
-      const taken = store.occupant(app.hak, Number(value.slice(5)));
-      if (taken) label = `${text} ⇄ ${shortName(taken)}`;
+      const there = store.occupants(app.hak, Number(value.slice(5)));
+      if (there.length > 1) label = `${text} — 둘이 고민 중`;
+      else if (there.length) label = `${text} ⇄ ${shortName(there[0])}`;
+    } else if (value === current && store.pairOf(app)) {
+      // 고르개 폭이 좁아 짝 이름까지 적으면 잘린다 — 짝은 카드 머리와 바로 옆 카드가 말한다
+      label = `${text} · 같이 고민`;
     }
     o.value = value; o.textContent = label;
     if (value === current) o.selected = true;
+    if (value.indexOf('rank:') === 0 && value !== current
+      && store.occupants(app.hak, Number(value.slice(5))).length > 1) o.disabled = true;
     sel.appendChild(o);
+    /*
+     * **「같이 고민」 — 밀어내지 않고 나란히.** 혼자 든 칸마다 맞바꿈 항목 바로
+     * 아래 하나 더 둔다. 끝까지 둘 사이에서 못 정하는 칸이 있어서다 — 하나를
+     * 후보로 내리면 보드가 「정했다」고 거짓말을 한다. 한 칸에 둘까지.
+     */
+    if (value.indexOf('rank:') === 0 && value !== current) {
+      const there = store.occupants(app.hak, Number(value.slice(5)));
+      if (there.length === 1) {
+        const p = document.createElement('option');
+        p.value = `pair:${value.slice(5)}`;
+        p.textContent = `${text} · ${shortName(there[0])}와 같이 고민`;
+        sel.appendChild(p);
+      }
+    }
   }
   sel.disabled = busy;
   sel.onchange = () => move(app, sel.value);
@@ -1103,6 +1144,17 @@ function mover(app) {
 function emptySlot(rank) {
   const box = el('div', 'card empty', `${rank}순위 — 비어 있음`);
   dropTarget(box, () => `rank:${rank}`);
+  return box;
+}
+
+/**
+ * 혼자 든 칸 아래, **끌기 중에만** 나타나는 놓기 띠 — 「같이 고민」.
+ * 카드 위에 놓으면 맞바꾸고, 이 띠에 놓으면 나란히 든다. 평소에는 안 보인다 —
+ * 여섯 칸마다 빈 띠가 서 있으면 격자가 늘 반쯤 빈 것처럼 읽힌다.
+ */
+function pairDrop(rank, app) {
+  const box = el('div', 'pair-drop', `같이 고민 — 여기 놓기`);
+  dropTarget(box, (dropped) => (dropped.id === app.id || outsideLimit(dropped) ? null : `pair:${rank}`));
   return box;
 }
 
@@ -1286,13 +1338,25 @@ function glide(before) {
 
 async function move(app, value) {
   if (busy) return;
-  const [slot, rankText] = value.split(':');
+  const [kind, rankText] = value.split(':');
+  // `pair:3` 은 3순위에 「같이 고민」 — 밀어내지 않고 나란히 넣는다
+  const pair = kind === 'pair';
+  const slot = pair ? 'rank' : kind;
   const rank = rankText ? Number(rankText) : null;
   const before = store.placementOf(app.id);
+  if (slot === 'rank' && before.slot === 'rank' && before.rank === rank) return;
 
-  // 그 순위를 이미 쓰고 있으면 자리를 맞바꾼다.
-  const taken = slot === 'rank' ? store.occupant(app.hak, rank) : null;
-  const pushed = taken && taken.id !== app.id ? taken : null;
+  // 그 순위를 이미 쓰고 있으면 자리를 맞바꾼다. 둘이 든 칸은 못 받는다 —
+  // 어느 쪽을 밀어낼지는 사람이 정할 일이다. 「같이 고민」이면 밀어내지 않는다.
+  const there = slot === 'rank' ? store.occupants(app.hak, rank).filter((a) => a.id !== app.id) : [];
+  if (there.length > 1) {
+    notice = `${rank}순위에는 이미 둘이 같이 고민 중입니다. 하나를 먼저 옮겨 주세요.`;
+    render();
+    return;
+  }
+  const pushed = !pair && there.length ? there[0] : null;
+  // 밀려난 카드는 누른 카드가 있던 자리로 — 다만 거기 짝이 남아 있으면 후보로.
+  const backToRank = before.slot === 'rank' && !store.pairOf(app);
 
   /*
    * **한 번에 옮기고 한 번만 그린다.**
@@ -1304,7 +1368,7 @@ async function move(app, value) {
    */
   const moves = [{ id: app.id, slot, rank }];
   if (pushed) {
-    moves.push(before.slot === 'rank'
+    moves.push(backToRank
       ? { id: pushed.id, slot: 'rank', rank: before.rank }
       : { id: pushed.id, slot: 'pool', rank: null });
   }
@@ -1314,7 +1378,7 @@ async function move(app, value) {
   // 그리기 전에 자리를 재 둔다. `placeMany` 는 서버를 기다리기 전에 먼저
   // 자리를 바꾸고 알리므로, 이 줄이 끝나면 화면은 이미 새로 그려져 있다.
   const was = cardRects();
-  const write = store.placeMany(moves).catch((err) => { failed = err; });
+  const write = store.placeMany(moves, { pair }).catch((err) => { failed = err; });
   glide(was);
 
   /*
@@ -1324,9 +1388,11 @@ async function move(app, value) {
   if (pushed) {
     const name = shortName(pushed);
     const eul = josa(pushed.dept, '을', '를');
-    notice = before.slot === 'rank'
+    notice = backToRank
       ? `${name}${eul} ${before.rank}순위로 맞바꿨습니다.`
       : `${name}${eul} 후보로 옮겼습니다.`;
+  } else if (pair && there.length) {
+    notice = `${shortName(there[0])}와 ${rank}순위에 같이 두었습니다. 정해지면 하나를 옮겨 주세요.`;
   } else {
     notice = '';
   }

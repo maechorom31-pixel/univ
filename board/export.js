@@ -222,7 +222,12 @@ const LEDGER_LINES = ['univ', 'dept', 'type', 'result'];
 
 function ledgerCell(app, line) {
   if (!app) return '';
-  if (line === 'univ') return brk(shortUniv(app.univ));
+  /*
+   * 같은 순위 칸에 「같이 고민」 중인 둘은 대장에 나란히 실리되 **「택1」**을 단다.
+   * 원서를 내기 전의 대장은 초안이고, 낸 뒤에는 이 표시가 남아 있으면 안 된다 —
+   * 그때까지 하나를 옮겨 달라는 뜻이다.
+   */
+  if (line === 'univ') return brk(shortUniv(app.univ)) + (store.pairOf(app) ? ' (택1)' : '');
   if (line === 'dept') {
     // 예년 서식은 학과 뒤에 괄호로 모집인원을 적는다. 원문에 괄호가 이미
     // 있으면(정원 외를 뜻한다) 그대로 두고, 숫자만 있으면 괄호를 씌운다.
