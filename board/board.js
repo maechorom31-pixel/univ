@@ -352,7 +352,7 @@ function render() {
     here.forEach((app, i) => {
       if (i) cell.appendChild(el('div', 'or', '또는'));
       try {
-        cell.appendChild(card(app, r, student, here.length > 1));
+        cell.appendChild(here.length > 1 ? compactCard(app, r, student) : card(app, r, student));
       } catch (err) {
         const box = el('div', 'card broken');
         box.appendChild(el('div', 'rank', `${r}순위`));
@@ -741,7 +741,7 @@ function markEnrolled(box, app) {
   box.title = [box.title, '이 학교에 등록했습니다'].filter(Boolean).join(' · ');
 }
 
-function card(app, rank, student, paired) {
+function card(app, rank, student) {
   const box = el('div', 'card');
   markMemo(box, app);
   markEnrolled(box, app);
@@ -751,13 +751,51 @@ function card(app, rank, student, paired) {
   openable(box, app);
 
   if (rank === 'tray') box.appendChild(el('div', 'rank', '전문대 지원'));
-  else if (rank) box.appendChild(el('div', 'rank', paired ? `${rank}순위 · 같이 고민` : `${rank}순위`));
+  else if (rank) box.appendChild(el('div', 'rank', `${rank}순위`));
   box.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
   box.appendChild(figures(app, student));
   box.appendChild(pills(app));
   box.appendChild(mover(app));
   return box;
+}
+
+/**
+ * **한 칸에 둘이 들 때의 축약 카드.** 온전한 카드 둘을 세로로 쌓으면 그 칸만
+ * 두 배로 높아져 격자 줄이 어긋난다. 그래서 짝은 대학·학과·숫자 한 줄·고르개만
+ * 남긴다 — 두 장을 합쳐 한 칸 높이. 숫자 표와 꼬리표는 「자세히」에 다 있다.
+ */
+function compactCard(app, rank, student) {
+  const box = el('div', 'card compact');
+  markMemo(box, app);
+  markEnrolled(box, app);
+  dragSource(box, app);
+  dropTarget(box, (dropped) => (dropped.id === app.id ? null : `rank:${rank}`));
+  openable(box, app);
+
+  box.appendChild(el('div', 'rank', `${rank}순위 · 같이 고민`));
+  box.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
+  box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
+  box.appendChild(brief(app));
+  box.appendChild(mover(app));
+  return box;
+}
+
+/** 숫자 한 줄 — 컷과 내 값만. 견줄 두 수가 나란히 있으면 된다. */
+function brief(app) {
+  const s = store.summary(app);
+  const mine = app.myScore || {};
+  const line = el('div', 'brief');
+  const put = (k, v) => {
+    if (v == null || v === '—') return;
+    line.appendChild(el('span', 'k', k));
+    line.appendChild(el('b', 'num', String(v)));
+  };
+  if (s.kind === 'college') put('평균등급', g2(s.avg));
+  else if (s.linked) put('70%컷', g2(s.cut));
+  put('환산', mine.grade != null ? g2(mine.grade) : null);
+  if (!line.children.length) line.textContent = '입결 연결 안 됨';
+  return line;
 }
 
 /**

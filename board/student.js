@@ -622,7 +622,7 @@ const pairOf = (app) => {
  * 여섯 칸을 나란히 보며 「어디가 빠듯한가」를 견주는 자리라, 컷·내 환산과
  * 최저·단계·면접일이 칸 안에 있어야 한다. 자세한 것은 아래 카드가 맡는다.
  */
-function slotFigures(box, app) {
+function slotFigures(box, app, brief) {
   const s = summaryOf(app);
   const mine = app.myScore || {};
   const fig = el('div', 'slot-fig');
@@ -634,6 +634,7 @@ function slotFigures(box, app) {
   put('70%컷', s && s.cut != null ? g2(s.cut) : null);
   put('내', mine.grade != null ? g2(mine.grade) : null);
   if (fig.children.length) box.appendChild(fig);
+  if (brief) return;
 
   const pills = el('div', 'pills mini');
   const pin = (text, kind, title) => {
@@ -690,7 +691,8 @@ function slotGrid(ranked, tray = []) {
       part.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
       part.appendChild(el('div', 'dept', tidy(app.dept)));
       box.appendChild(part);
-      slotFigures(part, app);
+      // 짝은 축약 — 숫자 한 줄만 두고 꼬리표는 뺀다. 둘을 합쳐 한 칸 높이가 되게.
+      slotFigures(part, app, here.length > 1);
       dragify(part, app);
     });
     if (!here.length) box.appendChild(el('div', 'dept', '비어 있음'));

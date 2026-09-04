@@ -233,7 +233,15 @@ button { font: inherit; color: inherit; }
 /* 격자 한 칸(.slot). 한 칸에 둘이 「같이 고민」 중이면 세로로 서고 사이에 「또는」.
    테두리는 점선 한 겹 — 둘이 한 자리라는 것만 말하고 더는 안 나선다. */
 .slot { display: grid; gap: var(--s2); align-content: start; }
-.slot.pair { border: 1px dashed var(--line); border-radius: 10px; padding: var(--s2); }
+.slot.pair { border: 1px dashed var(--line); border-radius: 10px; padding: var(--s2); gap: 4px; }
+/* 짝 카드는 축약형 — 둘을 합쳐 한 칸 높이. 숫자 표·꼬리표 대신 한 줄. */
+.card.compact { min-height: 0; gap: 4px; padding: var(--s2) var(--s3); }
+.card.compact .brief {
+  display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline;
+  font-size: var(--t-xs); color: var(--muted);
+}
+.card.compact .brief b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.card.compact .move { margin-top: 2px; }
 .slot .or, .slot-card .or {
   text-align: center; font-size: var(--t-xs); font-weight: 600; color: var(--amber-ink);
   line-height: 1;
