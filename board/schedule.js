@@ -143,6 +143,16 @@ export function suggestMock(interviewFrom) {
   return shift(interviewFrom, -MOCK_BEFORE);
 }
 
+/**
+ * 일정을 다룰 지원인가 — 순위(1~6칸)에 넣었거나, 6회 밖(전문대·특수대·과기원)은
+ * 「지원」(tray)으로 올린 것. 달력·겹침·면접 준비가 모두 이 하나로 가른다.
+ * 학생 화면의 `schedTarget` 과 같은 규칙이다.
+ */
+export function committed(app) {
+  const slot = store.placementOf(app.id).slot;
+  return outsideLimit(app) ? slot === 'tray' : slot === 'rank';
+}
+
 /* ── 화면 ─────────────────────────────────────────────────────── */
 
 export function start() {
@@ -165,13 +175,15 @@ function render() {
   const apps = student
     ? store.appsOf(hak)
     : store.studentsOf(cls).flatMap((s) => store.appsOf(s.hak));
-  // 일정표에서 온 「예정」은 순위에 넣었거나 6회 밖인 지원만 달력에 싣는다 —
-  // 후보의 예정일이 달력을 채우면 진짜 가는 날이 묻힌다. 사람이 잡은 날은 그대로.
-  const target = (a) => {
-    const slot = store.placementOf(a.id).slot;
-    return outsideLimit(a) ? slot === 'tray' : slot === 'rank';
-  };
-  const events = eventsOf(apps).filter((e) => e.status !== 'sched' || target(e.app));
+  /*
+   * **달력은 순위(1~6칸)에 넣었거나 6회 밖에서 「지원」으로 올린 것만 싣는다.**
+   * 날짜가 어디서 왔든 같다. 예전에는 일정표 예정(sched)만 걸렀고 사람이 잡은
+   * 날은 그대로 두었는데, 그러면 날짜를 넣어 둔 지원을 순위에서 빼도 달력에
+   * 계속 서 있었다 — 보관한 것, 후보로 내린 것이 「가는 날」로 남고 후보와의
+   * 가짜 겹침까지 셌다. 값은 버리지 않는다(시트·즐겨찾기에 그대로 있다).
+   * 순위에서 빼면 달력에서 빠지고, 다시 넣으면 그 날짜로 되돌아온다.
+   */
+  const events = eventsOf(apps).filter((e) => committed(e.app));
 
   const head = el('div', 'who');
   const line = el('div', 'who-line');
@@ -468,23 +480,21 @@ function interviewPanel(student) {
   const rows = [];
   const outside = [];              // 근거가 없어 안 세운 지원 — 접힌 줄로 길을 연다
   for (const app of apps) {
-    // 보관은 「올해 안 넣기로 한 것」이다. 여기 세우면 안 내는 원서의 면접일을
-    // 넣으라는 칸이 생긴다 — 판에서도, 접힌 줄에서도 뺀다.
-    const slot = store.placementOf(app.id).slot;
-    if (slot === 'archive') continue;
-    const go = ATTEND.map((k) => ({ kind: k, d: store.dateOf(app, k) })).filter((x) => x.d);
-    const other = outsideLimit(app);
     /*
      * **면접 준비는 순위(1~6칸)에 넣은 지원의 일이다.** 후보 카드까지 세우면
      * 아직 넣지도 않은 원서의 면접 날짜를 고민하게 된다. 6회 밖(전문대·과기원)은
-     * 순위가 없으니 그대로 서고, 후보라도 **사람이 이미 잡은 날짜**가 있으면
-     * 값을 버리지 않고 보여 준다. 일정표 예정(sched)만으로는 안 세운다.
+     * 「지원」(tray)으로 올린 것이 순위에 해당한다. 보관(「올해 안 넣기로 한 것」)은
+     * 당연히 빠진다 — 판에서도, 접힌 줄에서도.
+     *
+     * 사람이 잡은 날짜가 있는 후보도 세우지 않는다 — 달력과 같은 규칙이다.
+     * 예전에는 「값을 버리지 않으려고」 세웠는데, 그러면 순위에서 뺀 지원이
+     * 이 판과 달력에 그대로 남아 뺀 것이 안 보였다. 값은 시트에 그대로 있고
+     * 카드 상세의 「면접·실기 날짜 넣기 · 고치기」에서 언제든 보고 고칠 수 있다.
+     * 다시 순위에 넣으면 그 날짜로 이 판에 돌아온다.
      */
-    const human = go.some((x) => x.d.status !== 'sched');
-    // 6회 밖은 「지원」(tray)으로 올린 것이 순위에 해당한다 — 후보 전문대에
-    // 면접 칸을 세우면 아직 내지도 않은 원서의 면접을 고민하게 된다.
-    const committed = other ? slot === 'tray' : slot === 'rank';
-    if (!committed && !human) continue;
+    if (!committed(app)) continue;
+    const go = ATTEND.map((k) => ({ kind: k, d: store.dateOf(app, k) })).filter((x) => x.d);
+    const other = outsideLimit(app);
     const expect = go.length ? [] : expectedKinds(app);
     if (!go.length && !other && !expect.length) { outside.push(app); continue; }
     rows.push({ app, go, other, expect });

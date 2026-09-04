@@ -211,7 +211,8 @@ function dateOf(app, kind) {
  * 이 지원의 면접 일정을 **다룰 때인가** — 순위(1~6칸)에 넣었거나 6회 밖
  * (전문대·특수대·과기원 — 순위 없이 지원 상태)일 때만이다. 후보 카드에까지
  * 빈 「면접일 적기」가 서면 아직 넣지도 않은 원서의 면접 날짜를 고민하게 된다.
- * 이미 사람이 잡은 날짜는 어디서든 보인다 — 값은 버리지 않는다.
+ * 이미 사람이 잡은 날짜는 **카드에서는** 보인다(꼬리표·날짜 줄) — 값은 버리지
+ * 않는다. 「다가오는 일정」은 순위에 넣은 지원만이다 — 선생님 달력과 같은 규칙.
  */
 function schedTarget(app) {
   const slot = (state.placement.get(String(app.id)) || {}).slot;
@@ -529,9 +530,12 @@ function upcoming() {
   const list = [];
   for (const app of state.apps) {
     for (const kind of [...ATTEND, ...MOCKS]) {
+      // 순위에 넣은 지원만 — 후보로 내린 원서의 날짜로 재촉하지 않는다. 날짜가
+      // 어디서 왔든(일정표 예정·내가 넣은 것) 같다. 값은 카드에 그대로 남아 있고,
+      // 다시 순위에 넣으면 여기로 돌아온다. 선생님 달력과 같은 규칙.
+      if (!schedTarget(app)) continue;
       const d = dateOf(app, kind);
-      // 일정표에서 온 「예정」은 순위에 넣은 지원만 — 후보의 예정일로 재촉하지 않는다
-      if (d && d.to >= today && (d.status !== 'sched' || schedTarget(app))) list.push({ app, kind, d });
+      if (d && d.to >= today) list.push({ app, kind, d });
     }
   }
   list.sort((a, b) => (a.d.from < b.d.from ? -1 : 1));
