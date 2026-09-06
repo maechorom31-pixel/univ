@@ -49,8 +49,9 @@ const params = new URLSearchParams(location.search);
 const token = params.get('s') || params.get('token') || '';
 
 if (params.has('demo')) {
-  const { studentDemo } = await import('./board/demo.js');
-  start('demo', studentDemo);
+  // ?demo=1 은 3201, ?demo=3204 처럼 학번을 주면 그 학생 — 전문대 지원·후보 자리를 볼 때
+  const { studentDemoFor } = await import('./board/demo.js');
+  start('demo', studentDemoFor(params.get('demo')));
 } else if (!token) {
   document.getElementById('me').innerHTML =
     '<p class="note error">주소가 올바르지 않습니다. 담임 선생님이 보내 준 링크로 열어 주세요.</p>';

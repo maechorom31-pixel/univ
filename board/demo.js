@@ -256,6 +256,22 @@ export const demo = {
 };
 
 /** 학생 화면 확인용 — 3201 가나다가 자기 링크로 열었을 때 */
+/**
+ * 다른 학번으로 학생 화면을 보고 싶을 때 — `student.html?demo=3204`.
+ * 3204 는 전문대를 「지원」과 후보로 나눠 가진 학생이라 그 자리가 맞는지 볼 수 있다.
+ * 메모·결과·날짜는 3201 것뿐이므로 다른 학번은 배치와 지원만 든다.
+ */
+export function studentDemoFor(hak) {
+  const student = students.find((s) => s.hak === hak);
+  if (!student || hak === '3201') return studentDemo;
+  return {
+    ok: true, hak, student,
+    apps: A.filter((a) => a.hak === hak),
+    state: placed.filter((r) => r.hak === hak),
+    dates: [], notes: [], results: [], fields: [],
+  };
+}
+
 export const studentDemo = {
   ok: true,
   hak: '3201',

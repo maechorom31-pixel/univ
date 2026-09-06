@@ -277,7 +277,15 @@ function render() {
     .filter((a) => (state.placement.get(String(a.id)) || {}).slot === 'rank'
       && !outsideLimit(a))
     .sort((a, b) => state.placement.get(String(a.id)).rank - state.placement.get(String(b.id)).rank);
-  const rest = state.apps.filter((a) => !ranked.includes(a));
+  /*
+   * **전문대·특수대는 교사 보드와 같은 자리에 선다.** 「지원」(tray)으로 올린 것은
+   * 6칸 아래 제 묶음이고, 아직 후보인 것은 6칸에 안 넣은 일반대와 함께 「그 밖의
+   * 지원」이다. 예전에는 둘이 다 「그 밖」에 섞여 있어서, 원서를 내기로 한 전문대와
+   * 견주기만 하던 전문대가 학생 화면에서는 같은 줄에 보였다.
+   */
+  const tray = state.apps.filter((a) => outsideLimit(a)
+    && (state.placement.get(String(a.id)) || {}).slot === 'tray');
+  const rest = state.apps.filter((a) => !ranked.includes(a) && !tray.includes(a));
 
   /*
    * **빈 칸 여섯이 먼저 보인다.**
@@ -285,9 +293,7 @@ function render() {
    * 수시는 여섯 장이다. 그 사실이 화면 맨 위에 그대로 있어야, 학생이 「나는 지금
    * 몇 칸을 채웠나」를 세지 않고 본다. 아래 카드마다 순위를 고르면 이 칸이 찬다.
    */
-  main.appendChild(slotGrid(ranked,
-    state.apps.filter((a) => outsideLimit(a)
-      && (state.placement.get(String(a.id)) || {}).slot === 'tray')));
+  main.appendChild(slotGrid(ranked, tray));
 
   /*
    * 위의 격자와 **제목이 겹치면 안 된다.** 둘 다 「지원 6칸」이면 같은 것이 두 번
@@ -295,6 +301,10 @@ function render() {
    */
   main.appendChild(group('순위를 정한 지원', ranked, `${ranked.length}곳`,
     ranked.length ? '' : '아직 순위가 없습니다. 아래 지원에서 순위를 골라 보세요.'));
+  if (tray.length) {
+    main.appendChild(group('전문대 지원', tray, `${tray.length}곳`,
+      '수시 6회 제한 밖이라 순위는 없지만, 원서를 내기로 한 곳입니다.'));
+  }
 
   /*
    * 숫자를 처음 만나는 자리에 읽는 법을 둔다.
@@ -320,9 +330,9 @@ function render() {
 
   if (rest.length) {
     main.appendChild(group('그 밖의 지원', rest, `${rest.length}곳`,
-      '6칸에 넣지 않았거나 6회 제한 밖(전문대·특수대)인 지원입니다.'));
-    if (rest.some((a) => a.univType === '전문대')) main.appendChild(jcNotice());
+      '6칸에 넣지 않은 지원과, 아직 후보인 전문대·특수대입니다.'));
   }
+  if ([...tray, ...rest].some((a) => a.univType === '전문대')) main.appendChild(jcNotice());
 
   main.appendChild(upcoming());
   main.appendChild(clashPanel());
@@ -782,6 +792,33 @@ function rankPicker(app) {
   return wrap;
 }
 
+/**
+ * **전문대·특수대의 고르개 — 「후보」와 「지원」.** 6회 밖이라 순위는 없지만
+ * 「원서를 낸다」는 결정은 학생의 것이다. 「지원」으로 올리면 6칸 아래 제 묶음에
+ * 서고, 선생님 보드에서도 같은 자리에 카드로 선다. 기본은 후보다.
+ */
+function trayPicker(app) {
+  const wrap = el('div', 'field rank-pick');
+  const id = `r-${app.id}`;
+  const lab = el('label', '', '지원 여부');
+  lab.htmlFor = id;
+  wrap.appendChild(lab);
+  const sel = document.createElement('select');
+  sel.id = id;
+  sel.disabled = state.busy;
+  const now = state.placement.get(String(app.id)) || { slot: 'pool' };
+  for (const [value, text] of [['pool', '후보 — 아직 고민 중'], ['tray', '지원 — 원서를 낸다']]) {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    sel.appendChild(o);
+  }
+  sel.value = now.slot === 'tray' ? 'tray' : 'pool';
+  sel.onchange = () => { moveRank(app, sel.value); };
+  wrap.appendChild(sel);
+  return wrap;
+}
+
 /*
  * **끌어다 놓기 — 교사 보드와 같은 버릇.**
  *
@@ -858,6 +895,9 @@ async function moveRank(app, value) {
   } else if (pair && there.length) {
     state.notice = `${plainUniv(there[0].univ)}${josa(plainUniv(there[0].univ), '과', '와')} ${rank}순위에 같이 두었습니다. 정해지면 하나를 옮겨 주세요.`;
   }
+  // 무엇을 했는지는 서버 응답과 무관하게 정해져 있다 — 보기용(offline)에서도 같은 말이 나오게 먼저 적는다
+  state.notice = state.notice || (slot === 'tray' ? '지원으로 올렸습니다.'
+    : (slot === 'pool' && outsideLimit(app)) ? '후보로 내렸습니다.' : '순위를 바꿨습니다.');
   render();
 
   if (offline) { state.busy = false; render(); return; }
@@ -869,7 +909,6 @@ async function moveRank(app, value) {
       seen: state.seen || '',
     });
     if (res && res.at) state.seen = String(res.at);
-    state.notice = state.notice || '순위를 바꿨습니다.';
   } catch (err) {
     state.placement = before;
     /*
@@ -1063,6 +1102,9 @@ function card(app) {
     const mate = pairOf(app);
     // 짝 이름은 학과가 아니라 대학으로 — 같은 학과 둘을 놓고 고민하는 일이 흔하다
     box.appendChild(el('div', 'rank', mate ? `${place.rank}순위 · ${plainUniv(mate.univ)}와 같이 고민` : `${place.rank}순위`));
+  } else if (place.slot === 'tray') {
+    // 교사 보드의 「전문대 지원」 머리와 같은 자리. 사관학교 같은 특수대는 전문대가 아니다.
+    box.appendChild(el('div', 'rank', app.univType === '전문대' ? '전문대 지원' : '6회 밖 지원'));
   }
   /*
    * 머리에 「자세히」를 둔다. 카드 전체를 누르게 하면 안 된다 — 카드 안이
@@ -1089,6 +1131,9 @@ function card(app) {
   if (!outside) {
     box.appendChild(rankPicker(app));
     dragify(box, app);
+  } else {
+    // 순위 대신 「후보 / 지원」 — 교사 보드의 전문대 고르개와 같은 두 갈래다.
+    box.appendChild(trayPicker(app));
   }
 
   // 모의면접은 여러 번 한다. 잡힌 것을 다 보여 준다.
