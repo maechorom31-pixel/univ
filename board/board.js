@@ -28,6 +28,8 @@ const MY_CLASS_KEY = 'board.myClass';
 let myClass = '';    // 이 컴퓨터의 기본 반 (이 컴퓨터만의 취향이라 store에 두지 않는다)
 let notice = '';
 let busy = false;
+/** 명단을 「아직 다 마감 안 된 학생」만으로 좁혀 보는 중인가 — 접수 마감 뒤 챙길 때 */
+let onlyOpen = false;
 
 try { myClass = localStorage.getItem(MY_CLASS_KEY) || ''; } catch (err) { myClass = ''; }
 
@@ -136,9 +138,25 @@ function renderRoster() {
   const students = store.studentsOf(cls);
   if (!students.length) {
     roster.appendChild(el('li', '', '이 반에 학생이 없습니다.'));
+    $('#lock-meta').textContent = '';
     return;
   }
+  /*
+   * **마감(★)이 명단에 보인다.** 접수 마감 뒤 담임이 묻는 것은 「누가 아직 안
+   * 잠갔나」다. 학생마다 낸 카드(6칸·전문대 지원) 가운데 마감된 수를 `★2` 로
+   * 적고, 전부 마감이면 숫자 없이 `★` 만 굵게. 하나도 없으면 아무것도 안 적는다 —
+   * 지원철에는 이 자리가 비어 있어야 6칸 숫자가 그대로 읽힌다.
+   */
+  const locks = new Map(students.map((s) => [s.hak, store.lockCount(s.hak)]));
+  const done = students.filter((s) => { const k = locks.get(s.hak); return k.placed && k.locked === k.placed; });
+  const part = students.filter((s) => { const k = locks.get(s.hak); return k.locked && k.locked < k.placed; });
+  const open = students.filter((s) => { const k = locks.get(s.hak); return k.placed && k.locked < k.placed; });
+  const anyLock = done.length || part.length;
+  if (!anyLock) onlyOpen = false;
+
   for (const s of students) {
+    const lk = locks.get(s.hak);
+    if (onlyOpen && !(lk.placed && lk.locked < lk.placed)) continue;
     const apps = store.appsOf(s.hak);
     // 찬 칸 수다 — 한 칸에 둘이 「같이 고민」 중이어도 한 칸이다.
     const ranked = store.filledRanks(s.hak);
@@ -148,20 +166,22 @@ function renderRoster() {
     b.setAttribute('aria-current', String(s.hak === store.selection.hak));
     b.onclick = () => { store.select({ hak: s.hak, appId: '' }); notice = ''; renderRoster(); render(); };
     b.appendChild(el('span', 'hak num', s.hak));
-    const nm = el('span', 'nm', tidy(s.name));
-    // ★ 는 이름 칸 **안에** — 명단 줄이 고정 격자라 따로 두면 건수가 다음 줄로 접힌다.
-    // 6칸·전문대 지원 카드가 **전부** 마감됐을 때만 붙는다 — 반쯤은 아직 고민 중이다.
-    const lk = store.lockCount(s.hak);
-    if (lk.placed && lk.locked === lk.placed) {
-      const star = el('span', 'star', ' ★');
-      star.title = `마감 — 낸 원서 ${lk.locked}장이 모두 잠겨 있습니다`;
-      nm.appendChild(star);
+    b.appendChild(el('span', 'nm', tidy(s.name)));
+
+    // 오른쪽 꼬리 — ★ 마감 수 · 6칸 수 · 확인 대기. 한 칸에 나란히 두어 격자 열이 안 는다.
+    const tail = el('span', 'tail');
+    if (lk.locked) {
+      const all = lk.locked === lk.placed;
+      const star = el('span', `lk num${all ? ' all' : ''}`, all ? '★' : `★${lk.locked}`);
+      star.title = all
+        ? `마감 — 낸 원서 ${lk.locked}장이 모두 잠겨 있습니다`
+        : `★ 마감 ${lk.locked}/${lk.placed} — ${lk.placed - lk.locked}장은 아직 열려 있습니다`;
+      tail.appendChild(star);
     }
-    b.appendChild(nm);
     const cnt = el('span', `cnt${ranked >= 6 ? ' full' : ''}`, `${ranked}/6`);
     cnt.title = `순위 ${ranked}칸${cards > ranked ? ` (같이 고민 ${cards - ranked}칸)` : ''} · 지원 ${apps.length}건`
       + (lk.locked ? ` · ★ 마감 ${lk.locked}/${lk.placed}` : '');
-    b.appendChild(cnt);
+    tail.appendChild(cnt);
 
     // 12월에는 6칸 숫자보다 「확인할 게 있나」가 급하다.
     // 학생이 밤사이 적어 둔 것을 담임이 명단에서 바로 알아야 한다 —
@@ -170,12 +190,37 @@ function renderRoster() {
     if (waiting) {
       const dot = el('span', 'todo num', String(waiting));
       dot.title = `학생이 적은 결과 ${waiting}건 — 확인해 주세요`;
-      b.appendChild(dot);
+      tail.appendChild(dot);
     }
+    b.appendChild(tail);
     li.appendChild(b);
     roster.appendChild(li);
   }
+  if (onlyOpen && !roster.children.length) {
+    roster.appendChild(el('li', '', '아직 열려 있는 원서가 없습니다 — 모두 마감했습니다.'));
+  }
   $('#roster-count').textContent = `${students.length}명`;
+
+  /*
+   * 반 요약 한 줄 — 마감된 카드가 하나라도 있을 때만. 「다 마감 2명 · 일부 1명 ·
+   * 아직 3명」에 낸 원서 장수. 「아직」은 낸 카드가 있는데 다 안 잠근 학생이다 —
+   * 6칸이 비어 있는 학생은 마감이 아니라 상담이 필요한 쪽이라 여기서 세지 않는다.
+   * 오른쪽 단추로 그 학생들만 남겨 본다.
+   */
+  const meta = $('#lock-meta');
+  meta.textContent = '';
+  if (anyLock) {
+    const cards = [...locks.values()].reduce((n, k) => n + k.locked, 0);
+    // 낱말 안은 NBSP 로 묶는다 — 좁은 명단 폭에서 「아직 / 2명」이 갈려 「2명」만 한 줄에 남았다
+    const nb = (t) => t.replace(/ /g, String.fromCharCode(160));
+    meta.appendChild(el('span', '', [nb(`★ 마감 ${cards}장`), nb(`다 마감 ${done.length}명`),
+      nb(`일부 ${part.length}명`), nb(`아직 ${open.length}명`)].join(' · ')));
+    const btn = el('button', `btn${onlyOpen ? ' on' : ''}`, onlyOpen ? '전체 보기' : '아직인 학생만');
+    btn.type = 'button';
+    btn.setAttribute('aria-pressed', String(onlyOpen));
+    btn.onclick = () => { onlyOpen = !onlyOpen; renderRoster(); };
+    meta.appendChild(btn);
+  }
 }
 
 /* ── 보드 ─────────────────────────────────────────────────────── */
@@ -664,6 +709,9 @@ function header(s) {
   if (grades.some((g) => g != null)) {
     bits.push(`수능 ${grades.map((g) => (g == null ? '–' : g)).join('/')}`);
   }
+  // 낸 원서 가운데 잠근 것 — 카드마다 ★ 를 세는 대신 여기서 한눈에
+  const lk = store.lockCount(s.hak);
+  if (lk.locked) bits.push(`★ 마감 ${lk.locked}/${lk.placed}`);
   meta.textContent = bits.join('  ·  ') || '성적 정보가 없습니다';
   box.appendChild(meta);
   return box;

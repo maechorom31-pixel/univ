@@ -684,8 +684,10 @@ function slotGrid(ranked, tray = []) {
   const wrap = el('section', 'panel');
   const head = el('div', 'panel-head');
   head.appendChild(el('h2', '', '지원 6칸'));
+  // 확정(★)한 카드 수 — 낸 원서가 몇 장 잠겼는지. 하나도 없으면 안 적는다.
+  const locked = [...ranked, ...tray].filter((a) => lockOf(a)).length;
   head.appendChild(el('span', 'count num',
-    `${filled}/6${tray.length ? ` · 전문대 ${tray.length}` : ''}`));
+    `${filled}/6${tray.length ? ` · 전문대 ${tray.length}` : ''}${locked ? ` · ★ ${locked}` : ''}`));
   wrap.appendChild(head);
   const grid = el('div', ranked.length ? 'slots mine' : 'slots mine thin');
   for (const r of RANKS) {

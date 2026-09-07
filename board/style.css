@@ -176,7 +176,20 @@ button { font: inherit; color: inherit; }
   align-items: baseline;
 }
 /* 확인 대기 배지가 붙으면 칸이 하나 는다 */
-.roster button:has(.todo) { grid-template-columns: 52px minmax(0, 1fr) auto auto; }
+/* 오른쪽 꼬리(★ 마감 수 · 6칸 수 · 확인 대기)는 한 칸에 나란히 — 격자 열이 늘지 않는다 */
+.roster .tail { display: flex; align-items: baseline; white-space: nowrap; }
+.roster .tail > * + * { margin-left: var(--s2); }
+.roster .lk { font-size: var(--t-xs); color: var(--amber-ink); font-variant-numeric: tabular-nums; }
+.roster .lk.all { font-weight: 700; }
+/* 명단 아래 마감 요약 — 비어 있으면 자리도 없다 */
+.lock-meta {
+  display: flex; flex-wrap: wrap; align-items: center;
+  margin: var(--s2) 0 var(--s1); font-size: var(--t-xs); color: var(--muted);
+}
+.lock-meta:empty { display: none; }
+.lock-meta > span { margin-right: var(--s2); }
+.lock-meta .btn { margin-left: auto; min-height: 28px; padding: 2px var(--s2); font-size: var(--t-xs); }
+.lock-meta .btn.on { background: var(--amber-face); border-color: var(--amber); }
 .roster button[aria-current='true'] { background: var(--amber-face); }
 @media (hover: hover) { .roster button:hover { background: #F3F1ED; } }
 .roster .hak { font-size: var(--t-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
