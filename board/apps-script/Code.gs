@@ -238,6 +238,7 @@ function handle_(p) {
     case 'issueAll':   return issueAll_(p, who);
     case 'setField':   return setField_(p, who, 'confirmed');
     case 'approveField': return approveField_(p, who);
+    case 'setLock':    return setLock_(p.hak, String(p.on || '') === '1', who);
     case 'setAlias':   return setAlias_(p, who);
     case 'removeAlias': return removeAlias_(p, who);
     default:           return { ok: false, error: '알 수 없는 요청입니다: ' + action };
@@ -1156,6 +1157,8 @@ function setState_(p, who) {
   if (slot === 'rank' && !(rank >= 1 && rank <= 6)) {
     return { ok: false, error: '순위는 1~6 사이여야 합니다.' };
   }
+  var lockedOld = lockedReply_(p.hak);
+  if (lockedOld) return lockedOld;
   upsert_(SHEET.state, ['id'], {
     id: p.id, hak: p.hak, slot: slot, rank: rank, by: who, at: now_()
   });
@@ -1200,6 +1203,8 @@ function setRank_(p, who) {
   if (slot === 'rank' && !(rank >= 1 && rank <= 6)) {
     return { ok: false, error: '순위는 1~6 사이여야 합니다.' };
   }
+  var locked = lockedReply_(p.hak);
+  if (locked) return locked;
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
@@ -1389,7 +1394,7 @@ function ownsApp_(hak, id) {
 /** 토큰으로 여는 경로. 여기 적힌 것만 학생이 부를 수 있다. */
 var STUDENT_ACTION = {
   student: 1, studentDate: 1, studentApplyNo: 1, studentField: 1, studentResult: 1,
-  studentNote: 1, studentNoteRemove: 1, studentAsk: 1, studentRank: 1
+  studentNote: 1, studentNoteRemove: 1, studentAsk: 1, studentRank: 1, studentLock: 1
 };
 
 function studentAction_(action, p) {
@@ -1404,6 +1409,8 @@ function studentAction_(action, p) {
    * 빼야 한다. 여태 여기서 「본인 지원 내역이 아닙니다」로 끊겨서
    * **학생이 생년월일을 저장할 길이 아예 없었다.**
    */
+  // 「이대로 확정」 — 학생이 제 6칸에 마감을 건다. 푸는 것은 담임뿐이라 켜기만 받는다.
+  if (action === 'studentLock') return setLock_(hak, true, hak + ' 학생');
   var birthOnly = action === 'studentField' && String(p.field || '').trim() === '생년월일';
   if (!birthOnly && (!p.id || !ownsApp_(hak, p.id))) {
     return { ok: false, error: '본인 지원 내역이 아닙니다.' };
@@ -1535,6 +1542,57 @@ function approveDate_(p, who) {
 /* ===== 원서를 낸 뒤에 채워지는 칸 =================================== */
 
 var FIELDS = ['수험번호', '최종경쟁률', '생년월일'];
+
+/* ===== 마감(★) =======================================================
+ * 원서를 내고 나면 6칸은 사실이 된다. 그 뒤에 누가 순위를 건드리면 대장·보고서·
+ * 면접 일정이 낸 원서와 어긋난다. 그래서 학생별로 **마감 표시 하나**를 둔다 —
+ * 입력 탭에 `마감 = ★` 한 줄(생년월일처럼 id 가 빈, 학생당 하나인 칸).
+ *
+ *   거는 것    담임(setLock) · 학생 본인(studentLock — 「이대로 확정」)
+ *   푸는 것    담임만. 학생이 풀 수 있으면 마감이 아니다
+ *   막는 것    순위·후보·지원·보관 자리 옮기기(setRank_·setState_) — 6칸의 모양
+ *   안 막는 것 면접 날짜·결과·수험번호·메모 — 원서를 낸 **뒤에** 적는 것들이다
+ *
+ * FIELDS 에는 안 넣는다 — 일반 studentField 길로 학생이 마감을 지우면 안 된다.
+ */
+var LOCK_FIELD = '마감';
+
+function lockOf_(hak) {
+  var all = rows_(SHEET.field);
+  for (var i = 0; i < all.length; i++) {
+    if (!String(all[i].id || '') && String(all[i].hak) === String(hak)
+        && String(all[i].field) === LOCK_FIELD && String(all[i].value || '').trim()) return all[i];
+  }
+  return null;
+}
+
+function setLock_(hak, on, who) {
+  hak = String(hak || '').trim();
+  if (!hak) return { ok: false, error: '학번이 필요합니다.' };
+  var was = lockOf_(hak);
+  if (on) {
+    if (was) return { ok: true, at: was.at, by: was.by, already: true };
+    var now = now_();
+    upsert_(SHEET.field, ['id', 'hak', 'field'], {
+      id: '', hak: hak, field: LOCK_FIELD, value: '★', status: 'confirmed', by: who, at: now
+    });
+    log_(who, 'lock', hak + ' 마감 ★');
+    return { ok: true, at: now, by: who };
+  }
+  if (was) {
+    tab_(SHEET.field).deleteRow(was._row);
+    log_(who, 'unlock', hak + ' 마감 풀기');
+  }
+  return { ok: true };
+}
+
+/** 마감된 학생의 자리 옮기기는 거절한다 — 화면은 `locked: true` 로 알아본다. */
+function lockedReply_(hak) {
+  var lk = lockOf_(hak);
+  if (!lk) return null;
+  return { ok: false, locked: true, by: lk.by, at: lk.at,
+    error: '★ 마감된 배치입니다. 담임 선생님이 마감을 풀어야 바꿀 수 있습니다.' };
+}
 
 /**
  * 수험번호·최종경쟁률·생년월일을 적는다.

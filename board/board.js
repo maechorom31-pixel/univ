@@ -28,6 +28,8 @@ const MY_CLASS_KEY = 'board.myClass';
 let myClass = '';    // 이 컴퓨터의 기본 반 (이 컴퓨터만의 취향이라 store에 두지 않는다)
 let notice = '';
 let busy = false;
+/** 지금 고른 학생이 마감(★)됐나 — 고르개·끌기·놓기 띠가 이걸 본다. render() 가 잰다. */
+let lockedNow = false;
 
 try { myClass = localStorage.getItem(MY_CLASS_KEY) || ''; } catch (err) { myClass = ''; }
 
@@ -148,7 +150,14 @@ function renderRoster() {
     b.setAttribute('aria-current', String(s.hak === store.selection.hak));
     b.onclick = () => { store.select({ hak: s.hak, appId: '' }); notice = ''; renderRoster(); render(); };
     b.appendChild(el('span', 'hak num', s.hak));
-    b.appendChild(el('span', 'nm', tidy(s.name)));
+    const nm = el('span', 'nm', tidy(s.name));
+    // ★ 는 이름 칸 **안에** — 명단 줄이 고정 격자라 따로 두면 건수가 다음 줄로 접힌다
+    if (store.lockOf(s.hak)) {
+      const star = el('span', 'star', ' ★');
+      star.title = '마감 — 순위·지원 자리가 잠겨 있습니다';
+      nm.appendChild(star);
+    }
+    b.appendChild(nm);
     const cnt = el('span', `cnt${ranked >= 6 ? ' full' : ''}`, `${ranked}/6`);
     cnt.title = `순위 ${ranked}칸${cards > ranked ? ` (같이 고민 ${cards - ranked}칸)` : ''} · 지원 ${apps.length}건`;
     b.appendChild(cnt);
@@ -296,6 +305,7 @@ function render() {
     return;
   }
 
+  lockedNow = Boolean(store.lockOf(student.hak));
   main.appendChild(header(student));
 
   const apps = store.appsOf(student.hak);
@@ -362,7 +372,7 @@ function render() {
         cell.appendChild(box);
       }
     });
-    if (here.length === 1) cell.appendChild(pairDrop(r, here[0]));
+    if (here.length === 1 && !lockedNow) cell.appendChild(pairDrop(r, here[0]));
     slots.appendChild(cell);
   }
   main.appendChild(slots);
@@ -656,7 +666,46 @@ function header(s) {
   }
   meta.textContent = bits.join('  ·  ') || '성적 정보가 없습니다';
   box.appendChild(meta);
+  box.appendChild(lockRow(s));
   return box;
+}
+
+/**
+ * **마감(★).** 원서를 내고 나면 6칸은 사실이다. 그 뒤에 누가 순위를 건드리면
+ * 대장·보고서·면접 일정이 낸 원서와 어긋난다. 여기서 걸면 이 학생의 순위·후보·
+ * 지원 자리가 교사·학생 화면 모두에서 잠긴다(서버가 거절한다). 푸는 것도 여기서만 —
+ * 학생은 「이대로 확정」으로 걸 수만 있다. 날짜·결과·메모는 마감 뒤에도 적는다.
+ */
+function lockRow(s) {
+  const lk = store.lockOf(s.hak);
+  const row = el('div', 'lock-row');
+  if (lk) {
+    row.appendChild(el('span', 'star', '★ 마감'));
+    const when = lk.at ? String(lk.at).slice(0, 10) : '';
+    row.appendChild(el('span', 'meta',
+      `${lk.by || ''}${when ? ` · ${when}` : ''} — 순위·후보·전문대 지원 자리를 바꿀 수 없습니다.`));
+  } else {
+    row.appendChild(el('span', 'meta', '원서를 낸 뒤 마감하면 순위·지원 자리가 잠깁니다. 학생 화면도 같이 잠깁니다.'));
+  }
+  const btn = el('button', 'btn', lk ? '마감 풀기' : '★ 마감');
+  btn.type = 'button';
+  btn.disabled = busy;
+  btn.onclick = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      await store.setLock(s.hak, !lk);
+      notice = lk ? '마감을 풀었습니다. 다시 옮길 수 있습니다.'
+        : '★ 마감했습니다. 순위·후보·전문대 지원 자리는 이제 바뀌지 않습니다.';
+    } catch (err) {
+      notice = `오류: ${err.message}`;
+    }
+    busy = false;
+    renderRoster();
+    render();
+  };
+  row.appendChild(btn);
+  return row;
 }
 
 /* ── 카드 ─────────────────────────────────────────────────────── */
@@ -670,7 +719,7 @@ function header(s) {
 
 /** 끌 수 있게 만든다. */
 function dragSource(box, app) {
-  box.draggable = true;
+  box.draggable = !lockedNow;
   box.dataset.id = app.id;
   box.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('text/plain', app.id);
@@ -1164,7 +1213,8 @@ function mover(app) {
       }
     }
   }
-  sel.disabled = busy;
+  sel.disabled = busy || lockedNow;
+  if (lockedNow) sel.title = '★ 마감 — 자리를 바꾸려면 위의 「마감 풀기」를 먼저 눌러 주세요';
   sel.onchange = () => move(app, sel.value);
   box.appendChild(sel);
 
@@ -1375,6 +1425,11 @@ function glide(before) {
 
 async function move(app, value) {
   if (busy) return;
+  if (lockedNow) {
+    notice = '★ 마감된 배치입니다. 바꾸려면 「마감 풀기」를 먼저 눌러 주세요.';
+    render();
+    return;
+  }
   const [kind, rankText] = value.split(':');
   // `pair:3` 은 3순위에 「같이 고민」 — 밀어내지 않고 나란히 넣는다
   const pair = kind === 'pair';
@@ -1444,6 +1499,10 @@ async function move(app, value) {
      */
     if (failed.stale) {
       notice = '학생이 방금 순위를 바꿨습니다. 새로 불러왔습니다 — 다시 해 주세요.';
+      try { await store.load(); } catch (e2) { notice = `오류: ${e2.message}`; }
+    } else if (failed.locked) {
+      // 학생이 방금 「이대로 확정」했을 수 있다 — 새로 받아 ★ 를 띄운다
+      notice = '★ 그 사이에 마감됐습니다. 새로 불러왔습니다.';
       try { await store.load(); } catch (e2) { notice = `오류: ${e2.message}`; }
     } else {
       notice = `오류: ${failed.message}`;

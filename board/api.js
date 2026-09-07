@@ -38,7 +38,7 @@ const DEFAULT_KEY = '84348434';
  */
 const STUDENT_ACTION = new Set([
   'student', 'studentDate', 'studentApplyNo', 'studentField', 'studentResult',
-  'studentNote', 'studentNoteRemove', 'studentAsk', 'studentRank',
+  'studentNote', 'studentNoteRemove', 'studentAsk', 'studentRank', 'studentLock',
 ]);
 let apiUrl = '';
 let teacherKey = '';
@@ -173,6 +173,9 @@ export async function call(action, params, opts = {}) {
          */
         err.server = true;
         if (data.stale) err.stale = true;
+        // 마감(★)도 값으로 — 화면이 「방금 마감됐다」를 알아보고 표시를 띄운다
+        if (data.locked) { err.locked = true; err.by = data.by || ''; err.at = data.at || ''; }
+        if (data.full) err.full = true;
         throw err;
       }
       return data;
@@ -196,6 +199,8 @@ export const students = (fresh) => call('students', fresh ? { fresh: 1 } : {}, {
 // setState 는 setRank 로 통일했다. 서버 쪽 setState_ 는 옛 화면을 위해 남아 있다.
 /** 순위 옮기기 — 맞바꾸기까지 서버가 한 번에 한다. board/CONTRACT.md §2.4 */
 export const setRank = (s) => call('setRank', s);
+/** 마감(★) 걸기·풀기 — 담임. 학생은 studentLock 으로 걸기만 한다. */
+export const setLock = (hak, on) => call('setLock', { hak, on: on ? 1 : '' });
 export const addNote = (n) => call('addNote', n);
 export const removeNote = (noteId) => call('removeNote', { noteId });
 export const setResult = (r) => call('setResult', r);

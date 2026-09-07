@@ -791,6 +791,31 @@ export function fieldOf(app, field) {
   return state.fields.get(fieldKey(hak, id, field)) || null;
 }
 
+/* ── 마감(★) ────────────────────────────────────────────────────
+ * 원서를 내고 나면 6칸은 사실이다. 학생별 마감 표시 하나(입력 탭 `마감 = ★`)를
+ * 서버가 보고 순위·지원 자리 옮기기를 거절한다. 날짜·결과·메모는 잠그지 않는다.
+ */
+export function lockOf(hak) {
+  return state.fields.get(`|${hak}|마감`) || null;
+}
+
+export async function setLock(hak, on) {
+  const key = `|${hak}|마감`;
+  const before = new Map(state.fields);
+  if (on) {
+    state.fields.set(key, { value: '★', status: 'confirmed', by: state.who || '', at: new Date().toISOString() });
+  } else state.fields.delete(key);
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.setLock(hak, on);
+  } catch (err) {
+    state.fields = before;
+    emit('change', 'state');
+    throw err;
+  }
+}
+
 export async function setField(app, field, value) {
   const hak = app && app.hak ? app.hak : app;
   const id = perStudent(field) ? '' : (app && app.id) || '';

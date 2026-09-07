@@ -211,6 +211,13 @@ button { font: inherit; color: inherit; }
 .who .name { font-size: var(--t-md); font-weight: 700; }
 .who .meta { font-size: var(--t-xs); color: var(--muted); }
 .who .meta b { color: var(--text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* 마감(★) — 별은 글자용 어두운 앰버. 줄은 여백으로만 가른다. */
+.star { color: var(--amber-ink); font-weight: 700; }
+.lock-row { display: flex; flex-wrap: wrap; align-items: center; margin-top: var(--s1); }
+.lock-row > * { margin-right: var(--s2); }
+.lock-row .star { font-size: var(--t-sm); }
+.lock-row .btn { margin-left: auto; margin-right: 0; }
+.note.lock { border-color: var(--amber); background: var(--amber-face); }
 
 /* ── 6칸 ──────────────────────────────────────────────────────── */
 

@@ -250,6 +250,9 @@ export const demo = {
       value: '14.9', status: 'confirmed', by: '보기용 계정', at: '2026-09-15T10:00:00Z' },
     { id: '', hak: '3201', field: '생년월일',
       value: '2008-03-14', status: 'confirmed', by: '보기용 계정', at: '2026-09-15T10:00:00Z' },
+    // 마감(★) — 원서를 낸 뒤 잠근 학생. 명단의 ★, 잠긴 고르개, 학생 화면의 띠를 여기서 본다.
+    { id: '', hak: '3212', field: '마감',
+      value: '★', status: 'confirmed', by: '3212 학생', at: '2026-09-14T21:30:00Z' },
   ],
   unknownCols: [],
   skipped: 0,
@@ -268,7 +271,8 @@ export function studentDemoFor(hak) {
     ok: true, hak, student,
     apps: A.filter((a) => a.hak === hak),
     state: placed.filter((r) => r.hak === hak),
-    dates: [], notes: [], results: [], fields: [],
+    dates: [], notes: [], results: [],
+    fields: demo.fields.filter((r) => String(r.hak) === hak),
   };
 }
 
