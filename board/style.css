@@ -213,11 +213,11 @@ button { font: inherit; color: inherit; }
 .who .meta b { color: var(--text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
 /* 마감(★) — 별은 글자용 어두운 앰버. 줄은 여백으로만 가른다. */
 .star { color: var(--amber-ink); font-weight: 700; }
-.lock-row { display: flex; flex-wrap: wrap; align-items: center; margin-top: var(--s1); }
-.lock-row > * { margin-right: var(--s2); }
-.lock-row .star { font-size: var(--t-sm); }
-.lock-row .btn { margin-left: auto; margin-right: 0; }
-.note.lock { border-color: var(--amber); background: var(--amber-face); }
+/* 카드의 마감 단추 — 켜지면 앰버 면. 마감된 카드는 머리에 ★ 만 더한다. */
+.star-btn { padding-left: var(--s2); padding-right: var(--s2); }
+.star-btn.on { background: var(--amber-face); border-color: var(--amber); }
+.lock-line { margin-top: var(--s2); }
+.lock-line .hint { color: var(--amber-ink); }
 
 /* ── 6칸 ──────────────────────────────────────────────────────── */
 
@@ -348,7 +348,11 @@ body.dragging .pair-drop { display: block; }
 .figs.two > .fig-g.approx + * { border-left-style: dashed; }
 .fig-g.approx .fig .v { font-weight: 500; color: var(--text-2); }
 /* 자리 옮기기 상자와 「자세히」. 카드 안에서도 목록 줄에서도 같은 모양이다. */
-.move { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); align-items: center; }
+.move {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); align-items: center;
+  /* 6칸 카드에는 ★ 단추가 하나 더 선다 — 셋째 칸은 자동 열로, 후보 카드는 둘 그대로 */
+  grid-auto-flow: column; grid-auto-columns: auto;
+}
 .move .btn { white-space: nowrap; }
 /* 고름 상자는 어디서든 16px·34px 이상 — 그 아래면 iOS 가 포커스에 화면을 확대하고,
    데스크톱에서도 26px 짜리 상자는 누르기 전에 찾아야 했다. */

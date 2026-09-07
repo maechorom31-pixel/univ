@@ -250,9 +250,11 @@ export const demo = {
       value: '14.9', status: 'confirmed', by: '보기용 계정', at: '2026-09-15T10:00:00Z' },
     { id: '', hak: '3201', field: '생년월일',
       value: '2008-03-14', status: 'confirmed', by: '보기용 계정', at: '2026-09-15T10:00:00Z' },
-    // 마감(★) — 원서를 낸 뒤 잠근 학생. 명단의 ★, 잠긴 고르개, 학생 화면의 띠를 여기서 본다.
-    { id: '', hak: '3212', field: '마감',
-      value: '★', status: 'confirmed', by: '3212 학생', at: '2026-09-14T21:30:00Z' },
+    // 마감(★) — 원서를 낸 카드. 3201 은 1순위만 냈고(학생이 확정), 3204 는 지원 전문대를 담임이 마감했다.
+    { id: at('건국대', '영어영문학과').id, hak: '3201', field: '마감',
+      value: '★', status: 'confirmed', by: '3201 학생', at: '2026-09-14T21:30:00Z' },
+    { id: at('광주보건대', '치위생과').id, hak: '3204', field: '마감',
+      value: '★', status: 'confirmed', by: '보기용 계정', at: '2026-09-15T09:00:00Z' },
   ],
   unknownCols: [],
   skipped: 0,
@@ -320,5 +322,8 @@ export const studentDemo = {
     { id: at('건국대', '영어영문학과').id, hak: '3201', field: '수험번호',
       value: '20260012', status: 'student' },
     { id: '', hak: '3201', field: '생년월일', value: '2008-03-14', status: 'confirmed' },
+    // 교사 데모와 같은 카드가 마감(★) — 두 화면이 같은 것을 보는지 여기서 맞춘다
+    { id: at('건국대', '영어영문학과').id, hak: '3201', field: '마감',
+      value: '★', status: 'confirmed', by: '3201 학생', at: '2026-09-14T21:30:00Z' },
   ],
 };

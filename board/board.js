@@ -28,8 +28,6 @@ const MY_CLASS_KEY = 'board.myClass';
 let myClass = '';    // 이 컴퓨터의 기본 반 (이 컴퓨터만의 취향이라 store에 두지 않는다)
 let notice = '';
 let busy = false;
-/** 지금 고른 학생이 마감(★)됐나 — 고르개·끌기·놓기 띠가 이걸 본다. render() 가 잰다. */
-let lockedNow = false;
 
 try { myClass = localStorage.getItem(MY_CLASS_KEY) || ''; } catch (err) { myClass = ''; }
 
@@ -151,15 +149,18 @@ function renderRoster() {
     b.onclick = () => { store.select({ hak: s.hak, appId: '' }); notice = ''; renderRoster(); render(); };
     b.appendChild(el('span', 'hak num', s.hak));
     const nm = el('span', 'nm', tidy(s.name));
-    // ★ 는 이름 칸 **안에** — 명단 줄이 고정 격자라 따로 두면 건수가 다음 줄로 접힌다
-    if (store.lockOf(s.hak)) {
+    // ★ 는 이름 칸 **안에** — 명단 줄이 고정 격자라 따로 두면 건수가 다음 줄로 접힌다.
+    // 6칸·전문대 지원 카드가 **전부** 마감됐을 때만 붙는다 — 반쯤은 아직 고민 중이다.
+    const lk = store.lockCount(s.hak);
+    if (lk.placed && lk.locked === lk.placed) {
       const star = el('span', 'star', ' ★');
-      star.title = '마감 — 순위·지원 자리가 잠겨 있습니다';
+      star.title = `마감 — 낸 원서 ${lk.locked}장이 모두 잠겨 있습니다`;
       nm.appendChild(star);
     }
     b.appendChild(nm);
     const cnt = el('span', `cnt${ranked >= 6 ? ' full' : ''}`, `${ranked}/6`);
-    cnt.title = `순위 ${ranked}칸${cards > ranked ? ` (같이 고민 ${cards - ranked}칸)` : ''} · 지원 ${apps.length}건`;
+    cnt.title = `순위 ${ranked}칸${cards > ranked ? ` (같이 고민 ${cards - ranked}칸)` : ''} · 지원 ${apps.length}건`
+      + (lk.locked ? ` · ★ 마감 ${lk.locked}/${lk.placed}` : '');
     b.appendChild(cnt);
 
     // 12월에는 6칸 숫자보다 「확인할 게 있나」가 급하다.
@@ -305,7 +306,6 @@ function render() {
     return;
   }
 
-  lockedNow = Boolean(store.lockOf(student.hak));
   main.appendChild(header(student));
 
   const apps = store.appsOf(student.hak);
@@ -372,7 +372,7 @@ function render() {
         cell.appendChild(box);
       }
     });
-    if (here.length === 1 && !lockedNow) cell.appendChild(pairDrop(r, here[0]));
+    if (here.length === 1 && !store.lockOf(here[0])) cell.appendChild(pairDrop(r, here[0]));
     slots.appendChild(cell);
   }
   main.appendChild(slots);
@@ -666,46 +666,7 @@ function header(s) {
   }
   meta.textContent = bits.join('  ·  ') || '성적 정보가 없습니다';
   box.appendChild(meta);
-  box.appendChild(lockRow(s));
   return box;
-}
-
-/**
- * **마감(★).** 원서를 내고 나면 6칸은 사실이다. 그 뒤에 누가 순위를 건드리면
- * 대장·보고서·면접 일정이 낸 원서와 어긋난다. 여기서 걸면 이 학생의 순위·후보·
- * 지원 자리가 교사·학생 화면 모두에서 잠긴다(서버가 거절한다). 푸는 것도 여기서만 —
- * 학생은 「이대로 확정」으로 걸 수만 있다. 날짜·결과·메모는 마감 뒤에도 적는다.
- */
-function lockRow(s) {
-  const lk = store.lockOf(s.hak);
-  const row = el('div', 'lock-row');
-  if (lk) {
-    row.appendChild(el('span', 'star', '★ 마감'));
-    const when = lk.at ? String(lk.at).slice(0, 10) : '';
-    row.appendChild(el('span', 'meta',
-      `${lk.by || ''}${when ? ` · ${when}` : ''} — 순위·후보·전문대 지원 자리를 바꿀 수 없습니다.`));
-  } else {
-    row.appendChild(el('span', 'meta', '원서를 낸 뒤 마감하면 순위·지원 자리가 잠깁니다. 학생 화면도 같이 잠깁니다.'));
-  }
-  const btn = el('button', 'btn', lk ? '마감 풀기' : '★ 마감');
-  btn.type = 'button';
-  btn.disabled = busy;
-  btn.onclick = async () => {
-    if (busy) return;
-    busy = true;
-    try {
-      await store.setLock(s.hak, !lk);
-      notice = lk ? '마감을 풀었습니다. 다시 옮길 수 있습니다.'
-        : '★ 마감했습니다. 순위·후보·전문대 지원 자리는 이제 바뀌지 않습니다.';
-    } catch (err) {
-      notice = `오류: ${err.message}`;
-    }
-    busy = false;
-    renderRoster();
-    render();
-  };
-  row.appendChild(btn);
-  return row;
 }
 
 /* ── 카드 ─────────────────────────────────────────────────────── */
@@ -719,7 +680,7 @@ function lockRow(s) {
 
 /** 끌 수 있게 만든다. */
 function dragSource(box, app) {
-  box.draggable = !lockedNow;
+  box.draggable = !store.lockOf(app);   // 마감된 카드는 끌지 않는다
   box.dataset.id = app.id;
   box.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('text/plain', app.id);
@@ -799,8 +760,10 @@ function card(app, rank, student) {
   dropTarget(box, (dropped) => (dropped.id === app.id ? null : (rank === 'tray' ? 'tray' : `rank:${rank}`)));
   openable(box, app);
 
-  if (rank === 'tray') box.appendChild(el('div', 'rank', '전문대 지원'));
-  else if (rank) box.appendChild(el('div', 'rank', `${rank}순위`));
+  const star = store.lockOf(app) ? ' ★' : '';
+  if (star) box.classList.add('locked');
+  if (rank === 'tray') box.appendChild(el('div', 'rank', `전문대 지원${star}`));
+  else if (rank) box.appendChild(el('div', 'rank', `${rank}순위${star}`));
   box.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
   box.appendChild(figures(app, student));
@@ -822,7 +785,8 @@ function compactCard(app, rank, student) {
   dropTarget(box, (dropped) => (dropped.id === app.id ? null : `rank:${rank}`));
   openable(box, app);
 
-  box.appendChild(el('div', 'rank', `${rank}순위 · 같이 고민`));
+  if (store.lockOf(app)) box.classList.add('locked');
+  box.appendChild(el('div', 'rank', `${rank}순위 · 같이 고민${store.lockOf(app) ? ' ★' : ''}`));
   box.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
   box.appendChild(brief(app));
@@ -1213,10 +1177,40 @@ function mover(app) {
       }
     }
   }
-  sel.disabled = busy || lockedNow;
-  if (lockedNow) sel.title = '★ 마감 — 자리를 바꾸려면 위의 「마감 풀기」를 먼저 눌러 주세요';
+  const lk = store.lockOf(app);
+  sel.disabled = busy || Boolean(lk);
+  if (lk) sel.title = '★ 마감된 카드 — 옮기려면 「★ 풀기」를 먼저 눌러 주세요';
   sel.onchange = () => move(app, sel.value);
   box.appendChild(sel);
+
+  /*
+   * **마감(★)은 카드마다.** 원서는 카드 단위로 내니, 낸 카드만 잠근다 — 그 카드는
+   * 옮길 수도, 밀어낼 수도, 옆에 같이 고민을 걸 수도 없다. 안 낸 카드는 그대로
+   * 움직인다. 6칸·전문대 지원에 든 카드에만 단추가 선다 — 후보를 마감할 일은 없다.
+   * 학생도 제 카드를 「★ 확정」할 수 있고, 푸는 것은 여기서만이다.
+   */
+  const slot = now.slot;
+  if (slot === 'rank' || slot === 'tray') {
+    const star = el('button', `btn star-btn${lk ? ' on' : ''}`, lk ? '★ 풀기' : '★');
+    star.type = 'button';
+    star.title = lk
+      ? `★ 마감 — ${lk.by || ''}${lk.at ? ` · ${String(lk.at).slice(0, 10)}` : ''}. 누르면 풉니다`
+      : '★ 마감 — 원서를 낸 카드를 잠급니다. 학생 화면도 같이 잠깁니다';
+    star.setAttribute('aria-label', `${app.univ} ${app.dept} ${lk ? '마감 풀기' : '마감'}`);
+    star.disabled = busy;
+    star.onclick = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        await store.setLock(app, !lk);
+        notice = lk ? `${shortName(app)} 마감을 풀었습니다.` : `★ ${shortName(app)}을(를) 마감했습니다. 이 카드는 이제 옮기지 않습니다.`;
+      } catch (err) { notice = `오류: ${err.message}`; }
+      busy = false;
+      renderRoster();
+      render();
+    };
+    box.appendChild(star);
+  }
 
   // 카드를 눌러도 열리지만, 눌러야 열린다는 걸 알 수 있게 단추를 함께 둔다.
   // 키보드만 쓰는 경우에도 이 단추가 유일한 길이다.
@@ -1425,8 +1419,8 @@ function glide(before) {
 
 async function move(app, value) {
   if (busy) return;
-  if (lockedNow) {
-    notice = '★ 마감된 배치입니다. 바꾸려면 「마감 풀기」를 먼저 눌러 주세요.';
+  if (store.lockOf(app)) {
+    notice = `★ ${shortName(app)}은(는) 마감된 카드라 옮길 수 없습니다. 카드의 「★ 풀기」를 먼저 눌러 주세요.`;
     render();
     return;
   }
@@ -1443,6 +1437,13 @@ async function move(app, value) {
   const there = slot === 'rank' ? store.occupants(app.hak, rank).filter((a) => a.id !== app.id) : [];
   if (there.length > 1) {
     notice = `${rank}순위에는 이미 둘이 같이 고민 중입니다. 하나를 먼저 옮겨 주세요.`;
+    render();
+    return;
+  }
+  // 마감된 카드가 있는 칸에는 밀어내지도, 옆에 같이 고민을 걸지도 못한다
+  const lockedThere = there.find((a) => store.lockOf(a));
+  if (lockedThere) {
+    notice = `${rank}순위의 ${shortName(lockedThere)}은(는) ★ 마감된 카드라 밀어내거나 옆에 둘 수 없습니다.`;
     render();
     return;
   }
@@ -1501,8 +1502,8 @@ async function move(app, value) {
       notice = '학생이 방금 순위를 바꿨습니다. 새로 불러왔습니다 — 다시 해 주세요.';
       try { await store.load(); } catch (e2) { notice = `오류: ${e2.message}`; }
     } else if (failed.locked) {
-      // 학생이 방금 「이대로 확정」했을 수 있다 — 새로 받아 ★ 를 띄운다
-      notice = '★ 그 사이에 마감됐습니다. 새로 불러왔습니다.';
+      // 학생이 방금 그 카드를 「★ 확정」했을 수 있다 — 새로 받아 ★ 를 띄운다
+      notice = `${failed.message} 새로 불러왔습니다.`;
       try { await store.load(); } catch (e2) { notice = `오류: ${e2.message}`; }
     } else {
       notice = `오류: ${failed.message}`;

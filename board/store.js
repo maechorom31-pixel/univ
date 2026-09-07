@@ -791,16 +791,17 @@ export function fieldOf(app, field) {
   return state.fields.get(fieldKey(hak, id, field)) || null;
 }
 
-/* ── 마감(★) ────────────────────────────────────────────────────
- * 원서를 내고 나면 6칸은 사실이다. 학생별 마감 표시 하나(입력 탭 `마감 = ★`)를
- * 서버가 보고 순위·지원 자리 옮기기를 거절한다. 날짜·결과·메모는 잠그지 않는다.
+/* ── 마감(★) — 카드마다 ────────────────────────────────────────
+ * 원서는 카드 단위로 낸다. 낸 카드에 마감을 걸면(입력 탭 `마감 = ★`, 수험번호처럼
+ * id 가 붙는 칸) 서버가 그 카드를 옮기거나 밀어내거나 옆에 같이 고민을 거는 요청을
+ * 거절한다. 안 낸 카드는 그대로 움직인다. 날짜·결과·메모는 잠그지 않는다.
  */
-export function lockOf(hak) {
-  return state.fields.get(`|${hak}|마감`) || null;
+export function lockOf(app) {
+  return state.fields.get(`${app.id}|${app.hak}|마감`) || null;
 }
 
-export async function setLock(hak, on) {
-  const key = `|${hak}|마감`;
+export async function setLock(app, on) {
+  const key = `${app.id}|${app.hak}|마감`;
   const before = new Map(state.fields);
   if (on) {
     state.fields.set(key, { value: '★', status: 'confirmed', by: state.who || '', at: new Date().toISOString() });
@@ -808,12 +809,24 @@ export async function setLock(hak, on) {
   emit('change', 'state');
   if (offline) return;
   try {
-    await api.setLock(hak, on);
+    await api.setLock(app.hak, app.id, on);
   } catch (err) {
     state.fields = before;
     emit('change', 'state');
     throw err;
   }
+}
+
+/** 이 학생의 6칸·전문대 지원 카드 중 마감된 것 — 명단의 ★ 는 전부 마감일 때만 붙는다. */
+export function lockCount(hak) {
+  let placed = 0; let locked = 0;
+  for (const app of appsOf(hak)) {
+    const slot = placementOf(app.id).slot;
+    if (slot !== 'rank' && slot !== 'tray') continue;
+    placed += 1;
+    if (lockOf(app)) locked += 1;
+  }
+  return { placed, locked };
 }
 
 export async function setField(app, field, value) {

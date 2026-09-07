@@ -477,42 +477,51 @@ sheets['입력'] = mkSheet([G.HEADERS['입력']]);
 }
 
 /*
- * **마감(★).** 담임이 걸면 학생이 못 바꾸고, 학생이 「이대로 확정」하면 담임도 못
- * 바꾼다. 푸는 것은 담임뿐. 날짜·결과는 마감 뒤에도 적힌다.
+ * **마감(★)은 카드마다.** 낸 카드는 못 옮기고, 그 카드를 밀어내지도, 옆에 같이
+ * 고민을 걸지도 못한다. 안 낸 카드는 그대로 움직인다. 푸는 것은 담임뿐.
+ * 날짜·결과는 마감 뒤에도 적힌다.
  */
-console.log('\n마감 ★');
+console.log('\n마감 ★ — 카드마다');
 {
   const K = '84348434';
   const v0 = G.handle_({ action: 'student', token: 'tokA' });
-  const a = v0.apps[0].id;
-  const b = 'X';
+  const a = v0.apps[0].id;                 // 학생의 진짜 지원 — studentLock 은 소유 검사를 지난다
   const lockRows = () => sheets['입력'].getDataRange().getValues().slice(1).filter((r) => String(r[2]) === '마감');
+  G.handle_({ action: 'setRank', key: K, id: a, hak: '3101', slot: 'rank', rank: 1 });
+  G.handle_({ action: 'setRank', key: K, id: 'X', hak: '3101', slot: 'rank', rank: 2 });
 
-  eq(G.handle_({ action: 'setLock', key: K, hak: '3101', on: 1 }).ok, true, '담임이 마감을 건다');
-  eq(lockRows().length, 1, '입력 탭에 마감 한 줄');
-  eq(G.handle_({ action: 'student', token: 'tokA' }).fields.some((f) => f.field === '마감' && f.value === '★'), true,
-    '학생 응답에 마감이 실린다');
-  const r1 = G.handle_({ action: 'studentRank', token: 'tokA', id: a, slot: 'rank', rank: 2 });
-  eq([r1.ok, r1.locked], [false, true], '마감 뒤 학생은 순위를 못 바꾼다');
-  const r2 = G.handle_({ action: 'setRank', key: K, id: a, hak: '3101', slot: 'rank', rank: 2 });
-  eq([r2.ok, r2.locked], [false, true], '담임도 못 바꾼다 — 풀어야 한다');
-  eq(G.handle_({ action: 'setState', key: K, id: a, hak: '3101', slot: 'rank', rank: 2 }).locked, true, '옛 길(setState)도 막힌다');
+  eq(G.handle_({ action: 'setLock', key: K, hak: '3101', id: a, on: 1 }).ok, true, '담임이 카드 하나를 마감한다');
+  eq(lockRows().length, 1, '입력 탭에 그 카드의 마감 한 줄');
+  eq(G.handle_({ action: 'student', token: 'tokA' }).fields.some((f) => f.field === '마감' && String(f.id) === String(a)), true,
+    '학생 응답에 카드의 마감이 실린다');
+  const r1 = G.handle_({ action: 'studentRank', token: 'tokA', id: a, slot: 'rank', rank: 3 });
+  eq([r1.ok, r1.locked], [false, true], '마감된 카드는 학생이 못 옮긴다');
+  const r2 = G.handle_({ action: 'setRank', key: K, id: a, hak: '3101', slot: 'pool' });
+  eq([r2.ok, r2.locked], [false, true], '담임도 못 옮긴다 — 풀어야 한다');
+  eq(G.handle_({ action: 'setState', key: K, id: a, hak: '3101', slot: 'pool' }).locked, true, '옛 길(setState)도 막힌다');
+  const r3 = G.handle_({ action: 'setRank', key: K, id: 'X', hak: '3101', slot: 'rank', rank: 1 });
+  eq([r3.ok, r3.locked], [false, true], '마감된 카드를 밀어내는 맞바꾸기도 막힌다');
+  const r4 = G.handle_({ action: 'setRank', key: K, id: 'Y', hak: '3101', slot: 'rank', rank: 1, pair: 1 });
+  eq([r4.ok, r4.locked], [false, true], '마감된 카드 옆에 같이 고민도 못 건다');
+  eq(G.handle_({ action: 'setRank', key: K, id: 'X', hak: '3101', slot: 'rank', rank: 4 }).ok, true,
+    '안 낸 카드는 그대로 움직인다');
   eq(G.handle_({ action: 'studentDate', token: 'tokA', id: a, kind: '면접', from: '2026-11-20', to: '2026-11-20' }).ok, true,
     '면접 날짜는 마감 뒤에도 적는다');
-  eq(G.handle_({ action: 'studentField', token: 'tokA', id: '', field: '마감', value: '' }).ok, false,
+  eq(G.handle_({ action: 'studentField', token: 'tokA', id: a, field: '마감', value: '' }).ok, false,
     '학생이 일반 입력 길로 마감을 지우지 못한다');
   eq(lockRows().length, 1, '마감 줄이 그대로다');
 
-  eq(G.handle_({ action: 'setLock', key: K, hak: '3101', on: 0 }).ok, true, '담임이 마감을 푼다');
+  eq(G.handle_({ action: 'setLock', key: K, hak: '3101', id: a, on: 0 }).ok, true, '담임이 마감을 푼다');
   eq(lockRows().length, 0, '마감 줄이 사라진다');
-  eq(G.handle_({ action: 'setRank', key: K, id: a, hak: '3101', slot: 'rank', rank: 2 }).ok, true, '풀면 다시 바꾼다');
+  eq(G.handle_({ action: 'setRank', key: K, id: a, hak: '3101', slot: 'rank', rank: 3 }).ok, true, '풀면 다시 옮긴다');
 
-  eq(G.handle_({ action: 'studentLock', token: 'tokA' }).ok, true, '학생이 「이대로 확정」한다');
+  eq(G.handle_({ action: 'studentLock', token: 'tokA', id: a }).ok, true, '학생이 제 카드를 「★ 확정」한다');
   eq(lockRows()[0][5], '3101 학생', '누가 걸었는지 남는다');
-  eq(G.handle_({ action: 'setRank', key: K, id: b, hak: '3101', slot: 'rank', rank: 3 }).locked, true, '학생이 건 마감도 담임을 막는다');
-  eq(G.handle_({ action: 'studentLock', token: 'tokA', on: 0 }).ok, true, '학생의 풀기 요청은');
+  eq(G.handle_({ action: 'studentLock', token: 'tokA', id: 'X' }).ok, false, '남의 것·없는 카드는 확정 못 한다');
+  eq(G.handle_({ action: 'setRank', key: K, id: a, hak: '3101', slot: 'pool' }).locked, true, '학생이 건 마감도 담임을 막는다');
+  eq(G.handle_({ action: 'studentLock', token: 'tokA', id: a, on: 0 }).ok, true, '학생의 풀기 요청은');
   eq(lockRows().length, 1, '아무것도 안 푼다 — 켜기만 받는다');
-  G.handle_({ action: 'setLock', key: K, hak: '3101', on: 0 });
+  G.handle_({ action: 'setLock', key: K, hak: '3101', id: a, on: 0 });
 }
 
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');

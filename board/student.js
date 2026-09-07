@@ -97,8 +97,7 @@ function apply(data) {
     `${String(r.id || '')}|${String(r.field)}`,
     { value: String(r.value || ''), status: String(r.status || 'confirmed'), by: r.by || '', at: r.at || '' },
   ]));
-  // 마감(★) — 담임이 걸었거나 내가 「이대로 확정」한 것. 순위·지원 자리가 잠긴다.
-  state.locked = state.fields.get('|마감') || null;
+
   state.results = new Map((data.results || []).map((r) => [String(r.id), {
     stage1: String(r.stage1 || ''), final: String(r.final || ''),
     reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
@@ -260,7 +259,6 @@ function render() {
     + (dd ? ` · 수능 D-${dd.days === 0 ? 'day' : dd.days}` : '');
 
   if (state.notice) main.appendChild(note(state.notice));
-  if (state.locked) main.appendChild(lockBanner());
 
   /*
    * 차례는 **지금 급한 것**을 따른다.
@@ -297,7 +295,6 @@ function render() {
    * 몇 칸을 채웠나」를 세지 않고 본다. 아래 카드마다 순위를 고르면 이 칸이 찬다.
    */
   main.appendChild(slotGrid(ranked, tray));
-  if (!state.locked && ranked.length) main.appendChild(lockOffer());
 
   /*
    * 위의 격자와 **제목이 겹치면 안 된다.** 둘 다 「지원 6칸」이면 같은 것이 두 번
@@ -694,7 +691,8 @@ function slotGrid(ranked, tray = []) {
   for (const r of RANKS) {
     const here = at(r);
     const box = el('div', here.length ? (here.length > 1 ? 'slot-card pair' : 'slot-card') : 'slot-card empty');
-    box.appendChild(el('div', 'rank', here.length > 1 ? `${r}순위 · 같이 고민` : `${r}순위`));
+    const starred = here.length === 1 && lockOf(here[0]) ? ' ★' : '';
+    box.appendChild(el('div', 'rank', (here.length > 1 ? `${r}순위 · 같이 고민` : `${r}순위`) + starred));
     /*
      * **한 칸에 둘이 들면 한 칸 안에 세로로 선다** — 사이에 「또는」. 끝까지
      * 둘 사이에서 못 정하는 칸이 있다. 고르개의 「같이 고민」으로 넣고, 정해지면
@@ -727,7 +725,7 @@ function slotGrid(ranked, tray = []) {
     const tgrid = el('div', 'slots mine');
     for (const app of tray) {
       const box = el('div', 'slot-card');
-      box.appendChild(el('div', 'rank', '전문대'));
+      box.appendChild(el('div', 'rank', `전문대${lockOf(app) ? ' ★' : ''}`));
       box.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
       box.appendChild(el('div', 'dept', tidy(app.dept)));
       const iv = dateOf(app, '면접');
@@ -764,7 +762,7 @@ function rankPicker(app) {
 
   const sel = document.createElement('select');
   sel.id = id;
-  sel.disabled = state.busy || Boolean(state.locked);
+  sel.disabled = state.busy || Boolean(lockOf(app));
   const now = state.placement.get(String(app.id)) || { slot: 'pool', rank: null };
   const opt = (value, text) => {
     const o = document.createElement('option');
@@ -809,7 +807,7 @@ function trayPicker(app) {
   wrap.appendChild(lab);
   const sel = document.createElement('select');
   sel.id = id;
-  sel.disabled = state.busy || Boolean(state.locked);
+  sel.disabled = state.busy || Boolean(lockOf(app));
   const now = state.placement.get(String(app.id)) || { slot: 'pool' };
   for (const [value, text] of [['pool', '후보 — 아직 고민 중'], ['tray', '지원 — 원서를 낸다']]) {
     const o = document.createElement('option');
@@ -832,7 +830,7 @@ function trayPicker(app) {
  * 들쭉날쭉해서(안드로이드 크롬은 아예 안 된다) 고르개가 늘 남아 있어야 한다.
  */
 function dragify(node, app) {
-  if (outsideLimit(app) || state.locked) return;
+  if (outsideLimit(app) || lockOf(app)) return;   // 마감된 카드는 끌지 않는다
   node.draggable = true;
   node.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('text/plain', String(app.id));
@@ -863,8 +861,8 @@ function dropify(node, where) {
 
 async function moveRank(app, value) {
   if (state.busy) return;
-  if (state.locked) {
-    state.notice = '★ 마감된 배치입니다. 바꿔야 하면 담임 선생님께 말해 주세요.';
+  if (lockOf(app)) {
+    state.notice = `★ ${tidy(shortUniv(app.univ))}은(는) 확정한 지원이라 옮길 수 없습니다. 바꿔야 하면 담임 선생님께 말해 주세요.`;
     render();
     return;
   }
@@ -879,6 +877,13 @@ async function moveRank(app, value) {
   // 둘이 든 칸은 못 받는다 — 어느 쪽을 밀어낼지는 사람이 정할 일이다
   if (there.length > 1) {
     state.notice = `${rank}순위에는 이미 둘이 같이 고민 중입니다. 하나를 먼저 옮겨 주세요.`;
+    render();
+    return;
+  }
+  // 확정한 카드가 있는 칸에는 밀어내지도, 옆에 같이 고민을 걸지도 못한다
+  const lockedThere = there.find((a) => lockOf(a));
+  if (lockedThere) {
+    state.notice = `${rank}순위의 ${tidy(shortUniv(lockedThere.univ))}은(는) ★ 확정한 지원이라 밀어내거나 옆에 둘 수 없습니다.`;
     render();
     return;
   }
@@ -934,9 +939,11 @@ async function moveRank(app, value) {
         apply(await api.call('student', { token: state.token }, { timeout: 45000 }));
       } catch (e2) { state.notice = `다시 불러오지 못했습니다 — ${e2.message}`; }
     } else if (err.locked) {
-      // 선생님이 방금 마감했다 — 표시를 띄우고 고르개를 잠근다
-      state.locked = { value: '★', status: 'confirmed', by: err.by || '', at: err.at || '' };
-      state.notice = '★ 선생님이 방금 마감하셨습니다. 순위는 이제 바뀌지 않습니다.';
+      // 선생님이 방금 마감했다 — 새로 받아 ★ 를 띄운다
+      state.notice = `${err.message} 새로 불러왔습니다.`;
+      try {
+        apply(await api.call('student', { token: state.token }, { timeout: 45000 }));
+      } catch (e2) { state.notice = `다시 불러오지 못했습니다 — ${e2.message}`; }
     } else {
       state.notice = `순위를 바꾸지 못했습니다 — ${err.message}`;
     }
@@ -945,56 +952,60 @@ async function moveRank(app, value) {
   render();
 }
 
-/* ── 마감(★) ────────────────────────────────────────────────────
- * 원서를 냈으면 6칸은 사실이다. 「이대로 확정」을 누르면 순위와 전문대 지원 여부가
- * 잠기고, 선생님 보드도 같은 표시를 본다. 푸는 것은 담임 선생님만 — 학생이 풀 수
- * 있으면 마감이 아니다. 날짜·결과·메모는 마감 뒤에도 적는다.
+/* ── 마감(★) — 카드마다 ────────────────────────────────────────
+ * 원서는 카드 단위로 낸다. 낸 카드를 「★ 확정」하면 그 카드의 순위(전문대는 지원
+ * 여부)가 잠기고 선생님 보드에도 ★ 가 붙는다. 안 낸 카드는 그대로 움직인다.
+ * 푸는 것은 담임 선생님만 — 학생이 풀 수 있으면 마감이 아니다.
+ * 날짜·결과·메모는 마감 뒤에도 적는다.
  */
-function lockBanner() {
-  const lk = state.locked || {};
-  const who = /학생$/.test(String(lk.by || '')) ? '내가 확정한' : '담임 선생님이 마감한';
-  const p = el('p', 'note lock',
-    `★ 마감 — ${who} 배치입니다. 순위와 전문대 지원 여부는 바꿀 수 없습니다.`
-      + ' 바꿔야 하면 담임 선생님께 말해 주세요. 면접 날짜·결과·메모는 그대로 적을 수 있습니다.');
-  p.setAttribute('role', 'status');
-  return p;
-}
+const lockOf = (app) => state.fields.get(`${app.id}|마감`) || null;
 
-function lockOffer() {
-  const box = el('section', 'panel');
+/** 카드 아래 한 줄 — 확정 단추, 또는 확정됐다는 말. 6칸·전문대 지원에 든 카드에만. */
+function lockLine(app) {
+  const place = state.placement.get(String(app.id)) || {};
+  if (place.slot !== 'rank' && place.slot !== 'tray') return null;
+  const lk = lockOf(app);
+  const line = el('div', 'lock-line');
+  if (lk) {
+    const who = /학생$/.test(String(lk.by || '')) ? '내가 확정한' : '담임 선생님이 마감한';
+    const p = el('p', 'hint', `★ ${who} 지원입니다. 순위는 바꿀 수 없습니다 — 바꿔야 하면 담임 선생님께 말해 주세요.`);
+    p.setAttribute('role', 'status');
+    line.appendChild(p);
+    return line;
+  }
   const fold = document.createElement('details');
   const sum = document.createElement('summary');
-  sum.textContent = '★ 이대로 확정하기';
+  sum.textContent = '★ 이대로 확정';
   fold.appendChild(sum);
   const field = el('div', 'field');
   field.appendChild(el('p', 'hint',
-    '원서를 다 냈으면 눌러 두세요. 순위와 전문대 지원 여부가 잠기고 선생님 보드에도 ★ 가 붙습니다.'
+    '이 대학에 원서를 냈으면 눌러 두세요. 이 카드의 순위가 잠기고 선생님 보드에도 ★ 가 붙습니다.'
       + ' 되돌리려면 담임 선생님께 부탁해야 합니다.'));
   const btn = el('button', 'btn', '★ 확정');
   btn.type = 'button';
   btn.disabled = state.busy;
-  btn.onclick = () => lockMine();
+  btn.onclick = () => lockMine(app);
   field.appendChild(btn);
   fold.appendChild(field);
-  box.appendChild(fold);
-  return box;
+  line.appendChild(fold);
+  return line;
 }
 
-async function lockMine() {
-  if (state.busy || state.locked) return;
+async function lockMine(app) {
+  if (state.busy || lockOf(app)) return;
   state.busy = true;
   render();
   const mark = { value: '★', status: 'confirmed', by: `${state.hak} 학생`, at: new Date().toISOString() };
+  const name = tidy(shortUniv(app.univ));
   if (offline) {
-    state.locked = mark; state.busy = false;
-    state.notice = '★ 확정했습니다. 순위와 전문대 지원 여부는 이제 바뀌지 않습니다.';
+    state.fields.set(`${app.id}|마감`, mark); state.busy = false;
+    state.notice = `★ ${name} 지원을 확정했습니다. 이 카드의 순위는 이제 바뀌지 않습니다.`;
     render(); return;
   }
   try {
-    await api.call('studentLock', { token: state.token });
-    state.locked = mark;
-    state.fields.set('|마감', mark);
-    state.notice = '★ 확정했습니다. 순위와 전문대 지원 여부는 이제 바뀌지 않습니다.';
+    await api.call('studentLock', { token: state.token, id: app.id });
+    state.fields.set(`${app.id}|마감`, mark);
+    state.notice = `★ ${name} 지원을 확정했습니다. 이 카드의 순위는 이제 바뀌지 않습니다.`;
   } catch (err) {
     state.notice = `확정하지 못했습니다 — ${err.message}`;
   }
@@ -1176,6 +1187,10 @@ function card(app) {
     // 교사 보드의 「전문대 지원」 머리와 같은 자리. 사관학교 같은 특수대는 전문대가 아니다.
     box.appendChild(el('div', 'rank', app.univType === '전문대' ? '전문대 지원' : '6회 밖 지원'));
   }
+  if (lockOf(app)) {
+    const head = box.querySelector('.rank');
+    if (head) head.textContent += ' ★';
+  }
   /*
    * 머리에 「자세히」를 둔다. 카드 전체를 누르게 하면 안 된다 — 카드 안이
    * 온통 입력칸(순위·날짜·결과·메모)이라 누르려던 것과 열리는 것이 싸운다.
@@ -1205,6 +1220,8 @@ function card(app) {
     // 순위 대신 「후보 / 지원」 — 교사 보드의 전문대 고르개와 같은 두 갈래다.
     box.appendChild(trayPicker(app));
   }
+  const lock = lockLine(app);
+  if (lock) box.appendChild(lock);
 
   // 모의면접은 여러 번 한다. 잡힌 것을 다 보여 준다.
   const mocks = MOCKS.map((k) => dateOf(app, k)).filter(Boolean);

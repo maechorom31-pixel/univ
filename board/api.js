@@ -199,8 +199,8 @@ export const students = (fresh) => call('students', fresh ? { fresh: 1 } : {}, {
 // setState 는 setRank 로 통일했다. 서버 쪽 setState_ 는 옛 화면을 위해 남아 있다.
 /** 순위 옮기기 — 맞바꾸기까지 서버가 한 번에 한다. board/CONTRACT.md §2.4 */
 export const setRank = (s) => call('setRank', s);
-/** 마감(★) 걸기·풀기 — 담임. 학생은 studentLock 으로 걸기만 한다. */
-export const setLock = (hak, on) => call('setLock', { hak, on: on ? 1 : '' });
+/** 카드 마감(★) 걸기·풀기 — 담임. 학생은 studentLock 으로 제 카드에 걸기만 한다. */
+export const setLock = (hak, id, on) => call('setLock', { hak, id, on: on ? 1 : '' });
 export const addNote = (n) => call('addNote', n);
 export const removeNote = (noteId) => call('removeNote', { noteId });
 export const setResult = (r) => call('setResult', r);

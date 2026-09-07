@@ -238,7 +238,7 @@ function handle_(p) {
     case 'issueAll':   return issueAll_(p, who);
     case 'setField':   return setField_(p, who, 'confirmed');
     case 'approveField': return approveField_(p, who);
-    case 'setLock':    return setLock_(p.hak, String(p.on || '') === '1', who);
+    case 'setLock':    return setLock_(p.hak, p.id, String(p.on || '') === '1', who);
     case 'setAlias':   return setAlias_(p, who);
     case 'removeAlias': return removeAlias_(p, who);
     default:           return { ok: false, error: '알 수 없는 요청입니다: ' + action };
@@ -1157,8 +1157,8 @@ function setState_(p, who) {
   if (slot === 'rank' && !(rank >= 1 && rank <= 6)) {
     return { ok: false, error: '순위는 1~6 사이여야 합니다.' };
   }
-  var lockedOld = lockedReply_(p.hak);
-  if (lockedOld) return lockedOld;
+  var lockedOld = locksOf_(p.hak)[String(p.id)];
+  if (lockedOld) return lockedReply_(lockedOld, '마감된 카드입니다.');
   upsert_(SHEET.state, ['id'], {
     id: p.id, hak: p.hak, slot: slot, rank: rank, by: who, at: now_()
   });
@@ -1203,8 +1203,8 @@ function setRank_(p, who) {
   if (slot === 'rank' && !(rank >= 1 && rank <= 6)) {
     return { ok: false, error: '순위는 1~6 사이여야 합니다.' };
   }
-  var locked = lockedReply_(p.hak);
-  if (locked) return locked;
+  var locks = locksOf_(p.hak);
+  if (locks[String(p.id)]) return lockedReply_(locks[String(p.id)], '마감된 카드는 옮길 수 없습니다.');
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
@@ -1242,6 +1242,13 @@ function setRank_(p, who) {
     if (slot === 'rank' && there.length >= 2) {
       return { ok: false, full: true,
         error: rank + '순위에는 이미 둘이 같이 고민 중입니다. 하나를 먼저 옮겨 주세요.' };
+    }
+    // 그 칸에 마감된 카드가 있으면 밀어낼 수도, 옆에 같이 고민을 걸 수도 없다
+    for (var lk = 0; lk < there.length; lk++) {
+      if (locks[String(there[lk].id)]) {
+        return lockedReply_(locks[String(there[lk].id)],
+          rank + '순위는 마감된 카드가 있는 칸입니다.');
+      }
     }
     var taken = (slot === 'rank' && !pair && there.length) ? there[0] : null;
 
@@ -1409,8 +1416,6 @@ function studentAction_(action, p) {
    * 빼야 한다. 여태 여기서 「본인 지원 내역이 아닙니다」로 끊겨서
    * **학생이 생년월일을 저장할 길이 아예 없었다.**
    */
-  // 「이대로 확정」 — 학생이 제 6칸에 마감을 건다. 푸는 것은 담임뿐이라 켜기만 받는다.
-  if (action === 'studentLock') return setLock_(hak, true, hak + ' 학생');
   var birthOnly = action === 'studentField' && String(p.field || '').trim() === '생년월일';
   if (!birthOnly && (!p.id || !ownsApp_(hak, p.id))) {
     return { ok: false, error: '본인 지원 내역이 아닙니다.' };
@@ -1426,6 +1431,8 @@ function studentAction_(action, p) {
    * 누가 바꿨는지는 `by` 에 「3201 학생」으로 남아 담임이 안다.
    */
   if (action === 'studentRank') return setRank_({ id: p.id, hak: hak, slot: p.slot, rank: p.rank, pair: p.pair, seen: p.seen }, who);
+  // 카드의 「★ 확정」 — 학생이 제 카드에 마감을 건다. 푸는 것은 담임뿐이라 켜기만 받는다.
+  if (action === 'studentLock') return setLock_(hak, p.id, true, who);
   /*
    * **학번을 서버가 채운다 — 토큰에서 온 값으로.**
    *
@@ -1544,54 +1551,53 @@ function approveDate_(p, who) {
 var FIELDS = ['수험번호', '최종경쟁률', '생년월일'];
 
 /* ===== 마감(★) =======================================================
- * 원서를 내고 나면 6칸은 사실이 된다. 그 뒤에 누가 순위를 건드리면 대장·보고서·
- * 면접 일정이 낸 원서와 어긋난다. 그래서 학생별로 **마감 표시 하나**를 둔다 —
- * 입력 탭에 `마감 = ★` 한 줄(생년월일처럼 id 가 빈, 학생당 하나인 칸).
+ * 원서는 카드 단위로 낸다. 낸 카드는 그 자리가 사실이 되고, 그 뒤에 누가 옮기면
+ * 대장·보고서·면접 일정이 낸 원서와 어긋난다. 그래서 **카드마다** 마감 표시를
+ * 둔다 — 입력 탭에 `마감 = ★` 한 줄(수험번호처럼 id 가 붙는 칸). 아직 안 낸
+ * 카드는 그대로 움직인다.
  *
- *   거는 것    담임(setLock) · 학생 본인(studentLock — 「이대로 확정」)
+ *   거는 것    담임(setLock) · 학생 본인(studentLock — 카드의 「★ 확정」)
  *   푸는 것    담임만. 학생이 풀 수 있으면 마감이 아니다
- *   막는 것    순위·후보·지원·보관 자리 옮기기(setRank_·setState_) — 6칸의 모양
+ *   막는 것    마감된 카드를 옮기기 · 마감된 카드를 밀어내기 · 그 옆에 같이 고민 걸기
  *   안 막는 것 면접 날짜·결과·수험번호·메모 — 원서를 낸 **뒤에** 적는 것들이다
  *
  * FIELDS 에는 안 넣는다 — 일반 studentField 길로 학생이 마감을 지우면 안 된다.
  */
 var LOCK_FIELD = '마감';
 
-function lockOf_(hak) {
-  var all = rows_(SHEET.field);
+/** 이 학생의 마감된 카드 id → 행. */
+function locksOf_(hak) {
+  var all = rows_(SHEET.field), out = {};
   for (var i = 0; i < all.length; i++) {
-    if (!String(all[i].id || '') && String(all[i].hak) === String(hak)
-        && String(all[i].field) === LOCK_FIELD && String(all[i].value || '').trim()) return all[i];
+    if (String(all[i].hak) === String(hak) && String(all[i].field) === LOCK_FIELD
+        && String(all[i].id || '') && String(all[i].value || '').trim()) out[String(all[i].id)] = all[i];
   }
-  return null;
+  return out;
 }
 
-function setLock_(hak, on, who) {
-  hak = String(hak || '').trim();
-  if (!hak) return { ok: false, error: '학번이 필요합니다.' };
-  var was = lockOf_(hak);
+function setLock_(hak, id, on, who) {
+  hak = String(hak || '').trim(); id = String(id || '').trim();
+  if (!hak || !id) return { ok: false, error: '학번과 id 가 필요합니다.' };
+  var was = locksOf_(hak)[id] || null;
   if (on) {
     if (was) return { ok: true, at: was.at, by: was.by, already: true };
     var now = now_();
     upsert_(SHEET.field, ['id', 'hak', 'field'], {
-      id: '', hak: hak, field: LOCK_FIELD, value: '★', status: 'confirmed', by: who, at: now
+      id: id, hak: hak, field: LOCK_FIELD, value: '★', status: 'confirmed', by: who, at: now
     });
-    log_(who, 'lock', hak + ' 마감 ★');
+    log_(who, 'lock', hak + ' ' + id + ' 마감 ★');
     return { ok: true, at: now, by: who };
   }
   if (was) {
     tab_(SHEET.field).deleteRow(was._row);
-    log_(who, 'unlock', hak + ' 마감 풀기');
+    log_(who, 'unlock', hak + ' ' + id + ' 마감 풀기');
   }
   return { ok: true };
 }
 
-/** 마감된 학생의 자리 옮기기는 거절한다 — 화면은 `locked: true` 로 알아본다. */
-function lockedReply_(hak) {
-  var lk = lockOf_(hak);
-  if (!lk) return null;
-  return { ok: false, locked: true, by: lk.by, at: lk.at,
-    error: '★ 마감된 배치입니다. 담임 선생님이 마감을 풀어야 바꿀 수 있습니다.' };
+function lockedReply_(row, what) {
+  return { ok: false, locked: true, by: row.by, at: row.at,
+    error: '★ ' + what + ' 담임 선생님이 마감을 풀어야 바꿀 수 있습니다.' };
 }
 
 /**
