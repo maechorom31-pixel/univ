@@ -524,5 +524,25 @@ console.log('\n마감 ★ — 카드마다');
   G.handle_({ action: 'setLock', key: K, hak: '3101', id: a, on: 0 });
 }
 
+/*
+ * **학생 응답을 둘로.** `student` 에 `lite: 1` 이면 카드에 필요한 것만 주고 살아
+ * 움직이는 넷(날짜·결과·입력·메모)은 `studentRest` 가 준다. 둘을 합치면 옛 응답과
+ * 같아야 한다.
+ */
+console.log('\n학생 응답 둘로 — lite · studentRest');
+{
+  const full = G.handle_({ action: 'student', token: 'tokA' });
+  const lite = G.handle_({ action: 'student', token: 'tokA', lite: 1 });
+  const rest = G.handle_({ action: 'studentRest', token: 'tokA' });
+  eq([lite.ok, lite.lite], [true, true], 'lite 응답이 열리고 lite 표시가 붙는다');
+  eq(['dates', 'results', 'fields', 'notes'].every((k) => !(k in lite)), true, 'lite 에는 살아 움직이는 넷이 없다');
+  eq(lite.apps.length, full.apps.length, '지원 목록은 그대로다');
+  eq(rest.ok, true, 'studentRest 가 열린다');
+  eq(JSON.stringify([rest.dates, rest.results, rest.fields, rest.notes]),
+    JSON.stringify([full.dates, full.results, full.fields, full.notes]), '둘을 합치면 옛 응답과 같다');
+  eq(G.handle_({ action: 'studentRest', token: '없는것' }).ok, false, '엉뚱한 토큰은 studentRest 도 못 연다');
+  eq(full.lite, false, '전체 응답은 lite 가 아니다');
+}
+
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');
 process.exit(fails ? 1 : 0);

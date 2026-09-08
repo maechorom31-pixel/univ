@@ -154,11 +154,15 @@ var SUNEUNG_SUB = { '과목': 'subject', '표점': 'std', '백분위': 'pct', '�
 function doGet(e) {
   var p = (e && e.parameter) || {};
   var out;
+  var t0 = new Date().getTime();
   try {
     out = handle_(p);
   } catch (err) {
     out = { ok: false, error: String((err && err.message) || err) };
   }
+  // 서버 안에서 걸린 시간(ms). 화면이 ?t=1 로 열면 보여 준다 — 느린 것이 서버인지
+  // 회선인지 폰인지는 재 봐야 안다. 콜드스타트는 이 앞이라 여기 안 잡힌다.
+  if (out && typeof out === 'object' && !Array.isArray(out)) out.took = new Date().getTime() - t0;
   var body = JSON.stringify(out);
   if (p.callback) {
     return ContentService.createTextOutput(p.callback + '(' + body + ')')
@@ -1032,7 +1036,12 @@ function log_(who, action, detail) {
  * 옛 모양의 캐시를 5분 동안 그대로 내보낸다.
  */
 var SRC_CACHE_KEY = 'src:v1';
-var SRC_CACHE_SEC = 300;
+/*
+ * 10분이다(예전 5분). 아래 warmCache 가 5분마다 다시 파싱해 넣으므로, 트리거를
+ * 걸어 두면 캐시가 비는 순간이 없다 — 마침 그때 연 학생이 수 초를 더 내던 일이
+ * 사라진다. 트리거가 없어도 10분 캐시로 예전과 같이 돈다.
+ */
+var SRC_CACHE_SEC = 600;
 
 function cachePut_(key, obj, sec) {
   try {
@@ -1123,6 +1132,32 @@ function sourceParsed_(fresh) {
   cachePut_(key, out, SRC_CACHE_SEC);
   out.cached = false;
   return out;
+}
+
+/**
+ * **캐시 데우기.** 5분마다 원본을 새로 파싱해 캐시에 넣는다. 학생이 여는 순간
+ * 캐시가 비어 있으면 그 학생이 원본 열기·파싱(수 초)을 대신 내는데, 그걸 미리
+ * 낸다. 하루 288번, 한 번에 몇 초 — 트리거 실행 한도(90분/일) 안이다.
+ *
+ * 한 번만 `installWarmTrigger` 를 편집기에서 실행하면 된다(SETUP.md). 같은 이름의
+ * 트리거가 있으면 지우고 다시 건다. `removeWarmTrigger` 로 끈다.
+ */
+function warmCache() {
+  var sp = sourceParsed_(true);
+  log_('trigger', 'warm', (sp.apps || []).length + '건 파싱 · 캐시 ' + SRC_CACHE_SEC + '초');
+}
+
+function installWarmTrigger() {
+  removeWarmTrigger();
+  ScriptApp.newTrigger('warmCache').timeBased().everyMinutes(5).create();
+  warmCache();
+}
+
+function removeWarmTrigger() {
+  var all = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].getHandlerFunction() === 'warmCache') ScriptApp.deleteTrigger(all[i]);
+  }
 }
 
 function loadAll_(me, fresh) {
@@ -1401,11 +1436,13 @@ function ownsApp_(hak, id) {
 /** 토큰으로 여는 경로. 여기 적힌 것만 학생이 부를 수 있다. */
 var STUDENT_ACTION = {
   student: 1, studentDate: 1, studentApplyNo: 1, studentField: 1, studentResult: 1,
-  studentNote: 1, studentNoteRemove: 1, studentAsk: 1, studentRank: 1, studentLock: 1
+  studentNote: 1, studentNoteRemove: 1, studentAsk: 1, studentRank: 1, studentLock: 1,
+  studentRest: 1
 };
 
 function studentAction_(action, p) {
-  if (action === 'student') return studentView_(p.token);
+  if (action === 'student') return studentView_(p.token, String(p.lite || '') === '1');
+  if (action === 'studentRest') return studentRest_(p.token);
 
   var hak = hakOfToken_(p.token);
   if (!hak) {
@@ -1703,7 +1740,7 @@ function issueToken_(p, who) {
   return { ok: true, hak: p.hak, token: token };
 }
 
-function studentView_(token) {
+function studentView_(token, lite) {
   token = String(token || '').trim();
   if (!token) return { ok: false, error: '주소가 올바르지 않습니다.' };
   var share = rows_(SHEET.share), hit = null;
@@ -1745,6 +1782,33 @@ function studentView_(token) {
     }
   }
 
+  var live = lite ? {} : studentLive_(hak, me.apps);
+  var out = {
+    ok: true, hak: hak, student: me,
+    apps: parsed.apps.filter(function (a) { return a.hak === hak; }),
+    state: rows_(SHEET.state).filter(function (r) { return String(r.hak) === hak; }),
+    /*
+     * 별칭(선생님이 손으로 이어 준 학과)도 준다. 안 주면 같은 지원이
+     * 선생님 화면에는 작년 참고선이 붙고 학생 화면에는 아무것도 없다.
+     * 학번이 안 붙은 자료(대학·학과 이름뿐)라 통째로 줘도 새는 것이 없다.
+     */
+    aliases: rows_(SHEET.alias),
+    // 원본을 캐시에서 읽었나 — ?t=1 이 「캐시 미스」를 가려 볼 수 있게
+    cached: Boolean(parsed.cached),
+    // 핵심만 보낸 응답이라는 표시 — 화면이 나머지(studentRest)를 기다린다
+    lite: Boolean(lite)
+  };
+  for (var k in live) out[k] = live[k];
+  return out;
+}
+
+/**
+ * **학생 응답의 살아 움직이는 나머지** — 날짜·결과·입력(마감 포함)·메모.
+ * 카드를 그리는 데는 없어도 되는 것들이라 `student` 의 `lite: 1` 은 이걸 빼고
+ * 먼저 답하고, 화면은 `studentRest` 를 **나란히** 불러 뒤에 채운다. 두 실행이
+ * 동시에 돌아 시트 읽기 일곱이 둘·넷으로 갈리고, 첫 그리기는 둘만 기다린다.
+ */
+function studentLive_(hak, appIds) {
   var mine = function (arr) {
     return (arr || []).filter(function (r) { return String(r.hak) === hak; });
   };
@@ -1753,25 +1817,29 @@ function studentView_(token) {
    * id 가 내 지원이면 내 것이 맞다(안정키는 학번을 씨앗에 품는다).
    */
   var myApps = {};
-  for (var ai = 0; ai < me.apps.length; ai++) myApps[String(me.apps[ai])] = true;
+  for (var ai = 0; ai < (appIds || []).length; ai++) myApps[String(appIds[ai])] = true;
   var myDates = rows_(SHEET.date).filter(function (r) {
     return String(r.hak) === hak || (!String(r.hak || '') && myApps[String(r.id)]);
   });
   return {
-    ok: true, hak: hak, student: me,
-    apps: parsed.apps.filter(function (a) { return a.hak === hak; }),
-    state: mine(rows_(SHEET.state)),
     dates: myDates,
     // 학생이 적어 둔 결과를 돌려주지 않으면, 저장하고 새로고침했을 때 **사라져 보인다.**
     // 시트에는 있는데 화면에서 없어지면 학생은 다시 적거나 도구를 안 믿게 된다.
     results: mine(rows_(SHEET.result)),
     fields: mine(rows_(SHEET.field)),
-    /*
-     * 별칭(선생님이 손으로 이어 준 학과)도 준다. 안 주면 같은 지원이
-     * 선생님 화면에는 작년 참고선이 붙고 학생 화면에는 아무것도 없다.
-     * 학번이 안 붙은 자료(대학·학과 이름뿐)라 통째로 줘도 새는 것이 없다.
-     */
-    aliases: rows_(SHEET.alias),
     notes: mine(rows_(SHEET.note)).filter(function (n) { return String(n.visible) === 'Y'; })
   };
+}
+
+function studentRest_(token) {
+  var hak = hakOfToken_(token);
+  if (!hak) return { ok: false, error: '만료되었거나 잘못된 주소입니다. 담임 선생님께 문의하세요.' };
+  var parsed = sourceParsed_();
+  var me = null;
+  for (var i = 0; i < parsed.students.length; i++) {
+    if (parsed.students[i].hak === hak) { me = parsed.students[i]; break; }
+  }
+  var out = studentLive_(hak, me ? me.apps : []);
+  out.ok = true; out.hak = hak;
+  return out;
 }

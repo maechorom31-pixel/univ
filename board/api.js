@@ -38,7 +38,7 @@ const DEFAULT_KEY = '84348434';
  */
 const STUDENT_ACTION = new Set([
   'student', 'studentDate', 'studentApplyNo', 'studentField', 'studentResult',
-  'studentNote', 'studentNoteRemove', 'studentAsk', 'studentRank', 'studentLock',
+  'studentNote', 'studentNoteRemove', 'studentAsk', 'studentRank', 'studentLock', 'studentRest',
 ]);
 let apiUrl = '';
 let teacherKey = '';

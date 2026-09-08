@@ -69,40 +69,67 @@ const label = (iso) => {
 
 /* ── 시작 ─────────────────────────────────────────────────────── */
 
-export async function start(token, demoData) {
+export async function start(token, demoData, opts = {}) {
   state.token = token;
+  // ?t=1 — 어디서 시간이 가는지 화면에 적는다. 서버인지 회선인지 폰인지는 재 봐야 안다.
+  state.timing = opts.timing ? { t0: now_() } : null;
   // 보기용 자료로 열면 서버를 부르지 않는다. 그래야 학생에게 링크를 주기 전에
   // 선생님이 저장까지 눌러 보며 확인할 수 있다.
   offline = Boolean(demoData);
   render();
   // 공개 자료(입결·모집요강)는 서버 응답과 **동시에** 받는다 — 보드와 같은 이유다.
   // 서로 독립이라 직렬로 이으면 체감 로딩이 둘의 합이 된다.
-  const pub = loadPublic();
+  const pub = loadPublic().then(() => mark('pub'));
+  if (demoData) {
+    apply(demoData);
+    render();
+    await pub;
+    return;
+  }
+  /*
+   * **서버 요청은 둘을 나란히.** 카드를 그리는 데 필요한 것(지원 목록·배치·별칭,
+   * 시트 읽기 둘)만 `lite` 로 먼저 받고, 날짜·결과·입력·메모(읽기 넷)는 `studentRest`
+   * 로 따로 받는다. Apps Script 는 두 실행을 동시에 돌리므로 첫 그리기가 일곱을
+   * 다 읽을 때까지 기다리지 않는다. 옛 서버는 `lite` 를 몰라 다 주고 `studentRest`
+   * 를 거절하는데, 그때는 이미 다 받았으니 조용히 넘어간다.
+   */
+  const core = api.call('student', { token, lite: 1 }, { timeout: 45000 });
+  const rest = api.call('studentRest', { token }, { timeout: 45000 });
+  rest.catch(() => {});                       // 먼저 실패해도 「처리 안 된 거절」로 남지 않게
   try {
-    const data = demoData || await api.call('student', { token }, { timeout: 45000 });
+    const data = await core;
     apply(data);
+    mark('server', data);
   } catch (err) {
     state.error = err.message;
+    render();
+    await pub;
+    return;
+  }
+  render();
+  try {
+    applyRest(await rest);
+    mark('rest');
+  } catch (err) {
+    if (!state.gotFull) state.notice = `날짜·결과를 불러오지 못했습니다 — ${err.message} 새로고침해 주세요.`;
   }
   render();
   await pub;
 }
 
+const now_ = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+
+/** ?t=1 일 때 구간 시각을 적는다. 화면 맨 위 한 줄로 나온다. */
+function mark(key, data) {
+  if (!state.timing) return;
+  state.timing[key] = now_() - state.timing.t0;
+  if (data) { state.timing.took = data.took; state.timing.cached = data.cached; }
+  render();
+}
+
 function apply(data) {
   state.student = data.student || null;
   state.apps = data.apps || [];
-  state.notes = data.notes || [];
-  // 원서를 낸 뒤에 채워지는 칸. 생년월일은 학생당 하나라 id 가 비어 있다.
-  state.fields = new Map((data.fields || []).map((r) => [
-    `${String(r.id || '')}|${String(r.field)}`,
-    { value: String(r.value || ''), status: String(r.status || 'confirmed'), by: r.by || '', at: r.at || '' },
-  ]));
-
-  state.results = new Map((data.results || []).map((r) => [String(r.id), {
-    stage1: String(r.stage1 || ''), final: String(r.final || ''),
-    reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
-    enrolled: String(r.enrolled || ''), status: String(r.status || 'confirmed'),
-  }]));
   state.placement = new Map((data.state || []).map((r) => [String(r.id), {
     slot: r.slot || 'pool',
     rank: r.rank === '' || r.rank == null ? null : Number(r.rank),
@@ -110,15 +137,34 @@ function apply(data) {
   // 배치를 마지막으로 본 시각. 순위를 바꿀 때 되돌려 보내 한 발 늦은 화면이
   // 담임의 변경을 덮어쓰지 못하게 한다. CONTRACT §2.4
   state.seen = (data.state || []).reduce((hi, r) => (String(r.at || '') > hi ? String(r.at) : hi), '');
-  // 옛 배포의 서버가 시트의 Date 칸을 UTC 로 적어 보낼 수 있다 — 받는 쪽에서도 씻는다
-  state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
-    from: isoDay(r.from), to: isoDay(r.to || r.from), status: r.status || 'pending',
-  }]));
   summaryCache.clear();
   state.aliases = new Map((data.aliases || []).map((r) => [
     `${r.univ}|${r.dept}`,
     { toUniv: String(r.toUniv || ''), toDept: String(r.toDept || ''), note: String(r.note || '') },
   ]));
+  // 핵심만 온 응답(lite)이 아니면 나머지도 이 안에 있다 — 보기용 자료와 옛 서버
+  state.gotFull = !data.lite;
+  if (state.gotFull) applyRest(data);
+}
+
+/** 날짜·결과·입력(마감 포함)·메모 — `studentRest` 또는 전체 응답에서. */
+function applyRest(data) {
+  state.notes = data.notes || [];
+  // 원서를 낸 뒤에 채워지는 칸. 생년월일은 학생당 하나라 id 가 비어 있다.
+  state.fields = new Map((data.fields || []).map((r) => [
+    `${String(r.id || '')}|${String(r.field)}`,
+    { value: String(r.value || ''), status: String(r.status || 'confirmed'), by: r.by || '', at: r.at || '' },
+  ]));
+  state.results = new Map((data.results || []).map((r) => [String(r.id), {
+    stage1: String(r.stage1 || ''), final: String(r.final || ''),
+    reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
+    enrolled: String(r.enrolled || ''), status: String(r.status || 'confirmed'),
+  }]));
+  // 옛 배포의 서버가 시트의 Date 칸을 UTC 로 적어 보낼 수 있다 — 받는 쪽에서도 씻는다
+  state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
+    from: isoDay(r.from), to: isoDay(r.to || r.from), status: r.status || 'pending',
+  }]));
+  summaryCache.clear();
 }
 
 /** 입결은 공개 자료라 학생 화면에서도 그대로 받는다. */
@@ -248,9 +294,28 @@ function render() {
     return;
   }
   if (!state.student) {
-    main.appendChild(el('p', 'empty-state', '내 지원 내역을 불러오는 중입니다.'));
+    /*
+     * **빈 6칸을 먼저 그린다.** 서버 응답(보통 3~5초)을 「불러오는 중」 한 줄로
+     * 기다리게 하면 길게 느껴진다. 곧 채워질 자리를 보여 주고 얼마나 걸리는지
+     * 말해 두면 같은 시간이 짧다. 숫자는 지어내지 않는다 — 칸만 있다.
+     */
+    main.appendChild(el('p', 'empty-state', '내 지원 내역을 불러오는 중입니다 — 보통 3~5초 걸립니다.'));
+    const sk = el('section', 'panel');
+    const head = el('div', 'panel-head');
+    head.appendChild(el('h2', '', '지원 6칸'));
+    sk.appendChild(head);
+    const grid = el('div', 'slots mine thin');
+    for (const r of RANKS) {
+      const box = el('div', 'slot-card empty');
+      box.appendChild(el('div', 'rank', `${r}순위`));
+      grid.appendChild(box);
+    }
+    sk.appendChild(grid);
+    main.appendChild(sk);
+    if (state.timing) main.appendChild(timingLine());
     return;
   }
+  if (state.timing) main.appendChild(timingLine());
 
   const s = state.student;
   // 수능 D-n — 학생이 매일 세는 숫자다. 지났으면 안 적는다(keydates.js).
@@ -1013,6 +1078,20 @@ async function lockMine(app) {
   }
   state.busy = false;
   render();
+}
+
+/** ?t=1 — 구간별로 걸린 시간 한 줄. 서버 안 시간(took)과 캐시 여부까지. */
+function timingLine() {
+  const t = state.timing || {};
+  const sec = (ms) => (ms == null ? '…' : `${(ms / 1000).toFixed(1)}초`);
+  const bits = [
+    `서버 ${sec(t.server)}${t.took != null ? ` (안에서 ${t.took}ms${t.cached === false ? ' · 원본 새로 읽음' : t.cached ? ' · 캐시' : ''})` : ''}`,
+    `나머지 ${sec(t.rest)}`,
+    `자료 ${sec(t.pub)}`,
+  ];
+  const p = el('p', 'hint timing', `걸린 시간 — ${bits.join(' · ')}`);
+  p.setAttribute('role', 'status');
+  return p;
 }
 
 function group(title, apps, count, help) {
