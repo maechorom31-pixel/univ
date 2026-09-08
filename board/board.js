@@ -1052,15 +1052,24 @@ function pills(app) {
     add('수시 6회에 안 셈');
   }
 
-  const share = interviewShare(s.mojip);
-  if (s.stages > 1) {
-    const p = add(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`, 'mark');
+  /*
+   * 선생님이 카드에서 「있음/없음」으로 못박아 두었으면 **그 말대로 적는다.**
+   * 모집요강이 2단계라고 해도 면접이 아닌 전형이 있고, 반대로 일괄인데 면접을
+   * 보면서 방법 글에 「면접」이라는 말을 안 쓴 줄도 있다. 여태 꼬리표는 자동
+   * 판정만 보고 「2단계 면접30%」라고 단정해서, 면접이 없는 전형에 면접 준비를
+   * 시켰다. 못박아 둔 자리는 꼬리표에 「선생님 확인」이라고 제목을 달아, 왜 다른
+   * 카드와 다르게 적혔는지 짚어 볼 수 있게 한다.
+   */
+  const iv = store.interviewOf(app);
+  const share = iv.yes ? interviewShare(s.mojip) : null;
+  const forced = iv.force ? `면접 ${iv.force} (선생님 확인)` : '';
+  const stageTxt = s.stages > 1
+    ? (share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`)
+    : (iv.yes && iv.force ? '면접 있음' : share != null ? `면접 ${share}%` : '');
+  if (stageTxt) {
+    const p = add(stageTxt, 'mark');
     const line = methodLine(s.mojip);
-    if (line) p.title = line;
-  } else if (share != null) {
-    const p = add(`면접 ${share}%`, 'mark');
-    const line = methodLine(s.mojip);
-    if (line) p.title = line;
+    p.title = [forced, line].filter(Boolean).join(' · ') || '';
   }
   // 관심대학 리스트는 기준 글 없이 Y/N 만 준다 — 그때도 표시가 나와야 한다
   if (app.minReqText || app.minReq === true) {

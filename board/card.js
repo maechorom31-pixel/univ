@@ -461,6 +461,74 @@ export function detailPanel(app, student, onClose) {
   body.appendChild(rows('일정', sched));
 
   /*
+   * **면접이 있는지 없는지를 선생님이 못박는다.**
+   *
+   * 자동 판정(모집요강 전형단계 ≥ 2 이거나 전형 방법 글에 「면접」)이 양쪽으로
+   * 틀린다. 2단계인데 면접이 아닌 전형이 있고, 일괄인데 면접을 보면서 방법 글이
+   * 「구술평가」라고만 적힌 줄도 있다. 그대로 두면 없는 면접에 준비 판이 서고,
+   * 있는 면접에는 날짜 칸이 안 선다 — 어느 쪽이든 상담에서 바로 드러난다.
+   *
+   * 그래서 세 값이다. **자동**이 예전 그대로이고, 선생님이 「있음」·「없음」을
+   * 고르면 그때부터 자동 판정을 아예 안 본다. 값은 시트(`면접여부`)에 남아서
+   * 학생 화면까지 같이 따라간다 — 두 화면이 다른 말을 하면 안 된다.
+   * 학생은 못 고친다(서버 `TEACHER_FIELDS`).
+   */
+  {
+    const auto = store.autoInterview(app) ? '있음' : '없음';
+    const title = (force) => '면접 있음 · 없음 정하기 — 지금 '
+      + (force ? `${force} (선생님 확인)` : `${auto} (모집요강 판단)`);
+
+    const fold = document.createElement('details');
+    fold.className = 'date-add';
+    const sum = document.createElement('summary');
+    sum.textContent = title(store.interviewForce(app));
+    fold.appendChild(sum);
+
+    const wrap = el('div', 'field');
+    wrap.appendChild(el('p', 'hint',
+      '모집요강만 보고 정한 값이라 틀릴 수 있습니다. 여기서 정해 두면 꼬리표 ·'
+      + ' 면접 준비 판 · 날짜 칸이 모두 그 값을 따르고, 학생 화면에도 같이 갑니다.'));
+    const line = el('div', 'field-in');
+
+    const sel = document.createElement('select');
+    sel.setAttribute('aria-label', '면접 있음 · 없음');
+    for (const [value, label] of [['', `자동 — 모집요강대로 (${auto})`], ['있음', '있음'], ['없음', '없음']]) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      sel.appendChild(o);
+    }
+    sel.value = store.interviewForce(app);
+
+    const save = el('button', 'btn', '저장');
+    save.type = 'button';
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        await store.setField(app, store.INTERVIEW_FIELD, sel.value);
+        sum.textContent = title(store.interviewForce(app));
+      } catch (err) {
+        /*
+         * 서버가 이 칸을 모르면 「모르는 칸입니다」로 돌아온다 — Apps Script 를
+         * 아직 새로 배포하지 않은 것이다. 그 말만으로는 무엇을 해야 하는지 알 수
+         * 없어서 할 일을 같이 적는다.
+         */
+        const hint = /모르는 칸/.test(err.message)
+          ? '\n\nApps Script 코드가 예전 것입니다. board/apps-script/Code.gs 를 다시 붙여 넣고 새로 배포해 주세요.'
+          : '';
+        window.alert(`저장하지 못했습니다 — ${err.message}${hint}`);
+      }
+      save.disabled = false;
+    };
+
+    line.appendChild(sel);
+    line.appendChild(save);
+    wrap.appendChild(line);
+    fold.appendChild(wrap);
+    body.appendChild(fold);
+  }
+
+  /*
    * **면접·실기 날짜를 카드에서 바로 넣고 고친다.**
    *
    * 파싱해 온 날짜(일정표·즐겨찾기)는 대학 전체를 두고 한 말이라 이 학생의 실제

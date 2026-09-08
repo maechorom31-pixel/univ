@@ -37,7 +37,7 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-09-01d';
+var CODE_VER = '2026-09-08a';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
@@ -1585,7 +1585,17 @@ function approveDate_(p, who) {
 
 /* ===== 원서를 낸 뒤에 채워지는 칸 =================================== */
 
-var FIELDS = ['수험번호', '최종경쟁률', '생년월일'];
+var FIELDS = ['수험번호', '최종경쟁률', '생년월일', '면접여부'];
+
+/*
+ * **학생 링크로는 못 고치는 칸.**
+ *
+ * `면접여부` 는 「이 전형에 면접이 있다/없다」를 선생님이 못박는 값이라, 화면
+ * 여러 곳의 판단(꼬리표·면접 준비 판·날짜 칸)이 여기에 딸려 있다. 학생 경로
+ * (`studentField`)가 같은 `setField_` 를 타므로, 이름만 더하면 학생도 남의
+ * 판단을 뒤집을 수 있다 — 여기서 막는다.
+ */
+var TEACHER_FIELDS = ['면접여부'];
 
 /* ===== 마감(★) =======================================================
  * 원서는 카드 단위로 낸다. 낸 카드는 그 자리가 사실이 되고, 그 뒤에 누가 옮기면
@@ -1638,14 +1648,18 @@ function lockedReply_(row, what) {
 }
 
 /**
- * 수험번호·최종경쟁률·생년월일을 적는다.
+ * 수험번호·최종경쟁률·생년월일·면접여부를 적는다.
  *
  * `생년월일` 은 학생 한 명에 하나라 `id` 를 비워 둔다. 나머지는 지원 한 건에 하나다.
+ * `면접여부` 는 선생님만 적는다(`TEACHER_FIELDS`).
  * **빈 값으로 부르면 지운다** — 잘못 적었을 때 되돌릴 길이 있어야 한다.
  */
 function setField_(p, who, status) {
   var field = String(p.field || '').trim();
   if (FIELDS.indexOf(field) < 0) return { ok: false, error: '모르는 칸입니다: ' + field };
+  if (status === 'student' && TEACHER_FIELDS.indexOf(field) >= 0) {
+    return { ok: false, error: '선생님만 고칠 수 있는 칸입니다: ' + field };
+  }
   if (!p.hak) return { ok: false, error: '학번이 필요합니다.' };
   var id = field === '생년월일' ? '' : String(p.id || '');
   if (field !== '생년월일' && !id) return { ok: false, error: 'id 가 필요합니다.' };

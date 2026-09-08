@@ -21,7 +21,7 @@ import {
   summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
   fillTrend, outsideLimit, isGuessedFit,
 } from './match.js';
-import { josa, rate1, isoDay, minReqShort, methodLine, interviewShare, methodHasInterview } from './text.js';
+import { josa, rate1, isoDay, minReqShort, methodLine, interviewShare, hasInterview, forcedInterview } from './text.js';
 import { suneungDday } from './keydates.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
@@ -234,6 +234,23 @@ function summaryOf(app) {
 }
 
 /**
+ * 이 전형에 면접이 있나. **선생님 화면(store.interviewOf)과 같은 규칙**이다.
+ *
+ * 선생님이 카드에서 「있음/없음」으로 못박아 두면 시트 `면접여부` 로 내려와
+ * 여기까지 따라온다. 두 화면이 다른 말을 하면 학생은 없는 면접을 준비하거나
+ * 있는 면접에 날짜를 못 적는다. 비어 있으면 예전 그대로 모집요강 자동 판정.
+ */
+function interviewForce(app) {
+  const row = state.fields.get(`${app.id}|면접여부`);
+  return forcedInterview(row && row.value);
+}
+
+function hasInterviewOf(app) {
+  const s = summaryOf(app);
+  return hasInterview(s && s.mojip, s && s.stages, interviewForce(app));
+}
+
+/**
  * 이 지원의 일정. **선생님 화면(store.dateOf)과 같은 차례**여야 한다 —
  * 내가 넣은 값 → 즐겨찾기 확정일 → 전형일정표(이름까지 맞을 때만) → 즐겨찾기 기간.
  */
@@ -244,7 +261,10 @@ function dateOf(app, kind) {
   }
   const d = (app.dates && app.dates[kind]) || null;
   if (d && d.fixed) return { ...d, status: 'source' };
-  if (state.src && state.src.sched && examKindFits(app, kind)) {
+  // 선생님이 「면접 없음」이라고 정해 두면 일정표에서 면접일을 끌어오지 않는다 —
+  // 교사 화면(store.dateOf)과 같은 규칙이다.
+  const noIv = kind === '면접' && interviewForce(app) === '없음';
+  if (state.src && state.src.sched && examKindFits(app, kind) && !noIv) {
     const found = examDate(app, state.src.sched);
     // 전형 이름을 못 맞춘 값(loose)은 이 지원의 날짜가 아니다 — 상세에서 참고로만
     if (found && !found.loose) {
@@ -725,8 +745,12 @@ function slotFigures(box, app, brief) {
     const short = minReqShort(minTxt);
     pin(short ? `최저 ${short}` : '최저 있음', 'mark', minTxt);
   }
-  const share = s ? interviewShare(s.mojip) : null;
+  // 선생님이 못박아 둔 값이 먼저다 — 교사 보드 꼬리표와 같은 규칙.
+  const ivYes = hasInterviewOf(app);
+  const force = interviewForce(app);
+  const share = ivYes && s ? interviewShare(s.mojip) : null;
   if (s && s.stages > 1) pin(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`);
+  else if (ivYes && force) pin('면접 있음');
   else if (share != null) pin(`면접 ${share}%`);
   const iv = dateOf(app, '면접');
   if (iv) {
@@ -1205,15 +1229,16 @@ function marks(app) {
   // 단계 꼬리표에 면접 비중을 같이 적는다 — 교사 보드와 같은 규칙.
   // 일괄인데 면접이 든 전형(학생부60+면접40 꼴)도 여기서 처음 면접이 보인다.
   {
-    const share = s ? interviewShare(s.mojip) : null;
-    if (s && s.stages > 1) {
-      const p = add(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`);
+    const ivYes = hasInterviewOf(app);
+    const force = interviewForce(app);
+    const share = ivYes && s ? interviewShare(s.mojip) : null;
+    const txt = s && s.stages > 1
+      ? (share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`)
+      : (ivYes && force ? '면접 있음' : share != null ? `면접 ${share}%` : '');
+    if (txt) {
+      const p = add(txt);
       const line = methodLine(s.mojip);
-      if (line) p.title = line;
-    } else if (share != null) {
-      const p = add(`면접 ${share}%`);
-      const line = methodLine(s.mojip);
-      if (line) p.title = line;
+      p.title = [force ? `면접 ${force} (선생님 확인)` : '', line].filter(Boolean).join(' · ');
     }
   }
   /*
@@ -1324,7 +1349,9 @@ function card(app) {
    * 이제 **볼 근거가 있으면 빈 칸이라도 세운다.**
    *
    *   면접   모집요강이 단계별전형이라고 말하거나(전형단계 ≥ 2),
-   *          전형 방법 글에 면접이 있을 때 (일괄 「학생부60+면접40」 꼴)
+   *          전형 방법 글에 면접이 있을 때 (일괄 「학생부60+면접40」 꼴).
+   *          **선생님이 「있음/없음」으로 정해 두었으면 그 값이 먼저다** —
+   *          시트 `면접여부` 로 내려온다.
    *   논술   전형 유형이 논술일 때
    *   실기   전형 유형이 실기일 때
    *
@@ -1337,7 +1364,7 @@ function card(app) {
   const s = summaryOf(app);
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
   const expects = (kind) => {
-    if (kind === '면접') return s ? (s.stages > 1 || methodHasInterview(s.mojip)) : false;
+    if (kind === '면접') return hasInterviewOf(app);
     if (kind === '논술') return cat === '논술';
     if (kind === '실기') return cat === '실기';
     return false;                       // 적성은 즐겨찾기가 줄 때만

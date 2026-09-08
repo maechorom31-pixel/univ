@@ -170,3 +170,42 @@ export function interviewShare(mo) {
 export function methodHasInterview(mo) {
   return !!mo && /면접/.test(`${mo.method1 || ''} ${mo.method2 || ''}`);
 }
+
+/*
+ * 면접이 있나 — **사람이 정한 값이 언제나 먼저다.**
+ * =====================================================================
+ * 자동 판정은 모집요강 두 곳을 본다: 전형단계가 2단계 이상이거나, 전형 방법
+ * 글에 「면접」이 들었거나(일괄 「학생부60+면접40」 꼴). 500건으로 재 보면
+ * 대체로 맞지만 양쪽으로 다 틀린다.
+ *
+ *   있다고 잘못 본다   2단계인데 2단계가 면접이 아닌 전형 — 실기·서류평가로만
+ *                      거르는 자리가 있다. 모집요강 전형단계가 비었거나 잘못
+ *                      적힌 줄도 있다.
+ *   없다고 잘못 본다   일괄인데 면접을 보는 전형 가운데 방법 글이 「면접」이라는
+ *                      말을 안 쓰고 「구술평가」·「인성평가」로 적은 줄.
+ *
+ * 틀린 쪽이 어느 쪽이든 화면은 단정해서 말한다 — 없는 면접 준비를 시키거나,
+ * 있는 면접에 날짜 칸을 안 세운다. 그래서 선생님이 「있음/없음」으로 못박을 수
+ * 있게 두고(시트 `면접여부`), 그 값이 있으면 자동 판정을 아예 안 본다.
+ * 비워 두면 예전 그대로 자동이다.
+ */
+export const FORCE_YES = '있음';
+export const FORCE_NO = '없음';
+
+/** 선생님이 못박아 둔 값인가. '있음'·'없음' 둘만 값으로 친다. */
+export function forcedInterview(force) {
+  const f = String(force == null ? '' : force).trim();
+  return f === FORCE_YES || f === FORCE_NO ? f : '';
+}
+
+/**
+ * 이 지원에 면접이 있나.
+ * @param {?object} mo 모집요강 줄
+ * @param {?number} stages 전형단계
+ * @param {?string} force 선생님이 못박은 값 — '있음' · '없음' · 빈 값(자동)
+ */
+export function hasInterview(mo, stages, force) {
+  const f = forcedInterview(force);
+  if (f) return f === FORCE_YES;
+  return Number(stages || 1) > 1 || methodHasInterview(mo);
+}

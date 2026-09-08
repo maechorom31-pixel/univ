@@ -17,7 +17,8 @@ import {
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
   normType, pickIpgyeol, typeGroups, univKind, summarize, predecessor, fillTrend, outsideLimit,
 } from './match.js';
-import { josa, minReqShort, methodLine, interviewShare, methodHasInterview } from './text.js';
+import { josa, minReqShort, methodLine, interviewShare, methodHasInterview,
+  hasInterview, forcedInterview } from './text.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -506,6 +507,25 @@ eq(interviewShare({ stages: 2, method1: '1단계서류100, 2단계 서류70+면�
 eq(methodHasInterview({ stages: 1, method1: '학생부50+면접50' }), true, '방법 글의 면접');
 eq(methodHasInterview({ stages: 1, method1: '학생부100' }), false, '면접 없음');
 eq(methodHasInterview(null), false, '모집요강 없음');
+
+/*
+ * 면접이 있나 — 자동 판정과, 선생님이 못박은 값. 못박은 값이 있으면 모집요강을
+ * 아예 안 본다. 없는 면접을 준비시키거나 있는 면접에 날짜 칸을 안 세우는 쪽이
+ * 「사람 손이 든다」보다 나쁘다.
+ */
+console.log('\n면접이 있나 (hasInterview)');
+eq(hasInterview({ method1: '서류100', method2: '1단계70+면접30' }, 2, ''), true, '단계전형이면 있다');
+eq(hasInterview({ method1: '학생부60+면접40' }, 1, ''), true, '일괄이라도 방법 글에 면접이 들면 있다');
+eq(hasInterview({ method1: '학생부100' }, 1, ''), false, '근거가 없으면 없다');
+eq(hasInterview({ method1: '서류100', method2: '1단계70+면접30' }, 2, '없음'), false,
+  '선생님이 없다고 하면 단계전형이라도 없다');
+eq(hasInterview({ method1: '학생부100' }, 1, '있음'), true,
+  '선생님이 있다고 하면 근거가 없어도 있다');
+eq(hasInterview(null, null, ''), false, '모집요강을 못 찾으면 자동으로는 없다');
+eq(hasInterview(null, null, '있음'), true, '모집요강을 못 찾아도 못박은 값은 선다');
+eq(forcedInterview('  없음 '), '없음', '앞뒤 공백은 씻는다');
+eq(forcedInterview('있다'), '', '두 낱말 말고는 못박은 값으로 안 친다');
+eq(forcedInterview(null), '', '빈 값은 자동');
 
 
 console.log('충원(추가합격) 추이 (fillTrend)');

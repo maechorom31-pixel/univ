@@ -716,6 +716,14 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
   width: 100%;
 }
 .field-in .btn { min-height: 44px; }
+/*
+ * 곁단추 — 「이 전형은 면접이 없습니다」처럼 그 칸의 주된 일(날짜 넣기)이 아닌 것.
+ * `.field` 가 격자라 그냥 두면 폭을 가득 채워 주된 단추처럼 보인다.
+ */
+.field > .btn.aside, .ev-row .txt > .btn.aside {
+  justify-self: start; min-height: 44px; font-size: var(--t-xs); color: var(--muted);
+}
+.ev-row .txt > .btn.aside { margin-top: var(--s2); }
 /* 결과 줄 — 고르기 · 예비번호 · 저장. 예비번호는 충원일 때만 나온다. */
 .res-in { grid-template-columns: minmax(0, 1fr) auto; }
 .res-in select {

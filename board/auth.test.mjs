@@ -311,6 +311,18 @@ sheets['일정'] = mkSheet([G.HEADERS['일정']]);   // 앞 블록의 행을 안
   eq(String(f1[1]), '3101', '클라이언트가 보낸 학번은 버리고 토큰의 학번을 쓴다');
   eq(G.handle_({ action: 'studentField', token: 'tokA', id: '', field: '생년월일', value: '2008-03-02' }).ok,
     true, '생년월일은 id 없이도 저장된다');
+
+  /*
+   * 면접여부는 선생님만 고친다. 학생 경로도 같은 `setField_` 를 타므로 이름만
+   * 더하면 학생이 제 카드의 면접 판단을 뒤집을 수 있다 — 막혀 있는지 본다.
+   */
+  eq(G.handle_({ action: 'studentField', token: 'tokA', id, field: '면접여부', value: '없음' }).ok,
+    false, '학생은 면접여부를 못 고친다');
+  eq(G.handle_({ action: 'setField', key: '84348434', id, hak: '3101', field: '면접여부', value: '없음' }).ok,
+    true, '선생님은 면접여부를 적는다');
+  const v4 = G.handle_({ action: 'student', token: 'tokA' });
+  eq(v4.fields.some((r) => String(r.field) === '면접여부' && String(r.value) === '없음'),
+    true, '정한 값이 학생 화면까지 내려간다');
 }
 
 /*
