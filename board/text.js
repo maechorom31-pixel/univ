@@ -70,6 +70,32 @@ export function rate1(v) {
 }
 
 /**
+ * 사람이 적은 경쟁률을 숫자로. 「12.4:1」 「12.4 대 1」 「12.4」 어느 꼴로 적어도
+ * 12.4 를 돌려준다. 숫자가 안 나오면 null — 부르는 쪽이 적힌 글을 그대로 보인다.
+ * 최종경쟁률 칸은 학생·담임이 손으로 적는 자리라 꼴이 갖가지다.
+ */
+export function typedRate(v) {
+  if (v == null || v === '') return null;
+  const m = String(v).match(/\d+(?:\.\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * 적힌 최종경쟁률을 「7.25:1」 꼴로. 대학이 둘째 자리까지 발표하는 값이라
+ * 입결처럼 첫째 자리로 뭉개지 않는다 — 종이(`export.js`)도 둘째 자리로 찍으니
+ * 화면과 종이가 같은 숫자를 보인다. 숫자가 아니면 적힌 글 그대로, 비었으면 null.
+ */
+export function typedRateText(v) {
+  if (v == null || v === '') return null;
+  const n = typedRate(v);
+  if (n == null) return String(v);
+  const r = Math.round(n * 100) / 100;
+  return `${Number.isInteger(r * 10) ? r.toFixed(1) : r.toFixed(2)}:1`;
+}
+
+/**
  * 서버가 준 날짜를 「yyyy-MM-dd」로 못박는다.
  *
  * 구글 시트가 날짜 칸을 Date 로 바꿔 버리면 옛 배포의 서버는 그걸 UTC 로 적어

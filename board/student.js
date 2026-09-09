@@ -21,7 +21,7 @@ import {
   summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
   fillTrend, outsideLimit, isGuessedFit, buildUnivIndex,
 } from './match.js';
-import { josa, rate1, isoDay, minReqShort, methodLine, interviewShare, hasInterview, forcedInterview } from './text.js';
+import { josa, rate1, typedRateText, isoDay, minReqShort, methodLine, interviewShare, hasInterview, forcedInterview } from './text.js';
 import { suneungDday } from './keydates.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
@@ -1457,14 +1457,15 @@ function card(app) {
   strip.appendChild(applyNoRow(app));
 
   /*
-   * 수험번호·최종경쟁률은 **원서를 내고 나서야** 알 수 있다.
-   * 학생 화면에는 단계 단추가 없으니 날짜로 저절로 갈린다 —
-   * 접수번호를 이미 적었거나, 원서 마감이 지났으면 나온다.
-   * 「곧 있습니다」와 같은 방식이다. 켜고 끄는 단추를 두지 않는 까닭이다.
+   * 수험번호·최종경쟁률 — **접힌 한 줄로 늘 둔다.**
+   *
+   * 여태는 접수번호를 적은 카드에만 나왔다. 그런데 경쟁률은 접수 기간에도
+   * 대학이 실시간으로 내걸고, 학생은 접수번호를 안 적고 넘어가기도 한다.
+   * 그러면 적을 자리가 어디에도 없어서 「경쟁률 적는 데가 없다」가 됐다.
+   * 접힌 줄은 카드 높이를 거의 안 늘리니 가리지 않는다. 생년월일만 여전히
+   * 원서를 낸 뒤(`afterApply`)에 묻는다.
    */
-  if (afterApply(app)) {
-    for (const spec of CARD_FIELDS) strip.appendChild(fieldRow(app, spec));
-  }
+  for (const spec of CARD_FIELDS) strip.appendChild(fieldRow(app, spec));
   strip.appendChild(resultRow(app));
 
   /*
@@ -1884,6 +1885,12 @@ async function saveResult(app, label, waitNo, enrolled) {
  *
  * `생년월일` 은 지원마다 묻지 않는다 — 학생 한 명에 하나라 화면 맨 위에 한 번만 묻는다.
  */
+/** 학생이 적어 둔 최종경쟁률을 「12.45:1」 꼴로. 없으면 null — 표가 줄을 비운다. */
+function finalRateText(app) {
+  const f = state.fields.get(`${app.id}|최종경쟁률`);
+  return f ? typedRateText(f.value) : null;
+}
+
 const CARD_FIELDS = [
   { name: '수험번호', hint: '원서를 내면 대학이 주는 번호입니다. 면접장에서 이 번호로 부릅니다.',
     mode: 'numeric', ph: '예) 20260012' },
@@ -1892,15 +1899,15 @@ const CARD_FIELDS = [
 ];
 
 /**
- * 이 지원의 원서를 이미 냈나.
+ * 이 지원의 원서를 이미 냈나. 생년월일을 물을지 가르는 데 쓴다.
  *
- * **접수번호가 적혀 있으면 낸 것이다.** 원서를 내야 받는 번호라 순서가 어긋날 수 없다.
- * 학생 화면은 전형일정표를 안 받아서 마감일로는 가릴 수 없고, 단계 단추도 없다.
- * 그래서 학생이 이미 한 일로 가른다 — 9월에는 저절로 안 보이고, 원서를 내고
- * 접수번호를 적는 순간 그 카드에만 나타난다.
+ * **접수번호나 수험번호가 적혀 있으면 낸 것이다.** 원서를 내야 받는 번호라
+ * 순서가 어긋날 수 없다. 학생 화면은 전형일정표를 안 받아서 마감일로는 가릴 수
+ * 없고, 단계 단추도 없다. 그래서 학생이 이미 한 일로 가른다.
+ * 최종경쟁률은 여기 안 넣는다 — 접수 중에도 적을 수 있는 값이라 냈다는 증거가 아니다.
  */
 function afterApply(app) {
-  if (CARD_FIELDS.some((f) => state.fields.has(`${app.id}|${f.name}`))) return true;
+  if (state.fields.has(`${app.id}|수험번호`)) return true;
   return state.notes.some((n) => String(n.id) === String(app.id)
     && String(n.text || '').startsWith('접수번호'));
 }
@@ -2160,6 +2167,7 @@ function openDetail(app) {
     ['작년 모집', s && s.quotaPrev != null ? `${s.quotaPrev}명` : null],
     [s && s.year ? `${s.year} 경쟁률` : '경쟁률', s && s.rate != null ? `${rate1(s.rate)}:1` : null],
     ['작년 실질 경쟁률', s && s.real && s.real.value != null ? `${rate1(s.real.value)}:1` : null],
+    ['올해 최종 경쟁률', finalRateText(app)],
   ]));
 
   /* 충원(추가합격) 3개년 — 예비번호가 어디까지 도는 전형인지. 선생님 상세와 같은 표 */

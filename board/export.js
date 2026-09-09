@@ -27,6 +27,7 @@
 import * as store from './store.js';
 import { outsideLimit } from './match.js';
 import * as stats from './stats.js';
+import { typedRate } from './text.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -1300,8 +1301,8 @@ const vOf = (app) => stats.verdict({ ...app, result: store.resultOf(app) });
 function rateText(app, sm) {
   const f = store.fieldOf(app, '최종경쟁률');
   if (f && f.value) {
-    const n = Number(String(f.value).replace(/[^0-9.]/g, ''));
-    if (Number.isFinite(n) && n > 0) return n.toFixed(2);
+    const n = typedRate(f.value);
+    if (n != null) return n.toFixed(2);
   }
   return rt(sm && sm.real ? sm.real.rate : null);
 }
@@ -1702,9 +1703,11 @@ function finalTable(rows) {
   for (const { app, student } of rows) {
     const mine = app.myScore || {};
     const r = store.resultOf(app);
+    // 경쟁률은 화면·종이 표와 같은 값 — 적어 둔 최종 경쟁률이 먼저, 없으면 작년 실질
+    const rate = rateText(app, store.summary(app));
     out.push([student.hak, student.name, shortUniv(app.univ), app.dept || '',
       typeText(app),
-      app.quota ?? '', '', mine.grade != null ? Number(mine.grade).toFixed(2) : '',
+      app.quota ?? '', rate, mine.grade != null ? Number(mine.grade).toFixed(2) : '',
       (r && r.stage1) || '', resultText(r)]);
   }
   return out;

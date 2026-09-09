@@ -317,7 +317,7 @@ export const studentDemo = {
     { id: at('가톨릭대', '영어영문학과').id, hak: '3201', stage1: '합격', final: '',
       reason: '', waitNo: '', enrolled: '', status: 'confirmed' },
   ],
-  // 접수번호가 적힌 건국대에만 「수험번호·최종경쟁률」 칸이 나온다 — 원서를 냈다는 뜻이다
+  // 학생 화면의 「수험번호·최종경쟁률 적기」는 모든 카드에 접힌 채 있고, 값이 적힌 건국대만 펼친 글이 보인다
   fields: [
     { id: at('건국대', '영어영문학과').id, hak: '3201', field: '수험번호',
       value: '20260012', status: 'student' },

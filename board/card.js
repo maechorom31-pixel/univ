@@ -15,7 +15,7 @@
 import * as store from './store.js';
 import { realRate, normType, typeGroups, fillTrend } from './match.js';
 import { confidence, pctText } from './confidence.js';
-import { josa, rate1, methodLine } from './text.js';
+import { josa, rate1, typedRate, typedRateText, methodLine } from './text.js';
 
 export { realRate };
 
@@ -307,6 +307,13 @@ export function detailPanel(app, student, onClose) {
   const diff = quotaNow != null && quotaPrev != null ? quotaNow - quotaPrev : null;
   const real = s.real;
 
+  // 원서를 낸 뒤 적는 칸(수험번호·최종경쟁률)의 표기 — 「인원과 경쟁률」과
+  // 「원서를 낸 뒤」 두 표가 같은 글자를 보게 한 곳에서 만든다.
+  // 「맞습니다」로 확인하면 by 가 담임으로 바뀌어, 학생이 적은 것과 담임이 적은 것을
+  // 나중에는 가를 수 없다. 그래서 확인된 값은 누가 적었든 「확인됨」 하나로 적는다.
+  const whoTyped = (v) => (!v ? '' : v.status === 'student' ? '학생 입력 · 확인 대기' : '확인됨');
+  const rateShown = (v) => typedRateText(v.value);
+
   const quotaBlock = rows('인원과 경쟁률', [
     ['올해 모집 인원', quotaNow != null
       ? `${quotaNow}명${diff ? ` (작년 ${quotaPrev}명, ${diff > 0 ? '+' : ''}${diff})` : ''}`
@@ -315,6 +322,10 @@ export function detailPanel(app, student, onClose) {
     [yr('경쟁률'), s && s.rate != null ? `${rate1(s.rate)}:1` : null, isCollege ? '전문대 자료' : ipSrc],
     ['작년 실질 경쟁률', real.value != null ? `${rate1(real.value)}:1` : null,
       real.why || '명목 × 모집 ÷ (모집 + 추합)'],
+    ['올해 최종 경쟁률', (() => {
+      const f = store.fieldOf(app, '최종경쟁률');
+      return f && f.value ? rateShown(f) : null;
+    })(), '원서를 낸 뒤 적은 값'],
     ['충원율', isCollege && s.linked && s.rows[0] && s.rows[0].fill != null
       ? `${Math.round(s.rows[0].fill)}%` : null, '전문대 자료'],
   ]);
@@ -406,9 +417,15 @@ export function detailPanel(app, student, onClose) {
   ]));
 
   /*
-   * 3.5 원서를 내고 **나서야** 채워지는 칸.
-   * 학생이 적고 담임이 확인한다. 값이 하나도 없으면 구역 자체를 만들지 않는다 —
-   * 9월에는 빈 줄 셋이 자리만 차지한다.
+   * 3.5 원서를 내고 **나서야** 채워지는 칸 — 수험번호·최종 경쟁률·생년월일.
+   *
+   * 학생이 적고 담임이 확인하는 것이 기본 흐름이지만, **담임이 카드에서 바로
+   * 적을 수도 있어야 한다.** 학생이 안 적고 지나가면 경쟁률은 어디에도 없고,
+   * 지원 현황·최종 결과 표의 경쟁률 칸(`export.js` 의 `rateText`)이 그 값을
+   * 먼저 쓰기 때문에 종이까지 빈 채로 나간다. 담임이 넣은 값은 바로 확정이다
+   * (`store.setField`) — 사람이 넣은 것이 언제나 먼저라는 날짜와 같은 규칙.
+   *
+   * 값이 하나도 없으면 표는 만들지 않고 접힌 「넣기 · 고치기」 한 줄만 둔다.
    */
   const paperwork = [
     ['수험번호', store.fieldOf(app, '수험번호')],
@@ -418,9 +435,61 @@ export function detailPanel(app, student, onClose) {
   if (paperwork.some(([, v]) => v && v.value)) {
     body.appendChild(rows('원서를 낸 뒤', paperwork.map(([k, v]) => [
       k,
-      v && v.value ? (k === '최종 경쟁률' ? `${rate1(v.value) ?? v.value}:1` : v.value) : null,
-      v && v.status === 'student' ? '학생 입력 · 확인 대기' : '학생 입력 · 확인됨',
+      v && v.value ? (k === '최종 경쟁률' ? rateShown(v) : v.value) : null,
+      whoTyped(v),
     ])));
+  }
+  {
+    const fix = document.createElement('details');
+    fix.className = 'date-add';
+    const sum = document.createElement('summary');
+    sum.textContent = '수험번호 · 최종 경쟁률 넣기 · 고치기';
+    fix.appendChild(sum);
+    fix.appendChild(el('p', 'hint',
+      '최종 경쟁률은 마감 뒤 대학이 발표하는 올해 값입니다. 지원 현황·최종 결과 표의'
+      + ' 경쟁률 칸에 이 값이 먼저 들어갑니다. 비우고 저장하면 지웁니다.'));
+    for (const [field, mode, ph] of [
+      ['수험번호', 'numeric', '예) 20260012'],
+      ['최종경쟁률', 'decimal', '예) 12.4'],
+    ]) {
+      const line = el('div', 'field-in');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.inputMode = mode;
+      input.placeholder = ph;
+      input.setAttribute('aria-label', `${field}`);
+      const cur = store.fieldOf(app, field);
+      input.value = cur && cur.value ? String(cur.value) : '';
+      const save = el('button', 'btn', `${field} 저장`);
+      save.type = 'button';
+      save.onclick = async () => {
+        save.disabled = true;
+        let value = input.value.trim();
+        if (field === '최종경쟁률' && value) {
+          const n = typedRate(value);
+          if (n == null) {
+            window.alert('경쟁률은 숫자로 적어 주세요. 예) 12.4');
+            save.disabled = false;
+            return;
+          }
+          value = String(n);   // 「12.4:1」로 적어도 12.4 로 남긴다 — 종이가 같은 값을 보게
+          input.value = value;
+        }
+        try {
+          await store.setField(app, field, value);
+          sum.textContent = value
+            ? `${field} ${field === '최종경쟁률' ? typedRateText(value) : value} 저장했습니다 — 수험번호 · 최종 경쟁률 넣기 · 고치기`
+            : `${field}을(를) 지웠습니다 — 수험번호 · 최종 경쟁률 넣기 · 고치기`;
+        } catch (err) {
+          window.alert(`저장하지 못했습니다 — ${err.message}`);
+        }
+        save.disabled = false;
+      };
+      line.appendChild(input);
+      line.appendChild(save);
+      fix.appendChild(line);
+    }
+    body.appendChild(fix);
   }
 
   /* 4. 일정 — 없는 항목도 「모집요강 확인」으로 남긴다. 빠뜨리는 것이 더 위험하다. */
