@@ -53,6 +53,8 @@ const el = (tag, cls, text) => {
 };
 const tidy = (s) => String(s || '').replace(/ (?=[^ ]{1,4}$)/, ' ');
 const shortUniv = (name) => String(name || '').replace(/\s*[-–—]\s*.*$/, '').replace(/\(.*/, '');
+/* 달력 칩은 칸이 좁다 — 「국민대학교」는 「국민대」로. 전문대학·사관학교는 그대로 둔다 */
+const chipUniv = (name) => shortUniv(name).replace(/대학교$/, '대');
 
 /* ── 날짜 ─────────────────────────────────────────────────────── */
 
@@ -402,7 +404,7 @@ function month(ym, events, withName) {
       const tag = document.createElement('button');
       tag.type = 'button';
       tag.className = `ev ${kind}`.trim();
-      tag.appendChild(el('span', '', `${shortUniv(e.app.univ)} ${e.kind}`));
+      tag.appendChild(el('span', '', `${chipUniv(e.app.univ)} ${e.kind}`));
       // 학생 한 명의 달력에서는 학과가, 반 전체 달력에서는 누구인지가 갈라 준다
       tag.appendChild(el('i', 'd', withName ? `${e.hak} ${tidy(e.name)}` : tidy(e.app.dept)));
       const src = e.status === 'sched' ? ' · 전형일정표'

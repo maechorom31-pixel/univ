@@ -397,7 +397,9 @@ function render() {
      * 「정했다」고 거짓말을 한다. 격자 한 칸(`.slot`)이 그 둘을 함께 안는다.
      * 혼자 든 칸에는 끌기 중에만 「같이 고민 — 여기 놓기」 띠가 나타난다.
      */
-    const cell = el('div', here.length > 1 ? 'slot pair' : 'slot');
+    // 이름이 `slotbox` 인 까닭 — `.slot` 은 진학 대장의 표 칸(td.slot)이 이미 쓴다.
+    // 같은 이름으로 display:grid 를 걸었더니 대장 표가 통째로 세로로 무너졌다.
+    const cell = el('div', here.length > 1 ? 'slotbox pair' : 'slotbox');
     /*
      * 6칸 카드도 후보 목록(cardRow)과 같이 한 장씩 감싼다. 목록만 감싸 놓으면
      * 순위에 올라간 카드가 터지는 순간 render() 가 멈춰 보드가 통째로 빈다 —

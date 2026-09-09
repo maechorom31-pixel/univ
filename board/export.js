@@ -79,6 +79,13 @@ let notice = '';
  * 작년 보고서에서 떠 온 정적 자료를 얹는다. 없으면 올해 칸만 나온다.
  */
 let history = null;      // 지난해 지원 결과 보고서에서 뽑은 집계
+/*
+ * **지난 연도 칸은 비워 둔다.** report_history.json 의 숫자는 지난해 보고서
+ * 한 부에서 떠 온 것이라 다른 해와 잣대가 어긋날 수 있다. 담임이 다른 자료에서
+ * 파싱해 직접 채우기로 했다 — 열(연도)과 줄은 그대로 두고 값만 비운다.
+ * 올해(YEAR) 칸만 보드가 센다.
+ */
+const PAST_BLANK = true;
 const YEAR = () => (history && history.years && history.years.length
   ? history.years[0] + 1 : 2027);
 
@@ -670,7 +677,7 @@ function crossTable(key, thisYear, subsetLabel, subsetRows) {
     }
     tbody.appendChild(tr);
   };
-  const hy = (y) => (hist && hist.by ? hist.by[String(y)] : null) || {};
+  const hy = (y) => (PAST_BLANK ? {} : (hist && hist.by ? hist.by[String(y)] : null) || {});
 
   if (key === '가') {
     wide('3학년 전체 학생 수',
@@ -755,6 +762,7 @@ function rankTable(key, rows) {
     for (const y of years) {
       let v;
       if (y === YEAR()) v = mine.get(stats.univKey(name)) || 0;
+      else if (PAST_BLANK) { tr.appendChild(el('td', 'num', '')); continue; }
       else {
         const h = hist && hist.rows.find((r) => stats.univKey(r.name) === stats.univKey(name));
         v = h ? (h.by[String(y)] ?? 0) : 0;
@@ -768,7 +776,7 @@ function rankTable(key, rows) {
   sum.className = 'sum';
   sum.appendChild(el('td', null, ''));
   sum.appendChild(el('td', null, '합계'));
-  years.forEach((y) => sum.appendChild(el('td', 'num', String(totals[y] || 0))));
+  years.forEach((y) => sum.appendChild(el('td', 'num', y !== YEAR() && PAST_BLANK ? '' : String(totals[y] || 0))));
   tbody.appendChild(sum);
   table.appendChild(tbody);
   tw.appendChild(table);
