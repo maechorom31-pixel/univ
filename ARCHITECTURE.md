@@ -139,6 +139,7 @@
 | `track_alias.json` | 전형명 별칭표 484건 | `build_ipgyeol.py` | 0.02 MB |
 | `mojip2027.json` | 2027 모집요강 16,873행 · 223개교 | `parse_2027.py` | 4.7 MB |
 | `schedule2027.json` | 전형일정 — 원서마감·발표·고사일 | `build_schedule.py` | 0.2 MB |
+| `ipgyeol/index.json` · `ipgyeol/u/*.json` | 입결을 대학별로 쪼갠 것(197 파일) — 학생 화면이 제 대학 것만 받는다 | `shard_ipgyeol.py` (build_ipgyeol.py 가 끝에서 부른다) | 9.1 MB (한 파일 gzip ≤ 23KB) |
 | `xref.json` | 학과 이름 맞춤표 | `build_xref.py` | 0.4 MB |
 
 `xref.json` 은 **보드가 안 받는다.** `planner.html` 이 내장해 쓰는 것이고, 보드는
@@ -160,6 +161,7 @@
 | `parse_2027.py` | 모집요강 엑셀 → `mojip2027.json` |
 | `merge_ipgyeol.py` | 갈라져 있던 입결 두 벌을 하나로 |
 | `build_schedule.py` | 전형일정 PDF 다섯 부 → `schedule2027.json` |
+| `shard_ipgyeol.py` | `ipgyeol.json` → `ipgyeol/index.json` + 대학별 `ipgyeol/u/*.json` (학생 화면용) |
 | `build_xref.py` | 즐겨찾기·입결·모집요강 학과명 맞춤표 |
 | `build_planner.py` | `planner.html` 에 모집요강 밀어 넣기 |
 | `sync_index_data.py` | `index.html` 에 입결 밀어 넣기 |
@@ -1147,7 +1149,15 @@ tray 가 곧 「원서를 냈다」이므로 셋이 이것을 따라간다: 보�
 4. **골격을 먼저.** 기다리는 동안 빈 6칸 격자와 「보통 3~5초 걸립니다」를 그린다.
    숫자는 지어내지 않는다 — 칸만 있다.
 
-남은 하나는 **공개 자료를 대학별로 쪼개는 것**이다(다음 절).
+5. **입결을 대학별로 쪼갠다.** 정본 9MB(gzip 1.2MB)를 학생 폰이 매번(Pages 캐시
+   10분) 받고 파싱하던 것을, `scripts/shard_ipgyeol.py` 가 대학마다 파일 하나
+   (`data/ipgyeol/u/<sha1 8자>.json`, 큰 대학도 gzip 23KB)와 이름 표(`index.json`,
+   gzip 5KB)로 나눠 둔다. 학생 화면은 표만 먼저 받고, 지원 목록을 안 뒤
+   `loadIpgyeol` 이 제 대학(별칭의 대학 포함) 파일만 받는다 — 나머지 응답과
+   나란히. 대학 찾기(`resolveUniv`)는 **전체 이름 표**로 해야 정본과 같은 답이
+   나오므로 `indexIpgyeol(doc, allNames)` 가 이름 전체를 따로 받는다. 표가 없으면
+   정본을 통째로 받는 옛 길로 돈다. 데모 세 학생(3201·3204·3212)으로 조각과 정본의
+   카드 숫자가 같음을 브라우저로 견줬다. 교사 보드·검색기는 그대로 정본을 쓴다.
 
 ### 면접이 있나 — 자동 판정을 선생님이 뒤집을 수 있게 했다
 

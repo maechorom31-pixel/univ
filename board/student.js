@@ -19,7 +19,7 @@ import * as api from './api.js';
 import {
   link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule,
   summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
-  fillTrend, outsideLimit, isGuessedFit,
+  fillTrend, outsideLimit, isGuessedFit, buildUnivIndex,
 } from './match.js';
 import { josa, rate1, isoDay, minReqShort, methodLine, interviewShare, hasInterview, forcedInterview } from './text.js';
 import { suneungDday } from './keydates.js';
@@ -79,11 +79,12 @@ export async function start(token, demoData, opts = {}) {
   render();
   // 공개 자료(입결·모집요강)는 서버 응답과 **동시에** 받는다 — 보드와 같은 이유다.
   // 서로 독립이라 직렬로 이으면 체감 로딩이 둘의 합이 된다.
-  const pub = loadPublic().then(() => mark('pub'));
+  const pub = loadPublic();
   if (demoData) {
     apply(demoData);
     render();
-    await pub;
+    await Promise.all([pub, loadIpgyeol()]);
+    mark('pub');
     return;
   }
   /*
@@ -93,7 +94,7 @@ export async function start(token, demoData, opts = {}) {
    * 다 읽을 때까지 기다리지 않는다. 옛 서버는 `lite` 를 몰라 다 주고 `studentRest`
    * 를 거절하는데, 그때는 이미 다 받았으니 조용히 넘어간다.
    */
-  const core = api.call('student', { token, lite: 1 }, { timeout: 45000 });
+  const core = api.call('student', { token, lite: 1 }, { timeout: 45000 });   // 지원·배치·별칭·입력
   const rest = api.call('studentRest', { token }, { timeout: 45000 });
   rest.catch(() => {});                       // 먼저 실패해도 「처리 안 된 거절」로 남지 않게
   try {
@@ -107,6 +108,8 @@ export async function start(token, demoData, opts = {}) {
     return;
   }
   render();
+  // 지원 목록을 알았으니 제 대학의 입결 조각을 받는다 — 나머지 응답과 나란히
+  const ip = loadIpgyeol();
   try {
     applyRest(await rest);
     mark('rest');
@@ -114,7 +117,8 @@ export async function start(token, demoData, opts = {}) {
     if (!state.gotFull) state.notice = `날짜·결과를 불러오지 못했습니다 — ${err.message} 새로고침해 주세요.`;
   }
   render();
-  await pub;
+  await Promise.all([pub, ip]);
+  mark('pub');
 }
 
 const now_ = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
@@ -142,19 +146,20 @@ function apply(data) {
     `${r.univ}|${r.dept}`,
     { toUniv: String(r.toUniv || ''), toDept: String(r.toDept || ''), note: String(r.note || '') },
   ]));
+  // 원서를 낸 뒤에 채워지는 칸. 생년월일은 학생당 하나라 id 가 비어 있다.
+  // 마감(★)과 면접여부가 여기 있어 카드 모양을 정한다 — 그래서 핵심 응답에 든다.
+  state.fields = new Map((data.fields || []).map((r) => [
+    `${String(r.id || '')}|${String(r.field)}`,
+    { value: String(r.value || ''), status: String(r.status || 'confirmed'), by: r.by || '', at: r.at || '' },
+  ]));
   // 핵심만 온 응답(lite)이 아니면 나머지도 이 안에 있다 — 보기용 자료와 옛 서버
   state.gotFull = !data.lite;
   if (state.gotFull) applyRest(data);
 }
 
-/** 날짜·결과·입력(마감 포함)·메모 — `studentRest` 또는 전체 응답에서. */
+/** 날짜·결과·메모 — `studentRest` 또는 전체 응답에서. */
 function applyRest(data) {
   state.notes = data.notes || [];
-  // 원서를 낸 뒤에 채워지는 칸. 생년월일은 학생당 하나라 id 가 비어 있다.
-  state.fields = new Map((data.fields || []).map((r) => [
-    `${String(r.id || '')}|${String(r.field)}`,
-    { value: String(r.value || ''), status: String(r.status || 'confirmed'), by: r.by || '', at: r.at || '' },
-  ]));
   state.results = new Map((data.results || []).map((r) => [String(r.id), {
     stage1: String(r.stage1 || ''), final: String(r.final || ''),
     reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
@@ -167,27 +172,83 @@ function applyRest(data) {
   summaryCache.clear();
 }
 
-/** 입결은 공개 자료라 학생 화면에서도 그대로 받는다. */
+/** 공개 자료를 받는 도우미 — 못 받으면 null. 그 자료 없이 그린다. */
+async function grab(url, build) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error();
+    return build(await res.json());
+  } catch (err) { return null; }
+}
+
+/**
+ * 입결은 공개 자료라 학생 화면에서도 그대로 받는다.
+ *
+ * **다만 통째로는 아니다.** 정본은 9MB(gzip 1.2MB)인데 학생 한 명에게 필요한
+ * 대학은 열 곳 안팎이다. 여기서는 대학 이름 표(`data/ipgyeol/index.json`, gzip 1KB)만
+ * 받아 두고, 지원 목록을 안 뒤 `loadIpgyeol` 이 제 대학의 파일만 받는다 — 큰 대학도
+ * gzip 23KB 라 여덟 곳이어도 정본의 몇 분의 일이고 폰의 파싱 부담도 사라진다.
+ * 표가 없으면(옛 배포·조각을 안 만든 저장소) 예전처럼 정본을 통째로 받는다.
+ *
+ * 전형일정표도 받는다. 예전에는 안 받아서, 선생님 화면은 「면접 11/21~11/23」을
+ * 아는데 학생 화면은 같은 지원에 「아직 날짜가 없습니다」라고 말했다.
+ * 같은 지원이 두 화면에서 다른 말을 하면 안 된다.
+ */
+let pubBase = null;
 async function loadPublic() {
-  const grab = async (url, build) => {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error();
-      return build(await res.json());
-    } catch (err) { return null; }
-  };
-  /*
-   * 전형일정표도 받는다. 예전에는 안 받아서, 선생님 화면은 「면접 11/21~11/23」을
-   * 아는데 학생 화면은 같은 지원에 「아직 날짜가 없습니다」라고 말했다.
-   * 같은 지원이 두 화면에서 다른 말을 하면 안 된다.
-   */
-  const [ipgyeol, mojip, college, sched] = await Promise.all([
-    grab('data/ipgyeol.json', indexIpgyeol),
-    grab('data/mojip2027.json', indexMojip),
-    grab('../College/data/departments.json', indexCollege),
-    grab('data/schedule2027.json', indexSchedule),
-  ]);
-  state.src = { ipgyeol, mojip, college, sched, related: new Map() };
+  pubBase = (async () => {
+    const [ipIndex, mojip, college, sched] = await Promise.all([
+      grab('data/ipgyeol/index.json', (j) => (j && j.univs && j.columns ? j : null)),
+      grab('data/mojip2027.json', indexMojip),
+      grab('../College/data/departments.json', indexCollege),
+      grab('data/schedule2027.json', indexSchedule),
+    ]);
+    state.ipIndex = ipIndex;
+    const parts = { mojip, college, sched, related: new Map() };
+    if (!ipIndex) {
+      // 옛 길 — 표가 없으면 정본을 통째로
+      parts.ipgyeol = await grab('data/ipgyeol.json', indexIpgyeol);
+      state.src = parts;
+      summaryCache.clear();
+      render();
+      return;
+    }
+    /*
+     * **입결 조각이 오기 전에는 `state.src` 를 짓지 않는다.** 요약(`makeLink`)은
+     * `src.ipgyeol.index` 를 바로 읽어서, 입결 자리가 비어 있는 src 를 주면 카드를
+     * 그리다 터진다. 조각까지 갖춰지면 `loadIpgyeol` 이 한 번에 짓는다.
+     */
+    state.pubParts = parts;
+  })();
+  return pubBase;
+}
+
+/**
+ * 제 대학의 입결 파일만 받아 정본과 같은 모양의 색인을 짓는다.
+ * 대학 찾기는 **전체 이름 표**로 한다(`resolveUniv` 가 정본과 같은 답을 내게) —
+ * 지원의 대학명과 선생님이 이어 준 별칭의 대학명을 다 본다. 못 찾은 대학은
+ * 정본을 통째로 받았을 때도 못 붙던 대학이다.
+ */
+async function loadIpgyeol() {
+  await pubBase;
+  const idx = state.ipIndex;
+  if (!idx || state.src || !state.pubParts) return;
+  const names = Object.keys(idx.univs);
+  const uindex = buildUnivIndex(names);
+  const wanted = new Set();
+  for (const app of state.apps) {
+    const alias = state.aliases.get(`${app.univ}|${app.dept}`);
+    for (const nm of [app.univ, alias && alias.toUniv]) {
+      if (!nm) continue;
+      const u = resolveUniv(nm, uindex);
+      if (u && idx.univs[u]) wanted.add(idx.univs[u]);
+    }
+  }
+  const parts = await Promise.all([...wanted].map((k) => grab(`data/ipgyeol/u/${k}.json`, (j) => j.rows || [])));
+  const rows = [];
+  for (const part of parts) if (part) rows.push(...part);
+  state.src = { ...state.pubParts, ipgyeol: indexIpgyeol({ columns: idx.columns, rows }, names) };
+  state.ipFiles = wanted.size;
   summaryCache.clear();
   render();
 }
@@ -1111,7 +1172,7 @@ function timingLine() {
   const bits = [
     `서버 ${sec(t.server)}${t.took != null ? ` (안에서 ${t.took}ms${t.cached === false ? ' · 원본 새로 읽음' : t.cached ? ' · 캐시' : ''})` : ''}`,
     `나머지 ${sec(t.rest)}`,
-    `자료 ${sec(t.pub)}`,
+    `자료 ${sec(t.pub)}${state.ipFiles != null ? ` (입결 ${state.ipFiles}개 대학만)` : ''}`,
   ];
   const p = el('p', 'hint timing', `걸린 시간 — ${bits.join(' · ')}`);
   p.setAttribute('role', 'status');

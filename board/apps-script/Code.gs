@@ -1807,6 +1807,11 @@ function studentView_(token, lite) {
      * 학번이 안 붙은 자료(대학·학과 이름뿐)라 통째로 줘도 새는 것이 없다.
      */
     aliases: rows_(SHEET.alias),
+    /*
+     * 입력 탭은 핵심에 든다 — 마감(★)과 면접여부가 카드의 모양(고르개 잠김·날짜
+     * 칸·꼬리표)을 정하는 값이라, 뒤에 오면 카드가 한 번 바뀌어 보인다.
+     */
+    fields: rows_(SHEET.field).filter(function (r) { return String(r.hak) === hak; }),
     // 원본을 캐시에서 읽었나 — ?t=1 이 「캐시 미스」를 가려 볼 수 있게
     cached: Boolean(parsed.cached),
     // 핵심만 보낸 응답이라는 표시 — 화면이 나머지(studentRest)를 기다린다
@@ -1817,10 +1822,11 @@ function studentView_(token, lite) {
 }
 
 /**
- * **학생 응답의 살아 움직이는 나머지** — 날짜·결과·입력(마감 포함)·메모.
+ * **학생 응답의 살아 움직이는 나머지** — 날짜·결과·메모.
  * 카드를 그리는 데는 없어도 되는 것들이라 `student` 의 `lite: 1` 은 이걸 빼고
  * 먼저 답하고, 화면은 `studentRest` 를 **나란히** 불러 뒤에 채운다. 두 실행이
- * 동시에 돌아 시트 읽기 일곱이 둘·넷으로 갈리고, 첫 그리기는 둘만 기다린다.
+ * 동시에 돌아 시트 읽기 일곱이 셋·셋으로 갈리고, 첫 그리기는 셋만 기다린다.
+ * 입력 탭(마감 ★·면접여부)은 카드 모양을 정하므로 핵심 쪽에 있다.
  */
 function studentLive_(hak, appIds) {
   var mine = function (arr) {
@@ -1840,7 +1846,6 @@ function studentLive_(hak, appIds) {
     // 학생이 적어 둔 결과를 돌려주지 않으면, 저장하고 새로고침했을 때 **사라져 보인다.**
     // 시트에는 있는데 화면에서 없어지면 학생은 다시 적거나 도구를 안 믿게 된다.
     results: mine(rows_(SHEET.result)),
-    fields: mine(rows_(SHEET.field)),
     notes: mine(rows_(SHEET.note)).filter(function (n) { return String(n.visible) === 'Y'; })
   };
 }
