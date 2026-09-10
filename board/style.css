@@ -1138,6 +1138,8 @@ table.ledger th, table.ledger td { word-break: keep-all; overflow-wrap: break-wo
   letter-spacing: -0.02em; margin: 0 0 2mm;
 }
 .doc-date { text-align: center; font-size: 10pt; margin: 0 0 10mm; }
+/* 표 아래 각주 — 「*」 표시의 뜻. 종이에서도 읽히는 크기로 */
+.doc-note { font-size: 9pt; color: #444; margin: 2mm 0 0; }
 .sheet-stamp { text-align: right; font-size: 9pt; margin: -2mm 0 2mm; }
 .doc-h1 { font-size: 12pt; font-weight: 700; margin: 9mm 0 3mm; }
 .doc-h1:first-of-type { margin-top: 0; }
