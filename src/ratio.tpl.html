@@ -67,7 +67,7 @@ p{margin:0 0 10px}
          border:1px solid var(--line); border-radius:6px; margin-top:16px}
 .note .tblwrap{max-height:none}
 table{border-collapse:collapse; width:100%; font-size:13px; table-layout:fixed;
-       min-width:1180px}
+       min-width:1240px}
 #tblTrack{min-width:820px}
 #tblUniv{min-width:900px}
 #tblAcc{min-width:0; font-size:13px}
@@ -165,6 +165,10 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
     <input type="text" id="fQ" placeholder="예: 간호, 전남대" autocomplete="off">
   </div>
   <div class="f">
+    <label for="fGrade">내 등급 (전교과, 저장 안 함)</label>
+    <input type="text" id="fGrade" inputmode="decimal" placeholder="예: 3.2" autocomplete="off">
+  </div>
+  <div class="f">
     <label for="fSort">정렬</label>
     <select id="fSort">
       <option value="-rec">상담 추천순 (낮게 끝날 가능성 × 근거)</option>
@@ -175,6 +179,8 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
       <option value="vs">2025년 같은 시점 대비 낮은 순</option>
       <option value="-vs">2025년 같은 시점 대비 높은 순</option>
       <option value="pr26">작년 최종 대비 진도율 낮은 순</option>
+      <option value="-fit">내 등급 여유 큰 순 (70%컷 − 내 등급)</option>
+      <option value="c70">작년 70%컷 높은 성적 순</option>
       <option value="-dp">직전 대비 증가 큰 순</option>
       <option value="u">대학·전형 순</option>
     </select>
@@ -188,6 +194,8 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
     <span class="g"><span class="grp">작년</span>
       <label><input type="checkbox" id="cDown"> 2025년 같은 시점보다 낮음</label>
       <label><input type="checkbox" id="cMatched" checked> 작년 자료가 붙은 것만</label></span>
+    <span class="g"><span class="grp">성적</span>
+      <label><input type="checkbox" id="cFit" checked> 내 등급으로 닿는 곳만 (70%컷 기준, 0.3 여유)</label></span>
     <span class="g"><span class="grp">거르기</span>
       <label><input type="checkbox" id="cGen" checked> 일반고가 못 내는 전형 빼기</label>
       <label><input type="checkbox" id="cZero" checked> 지원 0명 제외</label>
@@ -205,11 +213,11 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
   <div class="tblwrap">
     <table id="tblUnit">
       <colgroup>
-        <col style="width:104px"><col style="width:176px"><col style="width:226px">
-        <col style="width:54px"><col style="width:84px"><col style="width:64px">
-        <col style="width:84px"><col style="width:64px">
-        <col style="width:104px"><col style="width:80px">
-        <col style="width:78px"><col style="width:64px">
+        <col style="width:104px"><col style="width:170px"><col style="width:216px">
+        <col style="width:50px"><col style="width:80px"><col style="width:60px">
+        <col style="width:80px"><col style="width:62px">
+        <col style="width:100px"><col style="width:78px">
+        <col style="width:74px"><col style="width:60px"><col style="width:84px">
       </colgroup>
       <thead><tr>
         <th>대학</th><th>전형</th><th>모집단위</th>
@@ -222,6 +230,7 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
         <th class="n" title="같은 시점에 경쟁률이 비슷했던 곳 중 최종 2:1 미만으로 끝난 비율">최종 2:1 미만</th>
         <th class="n" title="2026학년도 최종 경쟁률(모집요강). 회색은 2025학년도 값">작년 최종</th>
         <th class="n" title="현재 ÷ 작년 최종">진도율</th>
+        <th class="n" title="저장소 입결 자료의 가장 최근 해 70%컷. 회색은 전형이 안 맞아 같은 유형의 중앙값을 대신 보인 것. 등급을 넣으면 여유가 함께 나옵니다">70%컷</th>
       </tr></thead>
       <tbody></tbody>
     </table>
@@ -307,6 +316,15 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
      적힙니다. 점수는 「지원하면 붙는다」가 아니라 「경쟁이 낮게 끝날 근거가
      있다」는 뜻이고, 성적 적합 여부는 상담 도구의 입결과 함께 봐야 합니다.</p>
 
+  <h3>70%컷 · 내 등급</h3>
+  <p>「70%컷」은 저장소 입결 자료(2026학년도까지)의 가장 최근 해 값입니다. 전형이
+     맞는 값은 검게, 전형이 안 맞아 같은 유형(교과/종합)의 중앙값을 대신 보인 값은
+     회색입니다. 위의 「내 등급」에 전교과 등급을 넣으면 컷과의 차이가 컷 아래에
+     붙고, 「내 등급으로 닿는 곳만」이 컷보다 0.3등급 모자란 곳까지 남깁니다.
+     추천 점수도 등급을 알면 닿지 않는 곳을 크게 내리고 여유가 있는 곳을 조금
+     올립니다. <strong>입력한 등급은 이 화면의 메모리에만 있고 어디에도 저장되지
+     않습니다.</strong> 새로 고치면 지워집니다. 학생 이름은 넣을 곳이 없습니다.</p>
+
   <h3>2025 동시점 · 대비 · 작년 최종 · 진도율</h3>
   <p>시점별 자료가 있는 해는 2025·2024·2023학년도라, 같은 시점 비교는 2025학년도
      기준입니다. <strong>대비</strong>는 그때보다 몇 배인지입니다.
@@ -372,13 +390,27 @@ var tracks = rows.filter(function(r){ return r.sm; });
 var NOT_GEN = /특성화고|특성화|전문계|재직자|성인학습|평생학습|평생교육|만학|마이스터|산업체|북한이탈|장애|특수교육|검정고시|체육특기|특기자|군사|사관|외국인|재외국민|대안학교|자립지원|위탁/;
 units.forEach(function(r){ r.gen = !NOT_GEN.test(r.tr + ' ' + r.un); });
 
+/* 내 등급 — 메모리에만 둔다. 저장하지 않는다. */
+var GRADE = null;
+function readGrade(){
+  var v = parseFloat(document.getElementById('fGrade').value.replace(/[^\d.]/g, ''));
+  GRADE = (v >= 1 && v <= 9) ? v : null;
+  units.forEach(function(r){
+    r.fit = (GRADE !== null && r.c70 !== undefined) ? Math.round((r.c70 - GRADE) * 100) / 100 : undefined;
+  });
+  scoreAll();
+  var t = document.getElementById('tileFit');
+  if(t) t.textContent = GRADE === null ? '-' : units.filter(function(r){ return r.fit !== undefined && r.fit >= -0.3; }).length;
+}
+
 /* 상담 추천 점수 — 낮게 끝날 가능성에 근거의 두께를 곱한 것. 기준은 아래 설명에. */
 function step(v, cuts){           // cuts: [[기준, 점수], ...] 오름차순, v가 기준 미만이면 그 점수
   if(v === undefined || v === null) return null;
   for(var i = 0; i < cuts.length; i++) if(v < cuts[i][0]) return cuts[i][1];
   return 0;
 }
-units.forEach(function(r){
+function scoreAll(){ units.forEach(scoreOne); }
+function scoreOne(r){
   if(!(r.ap > 0) || r.p2 === undefined){ r.rec = undefined; return; }
   var why = [];
   var sP = r.p2;                                        // 0~1
@@ -394,9 +426,14 @@ units.forEach(function(r){
   if(r.vs && r.vs < 1) why.push('작년 동시점의 ' + f2(r.vs) + '배');
   if(!linked) why.push('작년 자료 없음');
   if(r.rc < 5) why.push('모집 ' + r.rc + '명이라 흔들림');
+  if(r.fit !== undefined){                    // 등급을 넣었을 때만: 닿지 않으면 크게 깎고, 여유는 보탠다
+    if(r.fit < -0.3){ score -= 40; why.push('70%컷 ' + f2(r.c70) + '라 ' + Math.abs(r.fit).toFixed(1) + ' 모자람'); }
+    else { score += Math.min(15, Math.max(0, r.fit) * 15); why.push('70%컷 ' + f2(r.c70) + ' (여유 ' + (r.fit >= 0 ? '+' : '') + r.fit.toFixed(1) + ')'); }
+  } else if(GRADE !== null && r.c70 === undefined){ why.push('70%컷 없음'); }
   r.rec = Math.round(score);
   r.why = why.join(' · ');
-});
+}
+scoreAll();
 
 /* 즐겨찾기 — 이 브라우저에만 남는다 */
 var FAV_KEY = 'ratio-fav';
@@ -462,7 +499,8 @@ var mainBucket = (function(){
     ['지금 2:1 미만', sub2, '개', ''],
     ['최종 2:1 미만 확률 50% 이상', p2, '개', 'key'],
     ['2025 동시점보다 낮음', down, '개', ''],
-    ['★ 즐겨찾기', '<span id="tileFav">'+favCount()+'</span>', '개', '']
+    ['★ 즐겨찾기', '<span id="tileFav">'+favCount()+'</span>', '개', ''],
+    ['내 등급으로 닿음', '<span id="tileFit">-</span>', '개', '']
   ];
   document.getElementById('tiles').innerHTML = t.map(function(x){
     return '<div class="tile '+x[3]+'"><div class="lab">'+tail(x[0])+'</div>'+
@@ -504,8 +542,10 @@ function filtered(){
   var gen = document.getElementById('cGen').checked;
   var nz = document.getElementById('cZero').checked;
   var fo = document.getElementById('cFav').checked;
+  var fitOn = document.getElementById('cFit').checked && GRADE !== null;
   var out = units.filter(function(r){
     if(fo && !fav[favKey(r)]) return false;
+    if(fitOn && !(r.fit !== undefined && r.fit >= -0.3)) return false;
     if(u && r.u !== u) return false;
     if(k && r.kd !== k) return false;
     if(g && r.g !== g) return false;
@@ -535,6 +575,13 @@ function filtered(){
   return out;
 }
 
+function cutCell(r){
+  if(r.c70 === undefined) return '<span class="dim">-</span>';
+  var v = r.cx ? f2(r.c70) : '<span class="dim">'+f2(r.c70)+'</span>';
+  if(r.fit === undefined) return v;
+  var cls = r.fit < -0.3 ? 'low' : (r.fit >= 0.5 ? 'hi' : '');
+  return v + '<br><span class="band num '+cls+'">' + (r.fit >= 0 ? '+' : '') + r.fit.toFixed(1) + '</span>';
+}
 function predCell(r){
   if(r.pm !== undefined && r.ap > 0){
     return f1(r.pm) + '<br><span class="band num">' + f1(r.pl) + '~' + f1(r.ph) + '</span>';
@@ -571,6 +618,7 @@ function cell(r){
     '<td class="n num-cell">'+(r.pr26 !== undefined ?
        '<span class="'+(r.pr26<0.7?'low':(r.pr26>=1.2?'hi':''))+'">'+Math.round(r.pr26*100)+'%</span>'
        : '<span class="dim">-</span>')+'</td>' +
+    '<td class="n num-cell">'+cutCell(r)+'</td>' +
     '</tr>';
 }
 
@@ -580,7 +628,7 @@ function render(){
   var list = filtered();
   var tb = document.querySelector('#tblUnit tbody');
   if(!list.length){
-    tb.innerHTML = '<tr><td colspan="12" class="empty">조건에 맞는 모집단위가 없습니다.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="13" class="empty">조건에 맞는 모집단위가 없습니다.</td></tr>';
   } else {
     tb.innerHTML = list.slice(0, shown).map(cell).join('');
   }
@@ -607,6 +655,8 @@ document.querySelector('#tblUnit tbody').addEventListener('click', function(e){
   document.getElementById(id).addEventListener('change', function(){ shown = PAGE; render(); });
 });
 document.getElementById('fQ').addEventListener('input', function(){ shown = PAGE; render(); });
+document.getElementById('fGrade').addEventListener('input', function(){ readGrade(); shown = PAGE; render(); });
+document.getElementById('cFit').addEventListener('change', function(){ shown = PAGE; render(); });
 document.getElementById('btnMore').addEventListener('click', function(){
   shown += PAGE * 2; render(); });
 

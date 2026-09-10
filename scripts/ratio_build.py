@@ -131,7 +131,7 @@ def bucket_of(stamp, deadline):
 def norm_unit(s):
     s = re.sub(r'\s+', '', s or '')
     s = re.sub(r'[\[［].*?[\]］]', '', s)          # [교직] [신설] [간호교육인증]
-    s = re.sub(r'[▲■★☆※◆●○△□▶▷]', '', s)
+    s = re.sub(r'[▲■★☆※◆●○△□▶▷*]', '', s)
     s = s.replace('ㆍ', '·').replace('•', '·').replace('․', '·').replace('.', '·')
     s = re.sub(r'[（(].*?[)）]', '', s)
     s = re.sub(r'[-–—/].*$', '', s)
@@ -450,6 +450,79 @@ def recover_tracks(rows):
     return out
 
 
+# ------------------------------------------------------------- 입결(70%컷)
+IPGYEOL = os.path.join(ROOT, 'data', 'ipgyeol.json')
+CAT_OF = {'학생부교과': '교과', '학생부종합': '종합', '논술': '논술', '실기': '실기'}
+
+
+def load_ipgyeol():
+    """(대학, 카테고리, 정규화 학과) -> [(연도, 전형, 등급70, 등급50)]. 가장 최근 해만 남긴다."""
+    d = json.load(open(IPGYEOL, encoding='utf-8'))
+    ix = {c: i for i, c in enumerate(d['columns'])}
+    by = {}
+    for r in d['rows']:
+        g70 = r[ix['등급70']]
+        if g70 is None:
+            continue
+        key = (r[ix['대학']], r[ix['카테고리']], norm_unit(r[ix['학과']]))
+        by.setdefault(key, []).append((r[ix['연도']], r[ix['전형']], g70, r[ix['등급50']]))
+    for key, rows in by.items():
+        top = max(y for y, _, _, _ in rows)
+        by[key] = [x for x in rows if x[0] == top]
+    univs = sorted(set(k[0] for k in by))
+    return by, univs
+
+
+def ip_univ_cands(page_name, campus, ip_univs):
+    """페이지 대학명 -> 입결 쪽 대학명 후보들(앞이 우선)."""
+    n = clean_univ(page_name)
+    base = n.replace('대학교', '대')
+    base = re.sub(r'\((서울|서울캠퍼스)\)|서울캠퍼스$', '', base)
+    base = base.replace('(세종)', '(세)').replace('(글로컬)', '(글)').replace('(ERICA)', '(에)')
+    base = base.replace('여자대', '여대').replace('한국외국어대', '한국외대')
+    cands = []
+    if campus:
+        cands.append('%s(%s)' % (base, campus))
+    cands.append(base)
+    stem = re.sub(r'\(.*\)$', '', base)
+    cands += [u for u in ip_univs if u.startswith(stem) and u not in cands]
+    if base.startswith('국립'):
+        cands += [u for u in ip_univs if u.startswith(base[2:]) and u not in cands]
+    return [c for c in cands if c in ip_univs]
+
+
+def find_cut(ip, ip_cands, kind, track, probes):
+    """(등급70, 등급50, 연도, 전형이 맞았는지). 전형이 안 맞으면 같은 카테고리의 중앙값."""
+    cat = CAT_OF.get(kind)
+    if not cat:
+        for c in ('학생부교과', '학생부종합'):
+            got = find_cut(ip, ip_cands, c, track, probes)
+            if got and got['cx']:
+                return got
+        return None
+    for u in ip_cands:
+        rows = None
+        for n in probes:
+            rows = ip.get((u, cat, n))
+            if rows:
+                break
+        if not rows:
+            continue
+        nt = norm_track(track)
+        best, sc = None, 0.0
+        for row in rows:
+            v = track_score(nt, norm_track(row[1]))
+            if v > sc:
+                best, sc = row, v
+        if best and sc >= 0.62:
+            return {'c70': best[2], 'c50': best[3], 'cy': best[0], 'cx': 1}
+        g70 = st.median([x[2] for x in rows])
+        g50s = [x[3] for x in rows if x[3] is not None]
+        return {'c70': round(g70, 2), 'c50': round(st.median(g50s), 2) if g50s else None,
+                'cy': rows[0][0], 'cx': 0}
+    return None
+
+
 # ------------------------------------------------------------- 본체
 def load_mojip():
     """저장소의 2027 모집요강 요약에서 대학별 최근 최종 경쟁률을 꺼낸다."""
@@ -516,6 +589,7 @@ def pick_prev(snaps, cur):
 
 def main():
     mojip = load_mojip()
+    ip, ip_univs = load_ipgyeol()
     hist_rows, hist_sources = load_hist()
     hist_univs = set(r['u'] for r in hist_rows)
     mult = Multipliers(hist_rows)
@@ -562,13 +636,17 @@ def main():
         hrows = by_univ.get(hu, []) if hu else []
         htracks = sorted(set((r['t'], r['k'] or '') for r in hrows if r['t']))
         track_cache, mcache = {}, {}
+        ip_cache, n_cut = {}, 0
 
         page_rows = recover_tracks(p['rows'])
         univ_meta[-1]['rows'] = len(page_rows)
+        univ_meta[-1]['ipUniv'] = ''
 
         for row in page_rows:
             if not row.get('summary') and row['unit'] in TOTAL_NAMES:
                 continue                       # 표 안의 소계·총계 줄
+            campus = re.search(r'\((천안|죽전|여수|서울|글로컬|세종)\)', row['track'] or '')
+            campus = campus.group(1) if campus else ''
             track = clean_track(row['track'])
             summary = bool(row.get('summary')) or bool(
                 re.match(r'^전형별|^계열별|^모집시기', track))
@@ -612,6 +690,17 @@ def main():
                     mrec = match_unit(probes, names, 0.8)
             if hrec is None and mrec is None and not summary:
                 unmatched += 1
+            # 전형 이름에 유형이 없는 곳(「고교추천전형」)은 작년 자료가 아는 유형을 쓴다
+            if kind == '기타' and not summary:
+                kind = (hrec and hrec.get('k')) or (mrec and kind_of(mrec['t'])) or kind
+            # 입결 70%컷
+            cut = None
+            if not summary:
+                if campus not in ip_cache:
+                    ip_cache[campus] = ip_univ_cands(pname, campus, ip_univs)
+                cut = find_cut(ip, ip_cache[campus], kind, track, probes)
+                if cut:
+                    n_cut += 1
 
             cur_ratio = row['ratio']
             rec = {
@@ -627,6 +716,8 @@ def main():
                 if mrec.get('c25'):
                     rec['y25'] = mrec['c25']
             # 작년(2025) 같은 시점
+            if cut:
+                rec.update(cut)
             if hrec and hrec.get('g'):
                 rec['g'] = hrec['g']
             if hrec and '25' in hrec['y']:
@@ -658,6 +749,8 @@ def main():
             if pv is not None:
                 rec['dp'] = row['applied'] - pv
             out_rows.append(rec)
+        univ_meta[-1]['ipUniv'] = ' · '.join(sorted(set(c[0] for c in ip_cache.values() if c)))
+        univ_meta[-1]['cuts'] = n_cut
 
     payload = {
         'collected': cur['collected'],
