@@ -35,13 +35,14 @@ def main():
     for path in snaps:
         snap = json.load(open(path, encoding='utf-8'))
         dl_all = rb.consensus_deadline(snap['pages'])
+        collected = rb.parse_stamp(snap['collected'][:16])
         for p in snap['pages']:
             meta = p['meta']
-            stamp = rb.parse_stamp(meta.get('stampISO'))
+            stamp = rb.parse_stamp(meta.get('stampISO')) or collected
             if not stamp:
                 continue
             dl, _ = rb.page_deadline(meta.get('notice', ''), dl_all)
-            b = 'fin' if rb.is_final(meta) else rb.bucket_of(stamp, dl)
+            b = 'fin' if rb.is_final(meta, collected, dl) else rb.bucket_of(stamp, dl)
             hu = rb.resolve_univ(meta['univ'], hist_univs) or \
                 meta['univ'].replace('대학교', '대')
             n_pages += 1
@@ -53,8 +54,9 @@ def main():
                 kinds[key] = rb.kind_of(track)
                 slot = cells.setdefault(key, {})
                 old = slot.get(b)
-                if old is None or old[0] <= meta['stampISO']:
-                    slot[b] = (meta['stampISO'], row['recruit'], row['ratio'])
+                iso = stamp.strftime('%Y-%m-%dT%H:%M')
+                if old is None or old[0] <= iso:
+                    slot[b] = (iso, row['recruit'], row['ratio'])
 
     rows = []
     for (u, t, m), slot in sorted(cells.items()):
