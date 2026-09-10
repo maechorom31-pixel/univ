@@ -1,6 +1,17 @@
 # 수시 경쟁률 통합 — 쓰는 법
 
-## 한 번 돌리기
+## 배포 주소
+
+https://maechorom31-pixel.github.io/univ/ratio.html
+
+브랜치에 `ratio.html`을 푸시하면 자동으로 갱신됩니다.
+
+## 선생님 PC에서 한 번에 돌리기
+
+윈도우는 저장소 폴더의 `경쟁률수집.bat`을 더블클릭합니다.
+맥은 터미널에서 `sh 경쟁률수집.command`.
+
+## 명령으로 돌리기
 
     python scripts/ratio_fetch.py     # 지금 시각 기준으로 수집 -> data/ratio/snap-*.json
     python scripts/ratio_build.py     # 스냅샷 + 과거 자료 -> ratio.html
