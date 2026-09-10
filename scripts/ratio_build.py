@@ -367,12 +367,13 @@ class Multipliers(object):
 
 def backtest(hist_rows):
     """2023·2024 배율로 2025 최종을 맞혀 본다. 화면의 「정확도」가 여기서 나온다."""
-    train = Multipliers(hist_rows, years={'23', '24'})
+    last = HIST_YEARS[-1]
+    train = Multipliers(hist_rows, years=set(HIST_YEARS[:-1]))
     err = collections.defaultdict(list)
     cov = collections.defaultdict(lambda: [0, 0])
     cal = collections.defaultdict(lambda: [0, 0])
     for r in hist_rows:
-        v = r['y'].get('25')
+        v = r['y'].get(last)
         if not v or not v[6] or v[6] <= 0:
             continue
         kind = kind_of(r.get('k') or '')
@@ -556,6 +557,9 @@ def load_mojip():
     return by
 
 
+HIST_YEARS = []          # load_hist()가 채운다. 마지막이 가장 최근 학년도(두 자리)
+
+
 def load_hist():
     rows, sources = [], []
     for f in sorted(glob.glob(HIST_GLOB)):
@@ -569,6 +573,8 @@ def load_hist():
             sources.append(d['meta']['source'])
     if not rows:
         raise SystemExit('data/ratio_hist.json 이 없습니다.')
+    del HIST_YEARS[:]
+    HIST_YEARS.extend(sorted(set(y for r in rows for y in r['y'])))
     return rows, sources
 
 
@@ -591,6 +597,7 @@ def main():
     mojip = load_mojip()
     ip, ip_univs = load_ipgyeol()
     hist_rows, hist_sources = load_hist()
+    LAST = HIST_YEARS[-1]
     hist_univs = set(r['u'] for r in hist_rows)
     mult = Multipliers(hist_rows)
     acc = backtest(hist_rows)
@@ -617,6 +624,13 @@ def main():
         meta = p['meta']
         pname = clean_univ(meta['univ'])
         hu = resolve_univ(pname, hist_univs)
+        # 같은 대학의 캠퍼스 자료(홍익대(세종)·단국대(천안))도 뒤에 붙여 둔다.
+        # 전형·모집단위 이름은 앞쪽(본 캠퍼스)이 먼저 잡히고, 없을 때 캠퍼스 것이 잡힌다.
+        # 페이지가 본 캠퍼스 이름(「홍익대」)일 때만 캠퍼스 자료를 뒤에 붙인다.
+        # 「건국대(글로컬)」 페이지에 서울 자료를 붙이면 엉뚱한 숫자가 잡힌다.
+        base = hu if hu and '(' not in hu else ''
+        variants = [u for u in sorted(hist_univs) if base and u != hu and u.split('(')[0] == base]
+        hrows_by_campus = {}
         stamp = parse_stamp(meta.get('stampISO'))
         dl, dl_note = page_deadline(meta.get('notice', ''), dl_all)
         stamp_note = ''
@@ -626,6 +640,7 @@ def main():
         b = 'fin' if is_final(meta, collected_at, dl) else bucket_of(stamp, dl)
         univ_meta.append({
             'univ': pname, 'hist': hu, 'stamp': stamp.strftime('%Y-%m-%dT%H:%M'),
+            'histAll': ' · '.join([hu] + variants) if hu else '',
             'stampNote': stamp_note,
             'deadline': dl.strftime('%m/%d %H:%M') if dl else '',
             'dlNote': dl_note,
@@ -633,7 +648,7 @@ def main():
         })
         mrows = mojip.get(hu, []) if hu else []
         mtracks = sorted(set(r['t'] for r in mrows if r['t']))
-        hrows = by_univ.get(hu, []) if hu else []
+        hrows = (by_univ.get(hu, []) if hu else []) + [r for u in variants for r in by_univ[u]]
         htracks = sorted(set((r['t'], r['k'] or '') for r in hrows if r['t']))
         track_cache, mcache = {}, {}
         ip_cache, n_cut = {}, 0
@@ -666,9 +681,15 @@ def main():
             # 모집단위 매칭 (시점별 자료)
             hrec = None
             if htrack and not summary:
-                pool = [r for r in hrows if r['t'] == htrack and (r['k'] or '') == kind]
+                rows_here = hrows
+                if campus:                       # 「(천안)」이 붙은 표는 그 캠퍼스 자료를 먼저
+                    if campus not in hrows_by_campus:
+                        cv = [u for u in variants if '(' + campus + ')' in u]
+                        hrows_by_campus[campus] = [r for u in cv for r in by_univ[u]] + hrows
+                    rows_here = hrows_by_campus[campus]
+                pool = [r for r in rows_here if r['t'] == htrack and (r['k'] or '') == kind]
                 if not pool:
-                    pool = [r for r in hrows if r['t'] == htrack]
+                    pool = [r for r in rows_here if r['t'] == htrack]
                 names = {}
                 for r in pool:
                     names.setdefault(norm_unit(r['m']), r)
@@ -715,21 +736,21 @@ def main():
                         rec['pr26'] = cur_ratio / mrec['c26']
                 if mrec.get('c25'):
                     rec['y25'] = mrec['c25']
-            # 작년(2025) 같은 시점
+            # 가장 최근 학년도의 같은 시점
             if cut:
                 rec.update(cut)
             if hrec and hrec.get('g'):
                 rec['g'] = hrec['g']
-            if hrec and '25' in hrec['y']:
-                v = hrec['y']['25']
+            if hrec and LAST in hrec['y']:
+                v = hrec['y'][LAST]
                 rc25, r25b, r25f = v[0], v[BUCKET_IDX.get(b, 3)], v[6]
                 rec['p_rc'] = rc25
                 rec['p_b'] = r25b
                 rec['p_f'] = r25f
                 if r25b and r25b > 0:
                     rec['vs'] = cur_ratio / r25b
-            if hrec and '24' in hrec['y']:
-                rec['p24_f'] = hrec['y']['24'][6]
+            if hrec and len(HIST_YEARS) > 1 and HIST_YEARS[-2] in hrec['y']:
+                rec['p24_f'] = hrec['y'][HIST_YEARS[-2]][6]
             if b != 'fin' and row['applied'] > 0:
                 m = mult.predict(b, hu or '', htrack or '',
                                  row.get('unit0') or row['unit'], kind, cur_ratio)
@@ -766,10 +787,15 @@ def main():
         'prevGap': prev_gap,
         'unmatched': unmatched,
         'acc': acc,
+        'histYear': '20' + LAST,
+        'histYears': [('20' + y) for y in HIST_YEARS],
     }
     tpl = open(os.path.join(ROOT, 'src', 'ratio.tpl.html'), encoding='utf-8').read()
-    html = tpl.replace('/*__DATA__*/null',
-                       json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
+    html = (tpl.replace('{{HY}}', '20' + LAST)
+               .replace('{{HTRAIN}}', '·'.join('20' + y for y in HIST_YEARS[:-1]))
+               .replace('{{HSPAN}}', '20%s~20%s' % (HIST_YEARS[0], HIST_YEARS[-1]))
+               .replace('/*__DATA__*/null',
+                        json.dumps(payload, ensure_ascii=False, separators=(',', ':'))))
     open(OUT, 'w', encoding='utf-8').write(html)
     print('%s  %d행 / 대학 %d곳 / 작년 미매칭 %d행 (%.0f%%)'
           % (OUT, len(out_rows), len(univ_meta), unmatched,

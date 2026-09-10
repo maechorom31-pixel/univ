@@ -197,8 +197,8 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
       <option value="-r">현재 경쟁률 높은 순</option>
       <option value="-p2">최종 2:1 미만 확률 높은 순</option>
       <option value="pm">예측 최종 낮은 순</option>
-      <option value="vs">2025년 같은 시점 대비 낮은 순</option>
-      <option value="-vs">2025년 같은 시점 대비 높은 순</option>
+      <option value="vs">{{HY}}년 같은 시점 대비 낮은 순</option>
+      <option value="-vs">{{HY}}년 같은 시점 대비 높은 순</option>
       <option value="pr26">작년 최종 대비 진도율 낮은 순</option>
       <option value="-fit">내 등급 여유 큰 순 (70%컷 − 내 등급)</option>
       <option value="c70">작년 70%컷 높은 성적 순</option>
@@ -213,7 +213,7 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
     <span class="g"><span class="grp">최종 예측</span>
       <label><input type="checkbox" id="cP2"> 2:1 미만 확률 50% 이상</label></span>
     <span class="g"><span class="grp">작년</span>
-      <label><input type="checkbox" id="cDown"> 2025년 같은 시점보다 낮음</label>
+      <label><input type="checkbox" id="cDown"> {{HY}}년 같은 시점보다 낮음</label>
       <label><input type="checkbox" id="cMatched" checked> 작년 자료가 붙은 것만</label></span>
     <span class="g"><span class="grp">성적</span>
       <label><input type="checkbox" id="cFit" checked> 내 등급으로 닿는 곳만 (70%컷 기준, 0.3 여유)</label></span>
@@ -245,11 +245,11 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
         <th class="n opt">모집</th>
         <th class="n" id="thAp">지원</th>
         <th class="n" title="페이지 기준시각의 경쟁률">현재</th>
-        <th class="n opt" title="2025학년도, 마감까지 같은 날수가 남았을 때의 경쟁률">2025 동시점</th>
-        <th class="n opt" title="현재 ÷ 2025 동시점. 1보다 작으면 작년 이맘때보다 낮음">대비</th>
+        <th class="n opt" title="{{HY}}학년도, 마감까지 같은 날수가 남았을 때의 경쟁률">{{HY}} 동시점</th>
+        <th class="n opt" title="현재 ÷ {{HY}} 동시점. 1보다 작으면 작년 이맘때보다 낮음">대비</th>
         <th class="n" title="과거 3개년 배율의 중앙값. 아래 작은 숫자는 80% 구간(열에 여덟은 이 안에 들어옴)">예측 최종</th>
         <th class="n" title="같은 시점에 경쟁률이 비슷했던 곳 중 최종 2:1 미만으로 끝난 비율">최종 2:1 미만</th>
-        <th class="n" title="2026학년도 최종 경쟁률(모집요강). 회색은 2025학년도 값">작년 최종</th>
+        <th class="n" title="{{HY}}학년도 최종 경쟁률. 모집요강 요약이 먼저, 없으면 시점별 자료의 최종">작년 최종</th>
         <th class="n opt" title="현재 ÷ 작년 최종">진도율</th>
         <th class="n" title="저장소 입결 자료의 가장 최근 해 70%컷. 회색은 전형이 안 맞아 같은 유형의 중앙값을 대신 보인 것. 등급을 넣으면 여유가 함께 나옵니다">70%컷</th>
       </tr></thead>
@@ -301,7 +301,7 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
 <h2>이 숫자를 어떻게 읽는지</h2>
 <div class="note">
   <h3>예측 최종</h3>
-  <p>2023~2025학년도에 같은 시점의 경쟁률이 최종까지 몇 배로 늘었는지(배율)를
+  <p>{{HSPAN}}학년도에 같은 시점의 경쟁률이 최종까지 몇 배로 늘었는지(배율)를
      모아 적용한 값입니다. 배율은 두 갈래를 합칩니다. 하나는 <strong>같은 자리</strong>
      (모집단위 → 대학·전형 → 대학·유형 → 전형유형 순으로 표본이 넉넉한 단계)의
      배율이고, 다른 하나는 <strong>같은 시점에 경쟁률이 비슷했던 곳들</strong>의
@@ -316,7 +316,7 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
      열에 여섯 정도가 실제로 그렇게 끝났습니다. 조금 부풀려 보이는 편이니,
      90% 이상만 「거의 확실」로 읽는 편이 안전합니다.</p>
 
-  <h3>이 예측이 얼마나 맞는지 — 2023·2024 배율로 2025 최종을 맞혀 본 결과</h3>
+  <h3>이 예측이 얼마나 맞는지 — {{HTRAIN}} 배율로 {{HY}} 최종을 맞혀 본 결과</h3>
   <div class="tblwrap"><table id="tblAcc">
     <thead><tr><th>시점</th><th class="n">중앙 오차</th><th class="n">±20% 이내</th>
       <th class="n">80% 구간 적중</th><th class="n">표본</th></tr></thead>
@@ -332,7 +332,7 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
   <h3>상담 추천순</h3>
   <p>「낮게 끝날 가능성」에 「근거의 두께」를 더한 100점 점수 순서입니다.
      최종 2:1 미만 확률이 45점, 예측 최종이 낮을수록 20점, 작년 최종 대비
-     진도율이 낮을수록 15점, 2025 동시점보다 낮을수록 10점, 그리고 작년 자료가
+     진도율이 낮을수록 15점, {{HY}} 동시점보다 낮을수록 10점, 그리고 작년 자료가
      붙었는지·배율이 모집단위나 대학·전형 수준에서 나왔는지·모집인원이 5명
      이상인지로 10점입니다. 정렬을 이것으로 두면 모집단위 아래에 그 근거가
      적힙니다. 점수는 「지원하면 붙는다」가 아니라 「경쟁이 낮게 끝날 근거가
@@ -347,13 +347,13 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
      올립니다. <strong>입력한 등급은 이 화면의 메모리에만 있고 어디에도 저장되지
      않습니다.</strong> 새로 고치면 지워집니다. 학생 이름은 넣을 곳이 없습니다.</p>
 
-  <h3>2025 동시점 · 대비 · 작년 최종 · 진도율</h3>
-  <p>시점별 자료가 있는 해는 2025·2024·2023학년도라, 같은 시점 비교는 2025학년도
+  <h3>{{HY}} 동시점 · 대비 · 작년 최종 · 진도율</h3>
+  <p>시점별 자료가 있는 해는 {{HSPAN}}학년도라, 같은 시점 비교는 {{HY}}학년도
      기준입니다. <strong>대비</strong>는 그때보다 몇 배인지입니다.
-     <strong>작년 최종</strong>은 저장소의 2027 모집요강 요약에 든 2026학년도 최종
-     경쟁률이고, <strong>진도율</strong>은 지금 경쟁률이 그 값의 몇 퍼센트까지
-     왔는지입니다. 예측치보다 흔들림이 적어 상담에서는 이 둘이 더 쓸모 있을 때가
-     많습니다. 회색 최종값은 2026학년도 자료가 없어 2025학년도 값을 대신 보인 것입니다.</p>
+     <strong>작년 최종</strong>은 {{HY}}학년도 최종 경쟁률(모집요강 요약이 먼저,
+     없으면 시점별 자료의 최종)이고, <strong>진도율</strong>은 지금 경쟁률이 그 값의
+     몇 퍼센트까지 왔는지입니다. 예측치보다 흔들림이 적어 상담에서는 이 둘이 더
+     쓸모 있을 때가 많습니다.</p>
 
   <h3>남는 한계</h3>
   <ul>
@@ -520,7 +520,7 @@ var mainBucket = (function(){
     ['지금 1:1 미만', low, '개', ''],
     ['지금 2:1 미만', sub2, '개', ''],
     ['최종 2:1 미만 확률 50% 이상', p2, '개', 'key'],
-    ['2025 동시점보다 낮음', down, '개', ''],
+    ['{{HY}} 동시점보다 낮음', down, '개', ''],
     ['★ 즐겨찾기', '<span id="tileFav">'+favCount()+'</span>', '개', ''],
     ['내 등급으로 닿음', '<span id="tileFit">-</span>', '개', '']
   ];
@@ -636,7 +636,7 @@ function cell(r){
     '<td class="n num-cell">'+predCell(r)+'</td>' +
     '<td class="n num-cell">'+probCell(r)+'</td>' +
     '<td class="n num-cell">'+(r.y26 !== undefined ? f2(r.y26) :
-       (r.p_f !== undefined && r.p_f !== null ? '<span class="dim">'+f2(r.p_f)+'</span>' : '<span class="dim">-</span>'))+'</td>' +
+       (r.p_f !== undefined && r.p_f !== null ? f2(r.p_f) : '<span class="dim">-</span>'))+'</td>' +
     '<td class="n num-cell opt">'+(r.pr26 !== undefined ?
        '<span class="'+(r.pr26<0.7?'low':(r.pr26>=1.2?'hi':''))+'">'+Math.round(r.pr26*100)+'%</span>'
        : '<span class="dim">-</span>')+'</td>' +
@@ -653,7 +653,7 @@ function card(r){
     : (r.fin ? '최종' : '-');
   var cut = r.c70 === undefined ? '-' : (r.cx ? f2(r.c70) : '<span class="dim">'+f2(r.c70)+'</span>') +
     (r.fit !== undefined ? '<span class="band '+(r.fit < -0.3 ? 'low' : (r.fit >= 0.5 ? 'hi' : ''))+'">'+(r.fit >= 0 ? '+' : '')+r.fit.toFixed(1)+'</span>' : '');
-  var last = r.y26 !== undefined ? f2(r.y26) : (r.p_f !== undefined && r.p_f !== null ? '<span class="dim">'+f2(r.p_f)+'</span>' : '-');
+  var last = r.y26 !== undefined ? f2(r.y26) : (r.p_f !== undefined && r.p_f !== null ? f2(r.p_f) : '-');
   return '<div class="card">' +
     '<div class="top"><button type="button" class="star" data-key="'+esc(key)+'" aria-pressed="'+on+
       '" aria-label="즐겨찾기">'+(on ? '★' : '☆')+'</button>'+esc(r.u.replace('대학교','대'))+' · '+esc(r.tr)+'</div>' +
@@ -663,7 +663,7 @@ function card(r){
       num('예측 최종', pred) +
       num('최종 2:1 미만', probCell(r)) +
       num('작년 최종', last + (r.pr26 !== undefined ? '<span class="band">진도 '+Math.round(r.pr26*100)+'%</span>' : '')) +
-      num('2025 동시점', (r.p_b !== undefined && r.p_b !== null ? f2(r.p_b) : '-') + (r.vs ? '<span class="band">'+f2(r.vs)+'배</span>' : '')) +
+      num('{{HY}} 동시점', (r.p_b !== undefined && r.p_b !== null ? f2(r.p_b) : '-') + (r.vs ? '<span class="band">'+f2(r.vs)+'배</span>' : '')) +
       num('70%컷', cut) +
     '</div>' +
     (SORT_REC && r.why ? '<div class="why">'+esc(r.why)+'</div>' : '') +
@@ -746,7 +746,7 @@ document.getElementById('btnMore').addEventListener('click', function(){
       '<td>'+(u.deadline ? esc(u.deadline) : '<span class="dim">-</span>')+'</td>'+
       '<td>'+esc(u.final ? '최종' : (DATA.bucketKo[u.bucket]||u.bucket))+'</td>'+
       '<td class="n">'+u.rows+'</td>'+
-      '<td>'+(u.hist ? esc(u.hist) : '<span class="dim">대응 없음</span>')+'</td>'+
+      '<td>'+(u.hist ? esc(u.histAll || u.hist) : '<span class="dim">대응 없음</span>')+'</td>'+
       '<td>'+[u.stampNote, u.dlNote].filter(Boolean).map(function(x){
          return '<span class="warm">'+esc(x)+'</span>'; }).join('<br>')+'</td></tr>';
   }).join('');
