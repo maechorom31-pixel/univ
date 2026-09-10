@@ -1,0 +1,36 @@
+# 수시 경쟁률 자동 수집 — 유웨이 대학만 (진학어플라이는 데이터센터 IP를 막아 PC에서만 된다)
+#
+# 일정(schedule)은 저장소의 기본 브랜치에서만 돈다. 이 브랜치가 기본이 아니면
+# Actions 탭에서 「Run workflow」로 손수 돌리거나, 저장소 설정에서 기본 브랜치를 바꾼다.
+name: ratio
+on:
+  workflow_dispatch:
+  schedule:
+    # UTC 기준. 한국 시각 9~21시 매시 정각 = UTC 0~12시. 접수 기간(9월 7~11일)만.
+    - cron: '0 0-12 7-11 9 *'
+permissions:
+  contents: write
+concurrency:
+  group: ratio
+  cancel-in-progress: false
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 수집 · 화면 · 접기
+        run: |
+          python scripts/ratio_fetch.py
+          python scripts/ratio_build.py
+          python scripts/ratio_archive.py
+      - name: 올리기
+        run: |
+          git config user.name "ratio-bot"
+          git config user.email "ratio-bot@users.noreply.github.com"
+          git add data/ratio ratio.html
+          git diff --cached --quiet && echo "변화 없음" && exit 0
+          git commit -m "경쟁률 스냅샷 $(TZ=Asia/Seoul date '+%m/%d %H:%M') (자동)"
+          git push

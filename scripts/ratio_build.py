@@ -220,7 +220,13 @@ def match_unit(probes, names, cutoff=0.78):
     return None
 
 
+def clean_univ(name):
+    """스냅샷에 남은 「○○대학교서비스」 같은 꼬리를 뗀다(예전 수집기가 남긴 것)."""
+    return re.sub(r'(경쟁률|서비스|수시모집|수시|현황|\d{4}학년도)+$', '', name or '').strip() or name
+
+
 def resolve_univ(page_name, hist_univs):
+    page_name = clean_univ(page_name)
     cands = [page_name,
              page_name.replace('대학교', '대'),
              page_name.replace('대학교', '대').replace('국립', ''),
@@ -230,8 +236,11 @@ def resolve_univ(page_name, hist_univs):
     for c in cands:
         if c in hist_univs:
             return c
-    m = difflib.get_close_matches(page_name.replace('대학교', '대'),
-                                  list(hist_univs), 1, 0.72)
+    short = page_name.replace('대학교', '대')
+    inside = [h for h in hist_univs if len(h) >= 3 and (h in short or h in page_name)]
+    if len(inside) == 1:
+        return inside[0]
+    m = difflib.get_close_matches(short, list(hist_univs), 1, 0.72)
     return m[0] if m else None
 
 
@@ -476,7 +485,7 @@ def main():
     out_rows, univ_meta, unmatched = [], [], 0
     for p in cur['pages']:
         meta = p['meta']
-        pname = meta['univ']
+        pname = clean_univ(meta['univ'])
         hu = resolve_univ(pname, hist_univs)
         stamp = parse_stamp(meta.get('stampISO'))
         dl, dl_note = page_deadline(meta.get('notice', ''), dl_all)
@@ -493,7 +502,20 @@ def main():
         htracks = sorted(set((r['t'], r['k'] or '') for r in hrows if r['t']))
         track_cache, mcache = {}, {}
 
-        for row in p['rows']:
+        # 전형 제목이 하나도 안 잡힌 페이지(진학어플라이)는 같은 모집단위를 두 표에서
+        # 두 번 줍는다. 숫자까지 같은 행은 하나만 남긴다.
+        page_rows = p['rows']
+        if not any(r['track'] for r in page_rows if not r.get('summary')):
+            seen, page_rows = set(), []
+            for r in p['rows']:
+                key = (r.get('summary'), r['unit'], r.get('college'), r['recruit'], r['applied'])
+                if key in seen:
+                    continue
+                seen.add(key)
+                page_rows.append(r)
+        univ_meta[-1]['rows'] = len(page_rows)
+
+        for row in page_rows:
             track = clean_track(row['track'])
             summary = bool(row.get('summary')) or bool(
                 re.match(r'^전형별|^계열별|^모집시기', track))
@@ -547,6 +569,8 @@ def main():
                 if mrec.get('c25'):
                     rec['y25'] = mrec['c25']
             # 작년(2025) 같은 시점
+            if hrec and hrec.get('g'):
+                rec['g'] = hrec['g']
             if hrec and '25' in hrec['y']:
                 v = hrec['y']['25']
                 rc25, r25b, r25f = v[0], v[BUCKET_IDX.get(b, 3)], v[6]

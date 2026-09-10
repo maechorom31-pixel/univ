@@ -68,11 +68,16 @@ class Tables(HTMLParser):
         except Exception:
             return 1
 
+    HEAD_TAGS = ('h2', 'h3', 'h4', 'h5')
+
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
-        if tag in ('span', 'caption') and (
-                a.get('id', '').startswith('strTitleId') or tag == 'caption'):
-            self.in_title, self.buf = True, ''
+        is_title = (tag == 'caption' or tag in self.HEAD_TAGS
+                    or a.get('id', '').startswith('strTitleId')
+                    or (tag in ('span', 'div', 'p', 'strong', 'b') and
+                        ('tit' in a.get('class', '') or 'subject' in a.get('class', ''))))
+        if is_title and self.cur is None:
+            self.in_title, self.buf, self.title_tag = True, '', tag
         if tag == 'table':
             self.cur = {'rows': [], 'head': [], 'title': self.next_title}
         elif tag == 'tr':
@@ -82,10 +87,10 @@ class Tables(HTMLParser):
                          'colspan': self._i(a.get('colspan', 1)), 'th': tag == 'th'}
 
     def handle_endtag(self, tag):
-        if tag in ('span', 'caption') and self.in_title:
+        if self.in_title and tag == getattr(self, 'title_tag', None):
             self.in_title = False
             t = re.sub(r'\s+', ' ', self.buf).strip()
-            if t:
+            if t and len(t) < 80:
                 self.next_title = t
         if tag in ('td', 'th') and self.cell is not None and self.row is not None:
             self.row.append(self.cell)
@@ -158,6 +163,11 @@ def parse_page(html, univ):
     for tbl in p.tables:
         hcols = []
         for r in tbl['head']:
+            if len(r) == 1 and r[0]['colspan'] >= 3:
+                t = _norm(r[0]['text'])
+                if t and not any(h in t for h in RATIO_HEAD + UNIT_HEAD):
+                    tbl['title'] = t          # 표 안에 든 전형 제목 줄
+                    continue
             for c in r:
                 hcols += [_norm(c['text'])] * c['colspan']
         if not any(h in RATIO_HEAD for h in hcols):
@@ -226,17 +236,53 @@ def parse_page(html, univ):
     return rows
 
 
+def clean_univ(title):
+    """페이지 제목에서 대학 이름만. 「○○대학교 2027학년도 수시 경쟁률 서비스」 같은 꼴."""
+    t = title.replace('경/쟁/률/서/비/스', '')
+    t = re.sub(r'\d{4}\s*학년도|수시\s*모집|수시|정시|경쟁률|지원\s*현황|현황|서비스|원서\s*접수|모집|실시간',
+               '', t)
+    t = re.sub(r'[/\s\-|:·]+', '', t)
+    return t.strip()
+
+
+def stamp_iso(stamp):
+    """「2026년 9월 10일 17시 10분」「2026.09.10 17:10」「9월 10일 17:10」을 ISO로."""
+    m = re.search(r'(?:(\d{4})\s*[년.]\s*)?(\d{1,2})\s*[월.]\s*(\d{1,2})\s*일?[^\d]{0,8}'
+                  r'(\d{1,2})\s*[:시]\s*(\d{1,2})', stamp or '')
+    if not m:
+        return ''
+    y, mo, da, hh, mi = m.groups()
+    y = int(y) if y else kst_now().year
+    try:
+        return datetime.datetime(y, int(mo), int(da), int(hh), int(mi)).strftime('%Y-%m-%dT%H:%M')
+    except ValueError:
+        return ''
+
+
 def page_meta(html):
     t = re.search(r'<title>([^<]*)</title>', html)
-    univ = t.group(1).replace('경/쟁/률/서/비/스', '').replace('경쟁률', '').strip() if t else ''
-    univ = re.sub(r'[/\s]+', '', univ)
+    univ = clean_univ(t.group(1)) if t else ''
+    text = re.sub(r'<script.*?</script>|<style.*?</style>', ' ', html, flags=re.S)
+    text = re.sub(r'<[^>]+>', ' ', text).replace('\xa0', ' ')
+    text = re.sub(r'\s+', ' ', text)
     d = re.search(r"ID_DateStr'>(.*?)</span>", html, re.S)
     stamp = re.sub(r'<[^>]+>|\s+', ' ', d.group(1)).replace('\xa0', ' ').strip() if d else ''
+    if not stamp:
+        # 유웨이가 아닌 페이지(진학어플라이 등): 본문에서 「… 기준」을 찾는다
+        d = re.search(r'((?:\d{4}\s*[년.]\s*)?\d{1,2}\s*[월.]\s*\d{1,2}\s*일?[^가-힣\d]{0,6}'
+                      r'(?:\d{1,2}\s*[:시]\s*\d{1,2}\s*분?)[^가-힣]{0,6}(?:현재|기준)[^가-힣]{0,3}(?:최종)?)', text)
+        if not d:
+            d = re.search(r'((?:최종)[^가-힣]{0,6}(?:\d{1,2}\s*[월.]\s*\d{1,2}\s*일?)?[^가-힣]{0,6}'
+                          r'(?:\d{1,2}\s*[:시]\s*\d{1,2})?)', text)
+        stamp = d.group(1).strip() if d else ''
     final = '최종' in stamp
-    m = re.search(r'(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일\s*(\d{1,2})시\s*(\d{1,2})분', stamp)
-    iso = ('%04d-%02d-%02dT%02d:%02d' % tuple(int(x) for x in m.groups())) if m else ''
+    iso = stamp_iso(stamp)
     c = re.search(r'id="Ratio_Comment".*?>(.*?)</dl>', html, re.S)
     notice = re.sub(r'<[^>]+>', ' ', c.group(1)) if c else ''
+    if not notice:
+        # 마감을 적은 문장을 본문에서 모은다
+        notice = ' '.join(m.group(0) for m in re.finditer(
+            r'[^□※▶]{0,40}(?:마감|접수\s*기간|원서\s*접수)[^□※▶]{0,60}', text))[:400]
     return {'univ': univ, 'stamp': stamp, 'stampISO': iso,
             'final': final, 'notice': re.sub(r'\s+', ' ', notice).strip()[:400]}
 

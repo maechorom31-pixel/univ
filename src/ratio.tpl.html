@@ -90,6 +90,11 @@ td.trk{color:var(--ink2); font-size:12px; line-height:1.45}
 .sub2{display:block; color:var(--mute); font-size:11px; margin-top:1px}
 .badge{display:inline-block; padding:1px 6px; border-radius:3px; font-size:11px;
        background:var(--amber-soft); color:var(--amber-ink); font-weight:600; margin-left:6px}
+.star{appearance:none; background:none; border:0; padding:0 6px 0 0; margin-left:-4px;
+      font-size:15px; line-height:1; color:#C9C5BE; cursor:pointer; font-family:inherit;
+      vertical-align:-1px; min-width:24px; min-height:24px}
+.star[aria-pressed=true]{color:var(--amber)}
+@media (hover:hover){.star:hover{color:var(--amber-ink)}}
 .low{font-weight:700; color:var(--alert)}
 .hi{color:var(--amber-ink); font-weight:600}
 .warm{color:var(--amber-ink)}
@@ -149,6 +154,11 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
     <select id="fKind"><option value="">전체</option></select>
   </div>
   <div class="f">
+    <label for="fG">계열</label>
+    <select id="fG"><option value="">전체</option><option value="인문">인문</option>
+      <option value="자연">자연</option><option value="공통">공통</option></select>
+  </div>
+  <div class="f">
     <label for="fQ">모집단위 검색</label>
     <input type="text" id="fQ" placeholder="예: 간호, 전남대" autocomplete="off">
   </div>
@@ -174,8 +184,11 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
       <label><input type="checkbox" id="cP2"> 2:1 미만 확률 50% 이상</label></span>
     <span class="g"><span class="grp">작년</span>
       <label><input type="checkbox" id="cDown"> 2025년 같은 시점보다 낮음</label>
-      <label><input type="checkbox" id="cMatched"> 작년 자료가 붙은 것만</label></span>
-    <label><input type="checkbox" id="cZero"> 지원 0명 제외</label>
+      <label><input type="checkbox" id="cMatched" checked> 작년 자료가 붙은 것만</label></span>
+    <span class="g"><span class="grp">거르기</span>
+      <label><input type="checkbox" id="cGen" checked> 일반고가 못 내는 전형 빼기</label>
+      <label><input type="checkbox" id="cZero" checked> 지원 0명 제외</label>
+      <label><input type="checkbox" id="cFav"> ★ 즐겨찾기만</label></span>
   </div>
 </div>
 
@@ -295,7 +308,12 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
     <li>작년 시점 자료는 3일 전·2일 전·1일 전·마감일 오전·마감일 오후 다섯 구간뿐이라
         시각 단위 예측은 되지 않습니다. 올해 스냅샷을 촘촘히 남기면 내년에는 나아집니다.</li>
     <li>신설·개편 모집단위, 농어촌·사회배려 같은 소수 전형, 예체능 실기 세부종목은
-        작년 대응 항목이 없어 빈칸입니다. 억지로 잇지 않았습니다.</li>
+        작년 대응 항목이 없어 빈칸입니다. 억지로 잇지 않았습니다. 처음 열면
+        「작년 자료가 붙은 것만」이 켜져 있어 이런 행은 숨어 있습니다. 끄면 다 보입니다.</li>
+    <li>「일반고가 못 내는 전형 빼기」는 특성화고·재직자·성인학습자·특기자·군사학과
+        같은 전형을 이름으로 거릅니다. 농어촌·기회균형·사회배려·국가보훈은 자격이 되는
+        학생이 있어 남겨 두었습니다. 계열(인문·자연)은 작년 자료가 붙은 행에만 있습니다.</li>
+    <li>즐겨찾기(★)는 이 브라우저에만 남습니다. 다른 컴퓨터에서는 다시 표시해야 합니다.</li>
     <li>마감 시각은 대학 페이지의 공지에서 읽습니다. 공지가 없거나 작년 문구가 남아
         있으면 다른 대학들의 마감일로 대신하고 「대학별 기준시각」 탭에 그 사유를 적습니다.</li>
   </ul>
@@ -336,6 +354,24 @@ function probCell(r){
 var rows = DATA.rows;
 var units = rows.filter(function(r){ return !r.sm; });
 var tracks = rows.filter(function(r){ return r.sm; });
+
+/* 일반고 학생이 낼 수 없는 전형. 농어촌·기회균형·사회배려·국가보훈은 자격이 되는
+   학생이 있으니 남긴다. */
+var NOT_GEN = /특성화고|특성화|전문계|재직자|성인학습|평생학습|평생교육|만학|마이스터|산업체|북한이탈|장애|특수교육|검정고시|체육특기|특기자|군사|사관|외국인|재외국민|대안학교|자립지원|위탁/;
+units.forEach(function(r){ r.gen = !NOT_GEN.test(r.tr + ' ' + r.un); });
+
+/* 즐겨찾기 — 이 브라우저에만 남는다 */
+var FAV_KEY = 'ratio-fav';
+var fav = {};
+try { fav = JSON.parse(localStorage.getItem(FAV_KEY) || '{}') || {}; } catch(e){ fav = {}; }
+function favKey(r){ return r.u + '|' + r.tr + '|' + r.un; }
+function favCount(){ return Object.keys(fav).length; }
+function toggleFav(key){
+  if(fav[key]) delete fav[key]; else fav[key] = 1;
+  try { localStorage.setItem(FAV_KEY, JSON.stringify(fav)); } catch(e){}
+  var t = document.getElementById('tileFav');
+  if(t) t.textContent = favCount();
+}
 
 /* 지금 어느 시점인지 — 가장 많은 대학이 속한 구간 */
 var mainBucket = (function(){
@@ -387,7 +423,8 @@ var mainBucket = (function(){
     ['지금 1:1 미만', low, '개', ''],
     ['지금 2:1 미만', sub2, '개', ''],
     ['최종 2:1 미만 확률 50% 이상', p2, '개', 'key'],
-    ['2025 동시점보다 낮음', down, '개', '']
+    ['2025 동시점보다 낮음', down, '개', ''],
+    ['★ 즐겨찾기', '<span id="tileFav">'+favCount()+'</span>', '개', '']
   ];
   document.getElementById('tiles').innerHTML = t.map(function(x){
     return '<div class="tile '+x[3]+'"><div class="lab">'+tail(x[0])+'</div>'+
@@ -419,16 +456,22 @@ var PAGE = 300, shown = PAGE;
 function filtered(){
   var u = document.getElementById('fUniv').value;
   var k = document.getElementById('fKind').value;
+  var g = document.getElementById('fG').value;
   var q = document.getElementById('fQ').value.trim();
   var low = document.getElementById('cLow').checked;
   var sub2 = document.getElementById('cSub2').checked;
   var p2 = document.getElementById('cP2').checked;
   var down = document.getElementById('cDown').checked;
   var mt = document.getElementById('cMatched').checked;
+  var gen = document.getElementById('cGen').checked;
   var nz = document.getElementById('cZero').checked;
+  var fo = document.getElementById('cFav').checked;
   var out = units.filter(function(r){
+    if(fo && !fav[favKey(r)]) return false;
     if(u && r.u !== u) return false;
     if(k && r.kd !== k) return false;
+    if(g && r.g !== g) return false;
+    if(gen && !r.gen) return false;
     if(q && (r.un.indexOf(q) < 0 && r.tr.indexOf(q) < 0 && (r.cl||'').indexOf(q) < 0
              && r.u.indexOf(q) < 0)) return false;
     if(low && !(r.r < 1)) return false;
@@ -469,8 +512,10 @@ function cell(r){
     vs = '<span class="'+cls+'">'+f2(r.vs)+'배</span>';
   }
   var rr = r.r < 1 ? '<span class="low">'+f2(r.r)+'</span>' : f2(r.r);
+  var key = favKey(r), on = !!fav[key];
   return '<tr>' +
-    '<td class="univ">'+esc(r.u.replace('대학교','대'))+'</td>' +
+    '<td class="univ"><button type="button" class="star" data-key="'+esc(key)+'" aria-pressed="'+on+
+      '" aria-label="즐겨찾기">'+(on ? '★' : '☆')+'</button>'+esc(r.u.replace('대학교','대'))+'</td>' +
     '<td class="trk">'+esc(r.tr)+'</td>' +
     '<td class="unit">'+esc(tail(r.un))+
       (r.cl ? '<span class="sub2">'+esc(r.cl)+'</span>' : '')+'</td>' +
@@ -504,10 +549,20 @@ function render(){
     Math.min(shown, list.length).toLocaleString() + '개 표시';
 }
 
-['fUniv','fKind','fSort'].forEach(function(id){
+document.querySelector('#tblUnit tbody').addEventListener('click', function(e){
+  var b = e.target;
+  while(b && b !== this && !(b.className === 'star')) b = b.parentNode;
+  if(!b || b === this) return;
+  toggleFav(b.getAttribute('data-key'));
+  var on = !!fav[b.getAttribute('data-key')];
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.textContent = on ? '★' : '☆';
+  if(document.getElementById('cFav').checked && !on) render();
+});
+['fUniv','fKind','fG','fSort'].forEach(function(id){
   document.getElementById(id).addEventListener('change', function(){ shown = PAGE; render(); });
 });
-['cLow','cSub2','cP2','cDown','cMatched','cZero'].forEach(function(id){
+['cLow','cSub2','cP2','cDown','cMatched','cGen','cZero','cFav'].forEach(function(id){
   document.getElementById(id).addEventListener('change', function(){ shown = PAGE; render(); });
 });
 document.getElementById('fQ').addEventListener('input', function(){ shown = PAGE; render(); });

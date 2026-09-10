@@ -3,9 +3,11 @@
 cd "$(dirname "$0")"
 python3 scripts/ratio_fetch.py && python3 scripts/ratio_build.py || exit 1
 python3 scripts/ratio_archive.py
-if command -v git >/dev/null 2>&1; then
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git add data/ratio ratio.html
   git commit -q -m "경쟁률 스냅샷 $(date '+%m/%d %H:%M')" >/dev/null 2>&1
   git push -q || echo "(올리지 못했습니다. 화면 파일은 정상이니 그대로 쓰셔도 됩니다.)"
+else
+  python3 scripts/ratio_upload.py
 fi
 open ratio.html
