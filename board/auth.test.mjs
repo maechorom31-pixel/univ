@@ -311,6 +311,18 @@ sheets['일정'] = mkSheet([G.HEADERS['일정']]);   // 앞 블록의 행을 안
   eq(String(f1[1]), '3101', '클라이언트가 보낸 학번은 버리고 토큰의 학번을 쓴다');
   eq(G.handle_({ action: 'studentField', token: 'tokA', id: '', field: '생년월일', value: '2008-03-02' }).ok,
     true, '생년월일은 id 없이도 저장된다');
+
+  /*
+   * 면접여부는 선생님만 고친다. 학생 경로도 같은 `setField_` 를 타므로 이름만
+   * 더하면 학생이 제 카드의 면접 판단을 뒤집을 수 있다 — 막혀 있는지 본다.
+   */
+  eq(G.handle_({ action: 'studentField', token: 'tokA', id, field: '면접여부', value: '없음' }).ok,
+    false, '학생은 면접여부를 못 고친다');
+  eq(G.handle_({ action: 'setField', key: '84348434', id, hak: '3101', field: '면접여부', value: '없음' }).ok,
+    true, '선생님은 면접여부를 적는다');
+  const v4 = G.handle_({ action: 'student', token: 'tokA' });
+  eq(v4.fields.some((r) => String(r.field) === '면접여부' && String(r.value) === '없음'),
+    true, '정한 값이 학생 화면까지 내려간다');
 }
 
 /*
@@ -434,6 +446,115 @@ console.log('\n학생 응답의 전교과');
   eq(all.grades.length, 2, '교사 응답에는 성적 탭 전체가 실린다');
   delete sheets['성적'];
   cacheStore.clear();
+}
+
+/*
+ * **교사와 학생이 같은 6칸을 본다.** 학생이 순위·지원을 바꾸면 교사 응답(students)의
+ * 배치에 그대로 실리고, 교사가 바꾸면(같이 고민까지) 학생 응답(student)에 실린다.
+ * 그리고 한쪽이 바꾼 뒤 저쪽의 낡은 화면은 seen 으로 되돌아온다.
+ */
+console.log('\n교사·학생 연동');
+sheets['설정'] = mkSheet([G.HEADERS['설정']]);
+sheets['공유'] = mkSheet([G.HEADERS['공유'], ['3101', 'tokA', '2099-01-01', '']]);
+sheets['배치'] = mkSheet([G.HEADERS['배치']]);
+sheets['입력'] = mkSheet([G.HEADERS['입력']]);
+{
+  const K = '84348434';
+  const v0 = G.handle_({ action: 'student', token: 'tokA' });
+  // 원본 픽스처의 3101 은 지원이 하나다. 둘째 자리는 배치 행만 있는 'X' 로 둔다 —
+  // 배치는 지원 존재를 검사하지 않고(맞바꾸기 테스트와 같다), 학생 응답은 학번으로 거른다.
+  const a = v0.apps[0].id;
+  const stateOf = (res, id) => (res.state || []).find((r) => String(r.id) === String(id)) || {};
+
+  eq(G.handle_({ action: 'studentRank', token: 'tokA', id: a, slot: 'tray' }).ok, true, '학생이 「지원」(tray)으로 올린다');
+  eq(stateOf(G.handle_({ action: 'students', key: K }), a).slot, 'tray', '교사 응답에 tray 로 실린다');
+
+  eq(G.handle_({ action: 'studentRank', token: 'tokA', id: a, slot: 'rank', rank: 1 }).ok, true, '학생이 1순위를 정한다');
+  const t1 = G.handle_({ action: 'students', key: K });
+  eq([stateOf(t1, a).slot, Number(stateOf(t1, a).rank), stateOf(t1, a).by], ['rank', 1, '3101 학생'],
+    '교사 응답에 학생이 정한 순위와 「학생」 표시가 실린다');
+
+  eq(G.handle_({ action: 'setRank', key: K, id: 'X', hak: '3101', slot: 'rank', rank: 1, pair: 1 }).ok, true, '교사가 1순위에 같이 고민을 건다');
+  const v1 = G.handle_({ action: 'student', token: 'tokA' });
+  eq([Number(stateOf(v1, a).rank), Number(stateOf(v1, 'X').rank)], [1, 1], '학생 응답에 두 카드가 나란히 1순위로 실린다');
+
+  // 학생 화면이 교사보다 먼저 본 시각(seen)으로 움직이면 되돌아온다 — 새로 받으면 통한다
+  const oldSeen = stateOf(v0, a).at || '2026-01-01T00:00:00+09:00';
+  const r = G.handle_({ action: 'studentRank', token: 'tokA', id: a, slot: 'pool', seen: oldSeen });
+  eq([r.ok, r.stale], [false, true], '교사가 바꾼 뒤 낡은 학생 화면은 되돌아온다');
+  const newest = (v1.state || []).map((x) => String(x.at)).sort().pop();
+  eq(G.handle_({ action: 'studentRank', token: 'tokA', id: a, slot: 'pool', seen: newest }).ok, true,
+    '새로 받은 시각으로 보내면 통한다');
+  eq(stateOf(G.handle_({ action: 'students', key: K }), a).slot, 'pool', '교사도 후보로 본다');
+}
+
+/*
+ * **마감(★)은 카드마다.** 낸 카드는 못 옮기고, 그 카드를 밀어내지도, 옆에 같이
+ * 고민을 걸지도 못한다. 안 낸 카드는 그대로 움직인다. 푸는 것은 담임뿐.
+ * 날짜·결과는 마감 뒤에도 적힌다.
+ */
+console.log('\n마감 ★ — 카드마다');
+{
+  const K = '84348434';
+  const v0 = G.handle_({ action: 'student', token: 'tokA' });
+  const a = v0.apps[0].id;                 // 학생의 진짜 지원 — studentLock 은 소유 검사를 지난다
+  const lockRows = () => sheets['입력'].getDataRange().getValues().slice(1).filter((r) => String(r[2]) === '마감');
+  G.handle_({ action: 'setRank', key: K, id: a, hak: '3101', slot: 'rank', rank: 1 });
+  G.handle_({ action: 'setRank', key: K, id: 'X', hak: '3101', slot: 'rank', rank: 2 });
+
+  eq(G.handle_({ action: 'setLock', key: K, hak: '3101', id: a, on: 1 }).ok, true, '담임이 카드 하나를 마감한다');
+  eq(lockRows().length, 1, '입력 탭에 그 카드의 마감 한 줄');
+  eq(G.handle_({ action: 'student', token: 'tokA' }).fields.some((f) => f.field === '마감' && String(f.id) === String(a)), true,
+    '학생 응답에 카드의 마감이 실린다');
+  const r1 = G.handle_({ action: 'studentRank', token: 'tokA', id: a, slot: 'rank', rank: 3 });
+  eq([r1.ok, r1.locked], [false, true], '마감된 카드는 학생이 못 옮긴다');
+  const r2 = G.handle_({ action: 'setRank', key: K, id: a, hak: '3101', slot: 'pool' });
+  eq([r2.ok, r2.locked], [false, true], '담임도 못 옮긴다 — 풀어야 한다');
+  eq(G.handle_({ action: 'setState', key: K, id: a, hak: '3101', slot: 'pool' }).locked, true, '옛 길(setState)도 막힌다');
+  const r3 = G.handle_({ action: 'setRank', key: K, id: 'X', hak: '3101', slot: 'rank', rank: 1 });
+  eq([r3.ok, r3.locked], [false, true], '마감된 카드를 밀어내는 맞바꾸기도 막힌다');
+  const r4 = G.handle_({ action: 'setRank', key: K, id: 'Y', hak: '3101', slot: 'rank', rank: 1, pair: 1 });
+  eq([r4.ok, r4.locked], [false, true], '마감된 카드 옆에 같이 고민도 못 건다');
+  eq(G.handle_({ action: 'setRank', key: K, id: 'X', hak: '3101', slot: 'rank', rank: 4 }).ok, true,
+    '안 낸 카드는 그대로 움직인다');
+  eq(G.handle_({ action: 'studentDate', token: 'tokA', id: a, kind: '면접', from: '2026-11-20', to: '2026-11-20' }).ok, true,
+    '면접 날짜는 마감 뒤에도 적는다');
+  eq(G.handle_({ action: 'studentField', token: 'tokA', id: a, field: '마감', value: '' }).ok, false,
+    '학생이 일반 입력 길로 마감을 지우지 못한다');
+  eq(lockRows().length, 1, '마감 줄이 그대로다');
+
+  eq(G.handle_({ action: 'setLock', key: K, hak: '3101', id: a, on: 0 }).ok, true, '담임이 마감을 푼다');
+  eq(lockRows().length, 0, '마감 줄이 사라진다');
+  eq(G.handle_({ action: 'setRank', key: K, id: a, hak: '3101', slot: 'rank', rank: 3 }).ok, true, '풀면 다시 옮긴다');
+
+  eq(G.handle_({ action: 'studentLock', token: 'tokA', id: a }).ok, true, '학생이 제 카드를 「★ 확정」한다');
+  eq(lockRows()[0][5], '3101 학생', '누가 걸었는지 남는다');
+  eq(G.handle_({ action: 'studentLock', token: 'tokA', id: 'X' }).ok, false, '남의 것·없는 카드는 확정 못 한다');
+  eq(G.handle_({ action: 'setRank', key: K, id: a, hak: '3101', slot: 'pool' }).locked, true, '학생이 건 마감도 담임을 막는다');
+  eq(G.handle_({ action: 'studentLock', token: 'tokA', id: a, on: 0 }).ok, true, '학생의 풀기 요청은');
+  eq(lockRows().length, 1, '아무것도 안 푼다 — 켜기만 받는다');
+  G.handle_({ action: 'setLock', key: K, hak: '3101', id: a, on: 0 });
+}
+
+/*
+ * **학생 응답을 둘로.** `student` 에 `lite: 1` 이면 카드에 필요한 것만 주고 살아
+ * 움직이는 넷(날짜·결과·입력·메모)은 `studentRest` 가 준다. 둘을 합치면 옛 응답과
+ * 같아야 한다.
+ */
+console.log('\n학생 응답 둘로 — lite · studentRest');
+{
+  const full = G.handle_({ action: 'student', token: 'tokA' });
+  const lite = G.handle_({ action: 'student', token: 'tokA', lite: 1 });
+  const rest = G.handle_({ action: 'studentRest', token: 'tokA' });
+  eq([lite.ok, lite.lite], [true, true], 'lite 응답이 열리고 lite 표시가 붙는다');
+  eq(['dates', 'results', 'notes'].every((k) => !(k in lite)), true, 'lite 에는 날짜·결과·메모가 없다');
+  eq(JSON.stringify(lite.fields), JSON.stringify(full.fields), '입력(마감·면접여부)은 lite 에도 든다 — 카드 모양을 정한다');
+  eq(lite.apps.length, full.apps.length, '지원 목록은 그대로다');
+  eq(rest.ok, true, 'studentRest 가 열린다');
+  eq(JSON.stringify([rest.dates, rest.results, rest.notes]),
+    JSON.stringify([full.dates, full.results, full.notes]), '둘을 합치면 옛 응답과 같다');
+  eq(G.handle_({ action: 'studentRest', token: '없는것' }).ok, false, '엉뚱한 토큰은 studentRest 도 못 연다');
+  eq(full.lite, false, '전체 응답은 lite 가 아니다');
 }
 
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');

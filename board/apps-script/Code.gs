@@ -37,7 +37,7 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-09-01d';
+var CODE_VER = '2026-09-08a';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
@@ -154,11 +154,15 @@ var SUNEUNG_SUB = { '과목': 'subject', '표점': 'std', '백분위': 'pct', '�
 function doGet(e) {
   var p = (e && e.parameter) || {};
   var out;
+  var t0 = new Date().getTime();
   try {
     out = handle_(p);
   } catch (err) {
     out = { ok: false, error: String((err && err.message) || err) };
   }
+  // 서버 안에서 걸린 시간(ms). 화면이 ?t=1 로 열면 보여 준다 — 느린 것이 서버인지
+  // 회선인지 폰인지는 재 봐야 안다. 콜드스타트는 이 앞이라 여기 안 잡힌다.
+  if (out && typeof out === 'object' && !Array.isArray(out)) out.took = new Date().getTime() - t0;
   var body = JSON.stringify(out);
   if (p.callback) {
     return ContentService.createTextOutput(p.callback + '(' + body + ')')
@@ -238,6 +242,7 @@ function handle_(p) {
     case 'issueAll':   return issueAll_(p, who);
     case 'setField':   return setField_(p, who, 'confirmed');
     case 'approveField': return approveField_(p, who);
+    case 'setLock':    return setLock_(p.hak, p.id, String(p.on || '') === '1', who);
     case 'setAlias':   return setAlias_(p, who);
     case 'removeAlias': return removeAlias_(p, who);
     default:           return { ok: false, error: '알 수 없는 요청입니다: ' + action };
@@ -1031,7 +1036,12 @@ function log_(who, action, detail) {
  * 옛 모양의 캐시를 5분 동안 그대로 내보낸다.
  */
 var SRC_CACHE_KEY = 'src:v1';
-var SRC_CACHE_SEC = 300;
+/*
+ * 10분이다(예전 5분). 아래 warmCache 가 5분마다 다시 파싱해 넣으므로, 트리거를
+ * 걸어 두면 캐시가 비는 순간이 없다 — 마침 그때 연 학생이 수 초를 더 내던 일이
+ * 사라진다. 트리거가 없어도 10분 캐시로 예전과 같이 돈다.
+ */
+var SRC_CACHE_SEC = 600;
 
 function cachePut_(key, obj, sec) {
   try {
@@ -1124,6 +1134,32 @@ function sourceParsed_(fresh) {
   return out;
 }
 
+/**
+ * **캐시 데우기.** 5분마다 원본을 새로 파싱해 캐시에 넣는다. 학생이 여는 순간
+ * 캐시가 비어 있으면 그 학생이 원본 열기·파싱(수 초)을 대신 내는데, 그걸 미리
+ * 낸다. 하루 288번, 한 번에 몇 초 — 트리거 실행 한도(90분/일) 안이다.
+ *
+ * 한 번만 `installWarmTrigger` 를 편집기에서 실행하면 된다(SETUP.md). 같은 이름의
+ * 트리거가 있으면 지우고 다시 건다. `removeWarmTrigger` 로 끈다.
+ */
+function warmCache() {
+  var sp = sourceParsed_(true);
+  log_('trigger', 'warm', (sp.apps || []).length + '건 파싱 · 캐시 ' + SRC_CACHE_SEC + '초');
+}
+
+function installWarmTrigger() {
+  removeWarmTrigger();
+  ScriptApp.newTrigger('warmCache').timeBased().everyMinutes(5).create();
+  warmCache();
+}
+
+function removeWarmTrigger() {
+  var all = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].getHandlerFunction() === 'warmCache') ScriptApp.deleteTrigger(all[i]);
+  }
+}
+
 function loadAll_(me, fresh) {
   var sp = sourceParsed_(fresh);
   return {
@@ -1156,6 +1192,8 @@ function setState_(p, who) {
   if (slot === 'rank' && !(rank >= 1 && rank <= 6)) {
     return { ok: false, error: '순위는 1~6 사이여야 합니다.' };
   }
+  var lockedOld = locksOf_(p.hak)[String(p.id)];
+  if (lockedOld) return lockedReply_(lockedOld, '마감된 카드입니다.');
   upsert_(SHEET.state, ['id'], {
     id: p.id, hak: p.hak, slot: slot, rank: rank, by: who, at: now_()
   });
@@ -1200,6 +1238,8 @@ function setRank_(p, who) {
   if (slot === 'rank' && !(rank >= 1 && rank <= 6)) {
     return { ok: false, error: '순위는 1~6 사이여야 합니다.' };
   }
+  var locks = locksOf_(p.hak);
+  if (locks[String(p.id)]) return lockedReply_(locks[String(p.id)], '마감된 카드는 옮길 수 없습니다.');
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
@@ -1237,6 +1277,13 @@ function setRank_(p, who) {
     if (slot === 'rank' && there.length >= 2) {
       return { ok: false, full: true,
         error: rank + '순위에는 이미 둘이 같이 고민 중입니다. 하나를 먼저 옮겨 주세요.' };
+    }
+    // 그 칸에 마감된 카드가 있으면 밀어낼 수도, 옆에 같이 고민을 걸 수도 없다
+    for (var lk = 0; lk < there.length; lk++) {
+      if (locks[String(there[lk].id)]) {
+        return lockedReply_(locks[String(there[lk].id)],
+          rank + '순위는 마감된 카드가 있는 칸입니다.');
+      }
     }
     var taken = (slot === 'rank' && !pair && there.length) ? there[0] : null;
 
@@ -1389,11 +1436,13 @@ function ownsApp_(hak, id) {
 /** 토큰으로 여는 경로. 여기 적힌 것만 학생이 부를 수 있다. */
 var STUDENT_ACTION = {
   student: 1, studentDate: 1, studentApplyNo: 1, studentField: 1, studentResult: 1,
-  studentNote: 1, studentNoteRemove: 1, studentAsk: 1, studentRank: 1
+  studentNote: 1, studentNoteRemove: 1, studentAsk: 1, studentRank: 1, studentLock: 1,
+  studentRest: 1
 };
 
 function studentAction_(action, p) {
-  if (action === 'student') return studentView_(p.token);
+  if (action === 'student') return studentView_(p.token, String(p.lite || '') === '1');
+  if (action === 'studentRest') return studentRest_(p.token);
 
   var hak = hakOfToken_(p.token);
   if (!hak) {
@@ -1419,6 +1468,8 @@ function studentAction_(action, p) {
    * 누가 바꿨는지는 `by` 에 「3201 학생」으로 남아 담임이 안다.
    */
   if (action === 'studentRank') return setRank_({ id: p.id, hak: hak, slot: p.slot, rank: p.rank, pair: p.pair, seen: p.seen }, who);
+  // 카드의 「★ 확정」 — 학생이 제 카드에 마감을 건다. 푸는 것은 담임뿐이라 켜기만 받는다.
+  if (action === 'studentLock') return setLock_(hak, p.id, true, who);
   /*
    * **학번을 서버가 채운다 — 토큰에서 온 값으로.**
    *
@@ -1534,17 +1585,81 @@ function approveDate_(p, who) {
 
 /* ===== 원서를 낸 뒤에 채워지는 칸 =================================== */
 
-var FIELDS = ['수험번호', '최종경쟁률', '생년월일'];
+var FIELDS = ['수험번호', '최종경쟁률', '생년월일', '면접여부'];
+
+/*
+ * **학생 링크로는 못 고치는 칸.**
+ *
+ * `면접여부` 는 「이 전형에 면접이 있다/없다」를 선생님이 못박는 값이라, 화면
+ * 여러 곳의 판단(꼬리표·면접 준비 판·날짜 칸)이 여기에 딸려 있다. 학생 경로
+ * (`studentField`)가 같은 `setField_` 를 타므로, 이름만 더하면 학생도 남의
+ * 판단을 뒤집을 수 있다 — 여기서 막는다.
+ */
+var TEACHER_FIELDS = ['면접여부'];
+
+/* ===== 마감(★) =======================================================
+ * 원서는 카드 단위로 낸다. 낸 카드는 그 자리가 사실이 되고, 그 뒤에 누가 옮기면
+ * 대장·보고서·면접 일정이 낸 원서와 어긋난다. 그래서 **카드마다** 마감 표시를
+ * 둔다 — 입력 탭에 `마감 = ★` 한 줄(수험번호처럼 id 가 붙는 칸). 아직 안 낸
+ * 카드는 그대로 움직인다.
+ *
+ *   거는 것    담임(setLock) · 학생 본인(studentLock — 카드의 「★ 확정」)
+ *   푸는 것    담임만. 학생이 풀 수 있으면 마감이 아니다
+ *   막는 것    마감된 카드를 옮기기 · 마감된 카드를 밀어내기 · 그 옆에 같이 고민 걸기
+ *   안 막는 것 면접 날짜·결과·수험번호·메모 — 원서를 낸 **뒤에** 적는 것들이다
+ *
+ * FIELDS 에는 안 넣는다 — 일반 studentField 길로 학생이 마감을 지우면 안 된다.
+ */
+var LOCK_FIELD = '마감';
+
+/** 이 학생의 마감된 카드 id → 행. */
+function locksOf_(hak) {
+  var all = rows_(SHEET.field), out = {};
+  for (var i = 0; i < all.length; i++) {
+    if (String(all[i].hak) === String(hak) && String(all[i].field) === LOCK_FIELD
+        && String(all[i].id || '') && String(all[i].value || '').trim()) out[String(all[i].id)] = all[i];
+  }
+  return out;
+}
+
+function setLock_(hak, id, on, who) {
+  hak = String(hak || '').trim(); id = String(id || '').trim();
+  if (!hak || !id) return { ok: false, error: '학번과 id 가 필요합니다.' };
+  var was = locksOf_(hak)[id] || null;
+  if (on) {
+    if (was) return { ok: true, at: was.at, by: was.by, already: true };
+    var now = now_();
+    upsert_(SHEET.field, ['id', 'hak', 'field'], {
+      id: id, hak: hak, field: LOCK_FIELD, value: '★', status: 'confirmed', by: who, at: now
+    });
+    log_(who, 'lock', hak + ' ' + id + ' 마감 ★');
+    return { ok: true, at: now, by: who };
+  }
+  if (was) {
+    tab_(SHEET.field).deleteRow(was._row);
+    log_(who, 'unlock', hak + ' ' + id + ' 마감 풀기');
+  }
+  return { ok: true };
+}
+
+function lockedReply_(row, what) {
+  return { ok: false, locked: true, by: row.by, at: row.at,
+    error: '★ ' + what + ' 담임 선생님이 마감을 풀어야 바꿀 수 있습니다.' };
+}
 
 /**
- * 수험번호·최종경쟁률·생년월일을 적는다.
+ * 수험번호·최종경쟁률·생년월일·면접여부를 적는다.
  *
  * `생년월일` 은 학생 한 명에 하나라 `id` 를 비워 둔다. 나머지는 지원 한 건에 하나다.
+ * `면접여부` 는 선생님만 적는다(`TEACHER_FIELDS`).
  * **빈 값으로 부르면 지운다** — 잘못 적었을 때 되돌릴 길이 있어야 한다.
  */
 function setField_(p, who, status) {
   var field = String(p.field || '').trim();
   if (FIELDS.indexOf(field) < 0) return { ok: false, error: '모르는 칸입니다: ' + field };
+  if (status === 'student' && TEACHER_FIELDS.indexOf(field) >= 0) {
+    return { ok: false, error: '선생님만 고칠 수 있는 칸입니다: ' + field };
+  }
   if (!p.hak) return { ok: false, error: '학번이 필요합니다.' };
   var id = field === '생년월일' ? '' : String(p.id || '');
   if (field !== '생년월일' && !id) return { ok: false, error: 'id 가 필요합니다.' };
@@ -1639,7 +1754,7 @@ function issueToken_(p, who) {
   return { ok: true, hak: p.hak, token: token };
 }
 
-function studentView_(token) {
+function studentView_(token, lite) {
   token = String(token || '').trim();
   if (!token) return { ok: false, error: '주소가 올바르지 않습니다.' };
   var share = rows_(SHEET.share), hit = null;
@@ -1681,6 +1796,39 @@ function studentView_(token) {
     }
   }
 
+  var live = lite ? {} : studentLive_(hak, me.apps);
+  var out = {
+    ok: true, hak: hak, student: me,
+    apps: parsed.apps.filter(function (a) { return a.hak === hak; }),
+    state: rows_(SHEET.state).filter(function (r) { return String(r.hak) === hak; }),
+    /*
+     * 별칭(선생님이 손으로 이어 준 학과)도 준다. 안 주면 같은 지원이
+     * 선생님 화면에는 작년 참고선이 붙고 학생 화면에는 아무것도 없다.
+     * 학번이 안 붙은 자료(대학·학과 이름뿐)라 통째로 줘도 새는 것이 없다.
+     */
+    aliases: rows_(SHEET.alias),
+    /*
+     * 입력 탭은 핵심에 든다 — 마감(★)과 면접여부가 카드의 모양(고르개 잠김·날짜
+     * 칸·꼬리표)을 정하는 값이라, 뒤에 오면 카드가 한 번 바뀌어 보인다.
+     */
+    fields: rows_(SHEET.field).filter(function (r) { return String(r.hak) === hak; }),
+    // 원본을 캐시에서 읽었나 — ?t=1 이 「캐시 미스」를 가려 볼 수 있게
+    cached: Boolean(parsed.cached),
+    // 핵심만 보낸 응답이라는 표시 — 화면이 나머지(studentRest)를 기다린다
+    lite: Boolean(lite)
+  };
+  for (var k in live) out[k] = live[k];
+  return out;
+}
+
+/**
+ * **학생 응답의 살아 움직이는 나머지** — 날짜·결과·메모.
+ * 카드를 그리는 데는 없어도 되는 것들이라 `student` 의 `lite: 1` 은 이걸 빼고
+ * 먼저 답하고, 화면은 `studentRest` 를 **나란히** 불러 뒤에 채운다. 두 실행이
+ * 동시에 돌아 시트 읽기 일곱이 셋·셋으로 갈리고, 첫 그리기는 셋만 기다린다.
+ * 입력 탭(마감 ★·면접여부)은 카드 모양을 정하므로 핵심 쪽에 있다.
+ */
+function studentLive_(hak, appIds) {
   var mine = function (arr) {
     return (arr || []).filter(function (r) { return String(r.hak) === hak; });
   };
@@ -1689,25 +1837,28 @@ function studentView_(token) {
    * id 가 내 지원이면 내 것이 맞다(안정키는 학번을 씨앗에 품는다).
    */
   var myApps = {};
-  for (var ai = 0; ai < me.apps.length; ai++) myApps[String(me.apps[ai])] = true;
+  for (var ai = 0; ai < (appIds || []).length; ai++) myApps[String(appIds[ai])] = true;
   var myDates = rows_(SHEET.date).filter(function (r) {
     return String(r.hak) === hak || (!String(r.hak || '') && myApps[String(r.id)]);
   });
   return {
-    ok: true, hak: hak, student: me,
-    apps: parsed.apps.filter(function (a) { return a.hak === hak; }),
-    state: mine(rows_(SHEET.state)),
     dates: myDates,
     // 학생이 적어 둔 결과를 돌려주지 않으면, 저장하고 새로고침했을 때 **사라져 보인다.**
     // 시트에는 있는데 화면에서 없어지면 학생은 다시 적거나 도구를 안 믿게 된다.
     results: mine(rows_(SHEET.result)),
-    fields: mine(rows_(SHEET.field)),
-    /*
-     * 별칭(선생님이 손으로 이어 준 학과)도 준다. 안 주면 같은 지원이
-     * 선생님 화면에는 작년 참고선이 붙고 학생 화면에는 아무것도 없다.
-     * 학번이 안 붙은 자료(대학·학과 이름뿐)라 통째로 줘도 새는 것이 없다.
-     */
-    aliases: rows_(SHEET.alias),
     notes: mine(rows_(SHEET.note)).filter(function (n) { return String(n.visible) === 'Y'; })
   };
+}
+
+function studentRest_(token) {
+  var hak = hakOfToken_(token);
+  if (!hak) return { ok: false, error: '만료되었거나 잘못된 주소입니다. 담임 선생님께 문의하세요.' };
+  var parsed = sourceParsed_();
+  var me = null;
+  for (var i = 0; i < parsed.students.length; i++) {
+    if (parsed.students[i].hak === hak) { me = parsed.students[i]; break; }
+  }
+  var out = studentLive_(hak, me ? me.apps : []);
+  out.ok = true; out.hak = hak;
+  return out;
 }

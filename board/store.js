@@ -20,7 +20,7 @@ import {
   indexIpgyeol, indexMojip, indexCollege, indexSchedule,
   splitDepts, referenceLine, resolveUniv, catOf, predecessor,
 } from './match.js';
-import { isoDay } from './text.js';
+import { isoDay, hasInterview, forcedInterview } from './text.js';
 
 const listeners = new Map();
 
@@ -582,10 +582,18 @@ export function dateOf(app, kind) {
   const d = (app.dates && app.dates[kind]) || null;
   if (d && d.fixed) return { from: d.from, to: d.to, fixed: true, status: 'source' };
 
-  // 즐겨찾기가 기간만 주었거나 아예 없을 때 일정표를 본다.
-  // 고사 종류가 이 전형의 유형과 맞고, **전형 이름까지 맞을 때만** 쓴다.
-  // 느슨한 값은 이 지원의 날짜가 아니다 — 상세에서 참고로만 보여 준다.
-  if (examKindFits(app, kind)) {
+  /*
+   * 즐겨찾기가 기간만 주었거나 아예 없을 때 일정표를 본다.
+   * 고사 종류가 이 전형의 유형과 맞고, **전형 이름까지 맞을 때만** 쓴다.
+   * 느슨한 값은 이 지원의 날짜가 아니다 — 상세에서 참고로만 보여 준다.
+   *
+   * **선생님이 「면접 없음」이라고 했으면 일정표에서 면접일을 끌어오지 않는다.**
+   * 일정표는 대학 전체를 두고 한 말이라 이 전형에 면접이 있다는 근거가 못 된다 —
+   * 없다고 정해 둔 자리에 「전형일정표 · 11/22」가 서면 정한 것이 안 선 셈이다.
+   * 사람이 넣은 날짜와 즐겨찾기가 준 확정일은 그대로 둔다. 그건 추정이 아니라
+   * 자료에 적힌 날이고, 아니면 지우면 된다.
+   */
+  if (examKindFits(app, kind) && !(kind === '면접' && interviewForce(app) === '없음')) {
     const found = examDate(app, sched);
     if (found && !found.loose) {
       return {
@@ -781,7 +789,13 @@ export async function approveResult(app) {
  * 이 목록이 서버에만 남아서, 칸을 더할 때 어디를 같이 고쳐야 하는지 알 길이
  * 없어진다. 여기 두고 시험이 서버와 맞는지 본다.
  */
-export const FIELDS = ['수험번호', '최종경쟁률', '생년월일'];
+export const FIELDS = ['수험번호', '최종경쟁률', '생년월일', '면접여부'];
+
+/**
+ * 면접이 있는지 선생님이 못박아 둔 칸. 다른 셋과 달리 **학생은 못 고친다** —
+ * 서버(`Code.gs` 의 `TEACHER_FIELDS`)가 학생 경로에서 오는 값을 막는다.
+ */
+export const INTERVIEW_FIELD = '면접여부';
 const perStudent = (field) => field === '생년월일';
 const fieldKey = (hak, id, field) => `${perStudent(field) ? '' : id}|${hak}|${field}`;
 
@@ -789,6 +803,77 @@ export function fieldOf(app, field) {
   const hak = app && app.hak ? app.hak : app;
   const id = app && app.id ? app.id : '';
   return state.fields.get(fieldKey(hak, id, field)) || null;
+}
+
+/* ── 마감(★) — 카드마다 ────────────────────────────────────────
+ * 원서는 카드 단위로 낸다. 낸 카드에 마감을 걸면(입력 탭 `마감 = ★`, 수험번호처럼
+ * id 가 붙는 칸) 서버가 그 카드를 옮기거나 밀어내거나 옆에 같이 고민을 거는 요청을
+ * 거절한다. 안 낸 카드는 그대로 움직인다. 날짜·결과·메모는 잠그지 않는다.
+ */
+export function lockOf(app) {
+  return state.fields.get(`${app.id}|${app.hak}|마감`) || null;
+}
+
+export async function setLock(app, on) {
+  const key = `${app.id}|${app.hak}|마감`;
+  const before = new Map(state.fields);
+  if (on) {
+    state.fields.set(key, { value: '★', status: 'confirmed', by: state.who || '', at: new Date().toISOString() });
+  } else state.fields.delete(key);
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.setLock(app.hak, app.id, on);
+  } catch (err) {
+    state.fields = before;
+    emit('change', 'state');
+    throw err;
+  }
+}
+
+/** 이 학생의 6칸·전문대 지원 카드 중 마감된 것 — 명단의 ★ 는 전부 마감일 때만 붙는다. */
+export function lockCount(hak) {
+  let placed = 0; let locked = 0;
+  for (const app of appsOf(hak)) {
+    const slot = placementOf(app.id).slot;
+    if (slot !== 'rank' && slot !== 'tray') continue;
+    placed += 1;
+    if (lockOf(app)) locked += 1;
+  }
+  return { placed, locked };
+}
+
+/**
+ * 선생님이 이 지원의 면접을 못박아 두었나. '있음' · '없음' · 빈 값(자동).
+ */
+export function interviewForce(app) {
+  const row = fieldOf(app, INTERVIEW_FIELD);
+  return forcedInterview(row && row.value);
+}
+
+/**
+ * 못박은 값을 **무시하고** 모집요강대로만 본다.
+ * 카드에서 「자동으로 두면 어느 쪽인가」를 적어 주는 자리에 쓴다.
+ */
+export function autoInterview(app) {
+  const s = summary(app);
+  return hasInterview(s && s.mojip, s && s.stages, '');
+}
+
+/**
+ * 이 지원에 면접이 있나 — **화면들이 같이 쓰는 한 곳.**
+ *
+ * 꼬리표(board.js)·면접 준비 판(schedule.js)이 저마다 규칙을 적고 있었다.
+ * 그러면 선생님이 「없음」으로 고쳐도 어느 하나는 계속 면접이 있다고 말한다.
+ * 학생 화면(student.js)은 자료를 따로 받아 제 안에 같은 규칙을 두는데,
+ * 거기서도 `text.js` 의 `hasInterview` 를 그대로 부른다.
+ *
+ * @return {{yes:boolean, force:string}} force 가 비었으면 자동 판정이다
+ */
+export function interviewOf(app) {
+  const s = summary(app);
+  const force = interviewForce(app);
+  return { yes: hasInterview(s && s.mojip, s && s.stages, force), force };
 }
 
 export async function setField(app, field, value) {

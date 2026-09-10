@@ -271,6 +271,9 @@ json.dump({"schema": "v10", "columns": COLS, "rows": rows},
 json.dump({f"{k[0]}|{k[1]}|{k[2]}": v for k, v in sorted(alias.items())},
           open(os.path.join(OUT, "track_alias.json"), "w", encoding="utf-8"),
           ensure_ascii=False, indent=1)
+# 학생 화면이 받는 대학별 조각(data/ipgyeol/)도 정본과 함께 다시 만든다
+import subprocess, sys
+subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "shard_ipgyeol.py")], check=True)
 
 # 개명 후 같은 키가 되는 행 — 값이 달라 하나만 남으므로 육안 확인이 필요하다
 collide = collections.Counter()

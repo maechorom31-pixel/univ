@@ -15,7 +15,7 @@
 import * as store from './store.js';
 import { realRate, normType, typeGroups, fillTrend } from './match.js';
 import { confidence, pctText } from './confidence.js';
-import { josa, rate1, methodLine } from './text.js';
+import { josa, rate1, typedRate, typedRateText, methodLine } from './text.js';
 
 export { realRate };
 
@@ -307,6 +307,13 @@ export function detailPanel(app, student, onClose) {
   const diff = quotaNow != null && quotaPrev != null ? quotaNow - quotaPrev : null;
   const real = s.real;
 
+  // 원서를 낸 뒤 적는 칸(수험번호·최종경쟁률)의 표기 — 「인원과 경쟁률」과
+  // 「원서를 낸 뒤」 두 표가 같은 글자를 보게 한 곳에서 만든다.
+  // 「맞습니다」로 확인하면 by 가 담임으로 바뀌어, 학생이 적은 것과 담임이 적은 것을
+  // 나중에는 가를 수 없다. 그래서 확인된 값은 누가 적었든 「확인됨」 하나로 적는다.
+  const whoTyped = (v) => (!v ? '' : v.status === 'student' ? '학생 입력 · 확인 대기' : '확인됨');
+  const rateShown = (v) => typedRateText(v.value);
+
   const quotaBlock = rows('인원과 경쟁률', [
     ['올해 모집 인원', quotaNow != null
       ? `${quotaNow}명${diff ? ` (작년 ${quotaPrev}명, ${diff > 0 ? '+' : ''}${diff})` : ''}`
@@ -315,6 +322,10 @@ export function detailPanel(app, student, onClose) {
     [yr('경쟁률'), s && s.rate != null ? `${rate1(s.rate)}:1` : null, isCollege ? '전문대 자료' : ipSrc],
     ['작년 실질 경쟁률', real.value != null ? `${rate1(real.value)}:1` : null,
       real.why || '명목 × 모집 ÷ (모집 + 추합)'],
+    ['올해 최종 경쟁률', (() => {
+      const f = store.fieldOf(app, '최종경쟁률');
+      return f && f.value ? rateShown(f) : null;
+    })(), '원서를 낸 뒤 적은 값'],
     ['충원율', isCollege && s.linked && s.rows[0] && s.rows[0].fill != null
       ? `${Math.round(s.rows[0].fill)}%` : null, '전문대 자료'],
   ]);
@@ -406,9 +417,15 @@ export function detailPanel(app, student, onClose) {
   ]));
 
   /*
-   * 3.5 원서를 내고 **나서야** 채워지는 칸.
-   * 학생이 적고 담임이 확인한다. 값이 하나도 없으면 구역 자체를 만들지 않는다 —
-   * 9월에는 빈 줄 셋이 자리만 차지한다.
+   * 3.5 원서를 내고 **나서야** 채워지는 칸 — 수험번호·최종 경쟁률·생년월일.
+   *
+   * 학생이 적고 담임이 확인하는 것이 기본 흐름이지만, **담임이 카드에서 바로
+   * 적을 수도 있어야 한다.** 학생이 안 적고 지나가면 경쟁률은 어디에도 없고,
+   * 지원 현황·최종 결과 표의 경쟁률 칸(`export.js` 의 `rateText`)이 그 값을
+   * 먼저 쓰기 때문에 종이까지 빈 채로 나간다. 담임이 넣은 값은 바로 확정이다
+   * (`store.setField`) — 사람이 넣은 것이 언제나 먼저라는 날짜와 같은 규칙.
+   *
+   * 값이 하나도 없으면 표는 만들지 않고 접힌 「넣기 · 고치기」 한 줄만 둔다.
    */
   const paperwork = [
     ['수험번호', store.fieldOf(app, '수험번호')],
@@ -418,9 +435,61 @@ export function detailPanel(app, student, onClose) {
   if (paperwork.some(([, v]) => v && v.value)) {
     body.appendChild(rows('원서를 낸 뒤', paperwork.map(([k, v]) => [
       k,
-      v && v.value ? (k === '최종 경쟁률' ? `${rate1(v.value) ?? v.value}:1` : v.value) : null,
-      v && v.status === 'student' ? '학생 입력 · 확인 대기' : '학생 입력 · 확인됨',
+      v && v.value ? (k === '최종 경쟁률' ? rateShown(v) : v.value) : null,
+      whoTyped(v),
     ])));
+  }
+  {
+    const fix = document.createElement('details');
+    fix.className = 'date-add';
+    const sum = document.createElement('summary');
+    sum.textContent = '수험번호 · 최종 경쟁률 넣기 · 고치기';
+    fix.appendChild(sum);
+    fix.appendChild(el('p', 'hint',
+      '최종 경쟁률은 마감 뒤 대학이 발표하는 올해 값입니다. 지원 현황·최종 결과 표의'
+      + ' 경쟁률 칸에 이 값이 먼저 들어갑니다. 비우고 저장하면 지웁니다.'));
+    for (const [field, mode, ph] of [
+      ['수험번호', 'numeric', '예) 20260012'],
+      ['최종경쟁률', 'decimal', '예) 12.4'],
+    ]) {
+      const line = el('div', 'field-in');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.inputMode = mode;
+      input.placeholder = ph;
+      input.setAttribute('aria-label', `${field}`);
+      const cur = store.fieldOf(app, field);
+      input.value = cur && cur.value ? String(cur.value) : '';
+      const save = el('button', 'btn', `${field} 저장`);
+      save.type = 'button';
+      save.onclick = async () => {
+        save.disabled = true;
+        let value = input.value.trim();
+        if (field === '최종경쟁률' && value) {
+          const n = typedRate(value);
+          if (n == null) {
+            window.alert('경쟁률은 숫자로 적어 주세요. 예) 12.4');
+            save.disabled = false;
+            return;
+          }
+          value = String(n);   // 「12.4:1」로 적어도 12.4 로 남긴다 — 종이가 같은 값을 보게
+          input.value = value;
+        }
+        try {
+          await store.setField(app, field, value);
+          sum.textContent = value
+            ? `${field} ${field === '최종경쟁률' ? typedRateText(value) : value} 저장했습니다 — 수험번호 · 최종 경쟁률 넣기 · 고치기`
+            : `${field}을(를) 지웠습니다 — 수험번호 · 최종 경쟁률 넣기 · 고치기`;
+        } catch (err) {
+          window.alert(`저장하지 못했습니다 — ${err.message}`);
+        }
+        save.disabled = false;
+      };
+      line.appendChild(input);
+      line.appendChild(save);
+      fix.appendChild(line);
+    }
+    body.appendChild(fix);
   }
 
   /* 4. 일정 — 없는 항목도 「모집요강 확인」으로 남긴다. 빠뜨리는 것이 더 위험하다. */
@@ -459,6 +528,74 @@ export function detailPanel(app, student, onClose) {
       '전형일정표 · 이 대학 같은 유형. 이 전형의 날짜가 아닙니다']);
   }
   body.appendChild(rows('일정', sched));
+
+  /*
+   * **면접이 있는지 없는지를 선생님이 못박는다.**
+   *
+   * 자동 판정(모집요강 전형단계 ≥ 2 이거나 전형 방법 글에 「면접」)이 양쪽으로
+   * 틀린다. 2단계인데 면접이 아닌 전형이 있고, 일괄인데 면접을 보면서 방법 글이
+   * 「구술평가」라고만 적힌 줄도 있다. 그대로 두면 없는 면접에 준비 판이 서고,
+   * 있는 면접에는 날짜 칸이 안 선다 — 어느 쪽이든 상담에서 바로 드러난다.
+   *
+   * 그래서 세 값이다. **자동**이 예전 그대로이고, 선생님이 「있음」·「없음」을
+   * 고르면 그때부터 자동 판정을 아예 안 본다. 값은 시트(`면접여부`)에 남아서
+   * 학생 화면까지 같이 따라간다 — 두 화면이 다른 말을 하면 안 된다.
+   * 학생은 못 고친다(서버 `TEACHER_FIELDS`).
+   */
+  {
+    const auto = store.autoInterview(app) ? '있음' : '없음';
+    const title = (force) => '면접 있음 · 없음 정하기 — 지금 '
+      + (force ? `${force} (선생님 확인)` : `${auto} (모집요강 판단)`);
+
+    const fold = document.createElement('details');
+    fold.className = 'date-add';
+    const sum = document.createElement('summary');
+    sum.textContent = title(store.interviewForce(app));
+    fold.appendChild(sum);
+
+    const wrap = el('div', 'field');
+    wrap.appendChild(el('p', 'hint',
+      '모집요강만 보고 정한 값이라 틀릴 수 있습니다. 여기서 정해 두면 꼬리표 ·'
+      + ' 면접 준비 판 · 날짜 칸이 모두 그 값을 따르고, 학생 화면에도 같이 갑니다.'));
+    const line = el('div', 'field-in');
+
+    const sel = document.createElement('select');
+    sel.setAttribute('aria-label', '면접 있음 · 없음');
+    for (const [value, label] of [['', `자동 — 모집요강대로 (${auto})`], ['있음', '있음'], ['없음', '없음']]) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      sel.appendChild(o);
+    }
+    sel.value = store.interviewForce(app);
+
+    const save = el('button', 'btn', '저장');
+    save.type = 'button';
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        await store.setField(app, store.INTERVIEW_FIELD, sel.value);
+        sum.textContent = title(store.interviewForce(app));
+      } catch (err) {
+        /*
+         * 서버가 이 칸을 모르면 「모르는 칸입니다」로 돌아온다 — Apps Script 를
+         * 아직 새로 배포하지 않은 것이다. 그 말만으로는 무엇을 해야 하는지 알 수
+         * 없어서 할 일을 같이 적는다.
+         */
+        const hint = /모르는 칸/.test(err.message)
+          ? '\n\nApps Script 코드가 예전 것입니다. board/apps-script/Code.gs 를 다시 붙여 넣고 새로 배포해 주세요.'
+          : '';
+        window.alert(`저장하지 못했습니다 — ${err.message}${hint}`);
+      }
+      save.disabled = false;
+    };
+
+    line.appendChild(sel);
+    line.appendChild(save);
+    wrap.appendChild(line);
+    fold.appendChild(wrap);
+    body.appendChild(fold);
+  }
 
   /*
    * **면접·실기 날짜를 카드에서 바로 넣고 고친다.**

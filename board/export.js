@@ -27,6 +27,7 @@
 import * as store from './store.js';
 import { outsideLimit } from './match.js';
 import * as stats from './stats.js';
+import { typedRate } from './text.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -37,6 +38,26 @@ const el = (tag, cls, text) => {
 };
 const tidy = (s) => String(s || '').replace(/ (?=[^ ]{1,4}$)/, ' ');
 const g2 = (n) => (n == null || n === '' ? '—' : Number(n).toFixed(2));
+/*
+ * 문서의 「환산」 칸 — **환산이 없으면 학생의 전교과로 대신 적는다.** 보드와 같은
+ * 규칙(store.gradeOf)이다. 관심대학 리스트의 내등급은 전형별 환산이라 종합전형은
+ * 0(=없음)으로 오는데, 그러면 칸이 비거나 「0.00」이 찍혔다. 비면 담임이 대장을
+ * 들고 다시 찾아 적어야 하니, 잣대는 달라도 학생의 등급을 적어 둔다.
+ */
+let gradeFallbackUsed = false;        // 이번 문서에 전교과로 대신 적은 칸이 있었나 — 각주를 단다
+const myGrade = (app) => {
+  const g = store.gradeOf(app);
+  if (g.value == null) return '';
+  // 대신 적은 값은 「3.20*」 — 환산과 전교과는 잣대가 달라 표에서 티가 나야 한다
+  if (g.scale === '전교과') { gradeFallbackUsed = true; return `${Number(g.value).toFixed(2)}*`; }
+  return Number(g.value).toFixed(2);
+};
+/* CSV 는 숫자 그대로 — 엑셀이 「3.20*」를 글자로 읽으면 정렬·계산이 안 된다 */
+const myGradeCsv = (app) => {
+  const g = store.gradeOf(app);
+  return g.value != null ? Number(g.value).toFixed(2) : '';
+};
+const gradeNote = () => el('p', 'doc-note', '* 환산 등급이 없어 학생의 전교과 등급을 대신 적은 값입니다.');
 const p1 = (n) => (n == null ? '—' : `${Number(n).toFixed(1)}%`);
 /*
  * 경쟁률은 **소수 첫째 자리로 못박는다.** 화면(`board/text.js` 의 `rate1`)과
@@ -79,6 +100,13 @@ let notice = '';
  * 작년 보고서에서 떠 온 정적 자료를 얹는다. 없으면 올해 칸만 나온다.
  */
 let history = null;      // 지난해 지원 결과 보고서에서 뽑은 집계
+/*
+ * **지난 연도 칸은 비워 둔다.** report_history.json 의 숫자는 지난해 보고서
+ * 한 부에서 떠 온 것이라 다른 해와 잣대가 어긋날 수 있다. 담임이 다른 자료에서
+ * 파싱해 직접 채우기로 했다 — 열(연도)과 줄은 그대로 두고 값만 비운다.
+ * 올해(YEAR) 칸만 보드가 센다.
+ */
+const PAST_BLANK = true;
 const YEAR = () => (history && history.years && history.years.length
   ? history.years[0] + 1 : 2027);
 
@@ -670,7 +698,7 @@ function crossTable(key, thisYear, subsetLabel, subsetRows) {
     }
     tbody.appendChild(tr);
   };
-  const hy = (y) => (hist && hist.by ? hist.by[String(y)] : null) || {};
+  const hy = (y) => (PAST_BLANK ? {} : (hist && hist.by ? hist.by[String(y)] : null) || {});
 
   if (key === '가') {
     wide('3학년 전체 학생 수',
@@ -755,6 +783,7 @@ function rankTable(key, rows) {
     for (const y of years) {
       let v;
       if (y === YEAR()) v = mine.get(stats.univKey(name)) || 0;
+      else if (PAST_BLANK) { tr.appendChild(el('td', 'num', '')); continue; }
       else {
         const h = hist && hist.rows.find((r) => stats.univKey(r.name) === stats.univKey(name));
         v = h ? (h.by[String(y)] ?? 0) : 0;
@@ -768,7 +797,7 @@ function rankTable(key, rows) {
   sum.className = 'sum';
   sum.appendChild(el('td', null, ''));
   sum.appendChild(el('td', null, '합계'));
-  years.forEach((y) => sum.appendChild(el('td', 'num', String(totals[y] || 0))));
+  years.forEach((y) => sum.appendChild(el('td', 'num', y !== YEAR() && PAST_BLANK ? '' : String(totals[y] || 0))));
   tbody.appendChild(sum);
   table.appendChild(tbody);
   tw.appendChild(table);
@@ -876,6 +905,7 @@ function report() {
 
   box.appendChild(tools('지원결과보고서', () => reportTable(r)));
 
+  gradeFallbackUsed = false;
   const sheet = el('section', 'sheet sheet-doc');
   sheet.appendChild(el('h1', 'doc-title', `${YEAR()}학년도 대입 수시 전형 지원 결과`));
   sheet.appendChild(el('p', 'doc-date', stampDot()));
@@ -899,6 +929,7 @@ function report() {
     sheet.appendChild(rankTable(key, groupRows(key, rows)));
   }
 
+  if (gradeFallbackUsed) sheet.appendChild(gradeNote());
   box.appendChild(sheet);
 
   // 명단도 세로다 — 대학 이름이 묶음 머리줄로 빠져 A4 세로에 들어간다
@@ -912,6 +943,7 @@ function report() {
     part2.appendChild(el('h3', 'doc-h2', `${key}. ${hist.title.replace(/ 수시 전형 지원 결과.*$/, '')}`));
     part2.appendChild(detailTable(key, list));
   }
+  if (gradeFallbackUsed) part2.appendChild(gradeNote());
   box.appendChild(part2);
 
   // 예년 문서에 없던 분석. 결재 문서에서 빼려면 이 한 덩이만 지우면 된다.
@@ -973,7 +1005,6 @@ function detailTable(key, rows) {
       String(a.student.hak).localeCompare(String(b.student.hak)));
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
-      const score = app.myScore || {};
       n += 1;
       const tr = document.createElement('tr');
       [
@@ -984,7 +1015,7 @@ function detailTable(key, rows) {
         ['type', brk(typeText(app))],
         ['num', app.quota ?? ''],
         ['num', rateText(app, sm)],
-        ['num', score.grade != null ? Number(score.grade).toFixed(2) : ''],
+        ['num', myGrade(app)],
         ['num', sm.quotaPrev ?? ''],
         ['num', rt(sm.linked ? sm.rate : null)],
         ['num', sm.linked && sm.cut != null ? Number(sm.cut).toFixed(2) : ''],
@@ -1178,7 +1209,6 @@ function statusTable(names, byUniv) {
       String(a.student.hak).localeCompare(String(b.student.hak)));
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
-      const mine = app.myScore || {};
       const r = store.resultOf(app) || {};
       const txt = statusText(app);
       const won = /합격/.test(txt) && !/불합격/.test(txt);
@@ -1192,7 +1222,7 @@ function statusTable(names, byUniv) {
         ['type', brk(typeText(app))],
         ['num', app.quota ?? ''],
         ['num', rateText(app, sm)],
-        ['num', mine.grade != null ? Number(mine.grade).toFixed(2) : ''],
+        ['num', myGrade(app)],
         ['nm', r.stage1 || ''],
         [won ? 'won verdict' : 'verdict', txt],
         ['num', sm.quotaPrev ?? ''],
@@ -1257,10 +1287,12 @@ function status() {
     return rows;
   }));
 
+  gradeFallbackUsed = false;
   const sheet = el('section', 'sheet sheet-doc');
   sheet.appendChild(el('h1', 'doc-title',
     `주요 대학 합격자 발표 현황(${stampDot()} 현재)`));
   sheet.appendChild(statusTable(names, byUniv));
+  if (gradeFallbackUsed) sheet.appendChild(gradeNote());
   box.appendChild(sheet);
   return box;
 }
@@ -1292,8 +1324,8 @@ const vOf = (app) => stats.verdict({ ...app, result: store.resultOf(app) });
 function rateText(app, sm) {
   const f = store.fieldOf(app, '최종경쟁률');
   if (f && f.value) {
-    const n = Number(String(f.value).replace(/[^0-9.]/g, ''));
-    if (Number.isFinite(n) && n > 0) return n.toFixed(2);
+    const n = typedRate(f.value);
+    if (n != null) return n.toFixed(2);
   }
   return rt(sm && sm.real ? sm.real.rate : null);
 }
@@ -1518,7 +1550,6 @@ function finalDetail(key, rows) {
       String(a.student.hak).localeCompare(String(b.student.hak)));
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
-      const score = app.myScore || {};
       const r = store.resultOf(app);
       const v = vOf(app);
       n += 1;
@@ -1531,7 +1562,7 @@ function finalDetail(key, rows) {
         ['type', brk(typeText(app))],
         ['num', app.quota ?? ''],
         ['num', rateText(app, sm)],
-        ['num', score.grade != null ? Number(score.grade).toFixed(2) : ''],
+        ['num', myGrade(app)],
         [v.passed ? 'won verdict' : 'verdict', resultText(r)],
       ].forEach(([cl, val]) => tr.appendChild(
         el('td', cl, val === '' || val == null ? '—' : String(val)),
@@ -1627,6 +1658,7 @@ function finalReport() {
 
   box.appendChild(tools('수시최종결과보고서', () => finalTable(rows)));
 
+  gradeFallbackUsed = false;
   const sheet = el('section', 'sheet sheet-doc');
   sheet.appendChild(el('h1', 'doc-title',
     `${YEAR()}학년도 대입 수시전형 주요 대학 합격자 발표 결과`));
@@ -1645,6 +1677,7 @@ function finalReport() {
     sheet.appendChild(outcomeTable(key, groupRows(key, rows)));
   }
 
+  if (gradeFallbackUsed) sheet.appendChild(gradeNote());
   box.appendChild(sheet);
 
   /*
@@ -1662,6 +1695,7 @@ function finalReport() {
     list2.appendChild(el('h3', 'doc-h2', `${LETTERS[m++]}. ${title}`));
     list2.appendChild(finalDetail(key, list));
   }
+  if (gradeFallbackUsed) list2.appendChild(gradeNote());
   box.appendChild(list2);
   return box;
 }
@@ -1692,11 +1726,12 @@ function finalTable(rows) {
   out.push(['학번', '이름', '대학', '모집단위', '전형 유형', '모집 인원', '경쟁률',
     '환산 성적', '1단계 결과', '최종 결과']);
   for (const { app, student } of rows) {
-    const mine = app.myScore || {};
     const r = store.resultOf(app);
+    // 경쟁률은 화면·종이 표와 같은 값 — 적어 둔 최종 경쟁률이 먼저, 없으면 작년 실질
+    const rate = rateText(app, store.summary(app));
     out.push([student.hak, student.name, shortUniv(app.univ), app.dept || '',
       typeText(app),
-      app.quota ?? '', '', mine.grade != null ? Number(mine.grade).toFixed(2) : '',
+      app.quota ?? '', rate, myGradeCsv(app),
       (r && r.stage1) || '', resultText(r)]);
   }
   return out;

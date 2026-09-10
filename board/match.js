@@ -1954,10 +1954,16 @@ function grade(v) {
   return Number.isFinite(n) && n > 0 && n <= 9.5 ? n : null;
 }
 
-export function indexIpgyeol(doc) {
+/**
+ * @param doc       { columns, rows } — 정본이거나, 대학별 조각을 합친 것
+ * @param allNames  대학 이름 전체(조각으로 받았을 때). 대학 찾기(`resolveUniv`)는
+ *                  **전체 이름**을 놓고 골라야 같은 답이 나온다 — 조각에 든 이름만으로
+ *                  지으면 「국립」 붙고 안 붙은 쌍이나 캠퍼스 고르기가 달라진다.
+ */
+export function indexIpgyeol(doc, allNames) {
   const c = Object.fromEntries(doc.columns.map((name, i) => [name, i]));
   const byKey = new Map();
-  const names = new Set();
+  const names = new Set(allNames || []);
   for (const r of doc.rows) {
     const univ = r[c['대학']];
     names.add(univ);

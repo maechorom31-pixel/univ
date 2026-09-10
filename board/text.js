@@ -70,6 +70,32 @@ export function rate1(v) {
 }
 
 /**
+ * 사람이 적은 경쟁률을 숫자로. 「12.4:1」 「12.4 대 1」 「12.4」 어느 꼴로 적어도
+ * 12.4 를 돌려준다. 숫자가 안 나오면 null — 부르는 쪽이 적힌 글을 그대로 보인다.
+ * 최종경쟁률 칸은 학생·담임이 손으로 적는 자리라 꼴이 갖가지다.
+ */
+export function typedRate(v) {
+  if (v == null || v === '') return null;
+  const m = String(v).match(/\d+(?:\.\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * 적힌 최종경쟁률을 「7.25:1」 꼴로. 대학이 둘째 자리까지 발표하는 값이라
+ * 입결처럼 첫째 자리로 뭉개지 않는다 — 종이(`export.js`)도 둘째 자리로 찍으니
+ * 화면과 종이가 같은 숫자를 보인다. 숫자가 아니면 적힌 글 그대로, 비었으면 null.
+ */
+export function typedRateText(v) {
+  if (v == null || v === '') return null;
+  const n = typedRate(v);
+  if (n == null) return String(v);
+  const r = Math.round(n * 100) / 100;
+  return `${Number.isInteger(r * 10) ? r.toFixed(1) : r.toFixed(2)}:1`;
+}
+
+/**
  * 서버가 준 날짜를 「yyyy-MM-dd」로 못박는다.
  *
  * 구글 시트가 날짜 칸을 Date 로 바꿔 버리면 옛 배포의 서버는 그걸 UTC 로 적어
@@ -169,4 +195,43 @@ export function interviewShare(mo) {
 /** 전형 방법 글에 면접이 있나 — 면접 날짜 칸을 세울 근거로 쓴다. */
 export function methodHasInterview(mo) {
   return !!mo && /면접/.test(`${mo.method1 || ''} ${mo.method2 || ''}`);
+}
+
+/*
+ * 면접이 있나 — **사람이 정한 값이 언제나 먼저다.**
+ * =====================================================================
+ * 자동 판정은 모집요강 두 곳을 본다: 전형단계가 2단계 이상이거나, 전형 방법
+ * 글에 「면접」이 들었거나(일괄 「학생부60+면접40」 꼴). 500건으로 재 보면
+ * 대체로 맞지만 양쪽으로 다 틀린다.
+ *
+ *   있다고 잘못 본다   2단계인데 2단계가 면접이 아닌 전형 — 실기·서류평가로만
+ *                      거르는 자리가 있다. 모집요강 전형단계가 비었거나 잘못
+ *                      적힌 줄도 있다.
+ *   없다고 잘못 본다   일괄인데 면접을 보는 전형 가운데 방법 글이 「면접」이라는
+ *                      말을 안 쓰고 「구술평가」·「인성평가」로 적은 줄.
+ *
+ * 틀린 쪽이 어느 쪽이든 화면은 단정해서 말한다 — 없는 면접 준비를 시키거나,
+ * 있는 면접에 날짜 칸을 안 세운다. 그래서 선생님이 「있음/없음」으로 못박을 수
+ * 있게 두고(시트 `면접여부`), 그 값이 있으면 자동 판정을 아예 안 본다.
+ * 비워 두면 예전 그대로 자동이다.
+ */
+export const FORCE_YES = '있음';
+export const FORCE_NO = '없음';
+
+/** 선생님이 못박아 둔 값인가. '있음'·'없음' 둘만 값으로 친다. */
+export function forcedInterview(force) {
+  const f = String(force == null ? '' : force).trim();
+  return f === FORCE_YES || f === FORCE_NO ? f : '';
+}
+
+/**
+ * 이 지원에 면접이 있나.
+ * @param {?object} mo 모집요강 줄
+ * @param {?number} stages 전형단계
+ * @param {?string} force 선생님이 못박은 값 — '있음' · '없음' · 빈 값(자동)
+ */
+export function hasInterview(mo, stages, force) {
+  const f = forcedInterview(force);
+  if (f) return f === FORCE_YES;
+  return Number(stages || 1) > 1 || methodHasInterview(mo);
 }

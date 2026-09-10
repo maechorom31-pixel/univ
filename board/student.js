@@ -19,9 +19,9 @@ import * as api from './api.js';
 import {
   link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule,
   summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
-  fillTrend, outsideLimit, isGuessedFit,
+  fillTrend, outsideLimit, isGuessedFit, buildUnivIndex,
 } from './match.js';
-import { josa, rate1, isoDay, minReqShort, methodLine, interviewShare, methodHasInterview } from './text.js';
+import { josa, rate1, typedRateText, isoDay, minReqShort, methodLine, interviewShare, hasInterview, forcedInterview } from './text.js';
 import { suneungDday } from './keydates.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
@@ -69,8 +69,10 @@ const label = (iso) => {
 
 /* ── 시작 ─────────────────────────────────────────────────────── */
 
-export async function start(token, demoData) {
+export async function start(token, demoData, opts = {}) {
   state.token = token;
+  // ?t=1 — 어디서 시간이 가는지 화면에 적는다. 서버인지 회선인지 폰인지는 재 봐야 안다.
+  state.timing = opts.timing ? { t0: now_() } : null;
   // 보기용 자료로 열면 서버를 부르지 않는다. 그래야 학생에게 링크를 주기 전에
   // 선생님이 저장까지 눌러 보며 확인할 수 있다.
   offline = Boolean(demoData);
@@ -78,30 +80,60 @@ export async function start(token, demoData) {
   // 공개 자료(입결·모집요강)는 서버 응답과 **동시에** 받는다 — 보드와 같은 이유다.
   // 서로 독립이라 직렬로 이으면 체감 로딩이 둘의 합이 된다.
   const pub = loadPublic();
+  if (demoData) {
+    apply(demoData);
+    render();
+    await Promise.all([pub, loadIpgyeol()]);
+    mark('pub');
+    return;
+  }
+  /*
+   * **서버 요청은 둘을 나란히.** 카드를 그리는 데 필요한 것(지원 목록·배치·별칭,
+   * 시트 읽기 둘)만 `lite` 로 먼저 받고, 날짜·결과·입력·메모(읽기 넷)는 `studentRest`
+   * 로 따로 받는다. Apps Script 는 두 실행을 동시에 돌리므로 첫 그리기가 일곱을
+   * 다 읽을 때까지 기다리지 않는다. 옛 서버는 `lite` 를 몰라 다 주고 `studentRest`
+   * 를 거절하는데, 그때는 이미 다 받았으니 조용히 넘어간다.
+   */
+  const core = api.call('student', { token, lite: 1 }, { timeout: 45000 });   // 지원·배치·별칭·입력
+  const rest = api.call('studentRest', { token }, { timeout: 45000 });
+  rest.catch(() => {});                       // 먼저 실패해도 「처리 안 된 거절」로 남지 않게
   try {
-    const data = demoData || await api.call('student', { token }, { timeout: 45000 });
+    const data = await core;
     apply(data);
+    mark('server', data);
   } catch (err) {
     state.error = err.message;
+    render();
+    await pub;
+    return;
   }
   render();
-  await pub;
+  // 지원 목록을 알았으니 제 대학의 입결 조각을 받는다 — 나머지 응답과 나란히
+  const ip = loadIpgyeol();
+  try {
+    applyRest(await rest);
+    mark('rest');
+  } catch (err) {
+    if (!state.gotFull) state.notice = `날짜·결과를 불러오지 못했습니다 — ${err.message} 새로고침해 주세요.`;
+  }
+  render();
+  await Promise.all([pub, ip]);
+  mark('pub');
+}
+
+const now_ = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+
+/** ?t=1 일 때 구간 시각을 적는다. 화면 맨 위 한 줄로 나온다. */
+function mark(key, data) {
+  if (!state.timing) return;
+  state.timing[key] = now_() - state.timing.t0;
+  if (data) { state.timing.took = data.took; state.timing.cached = data.cached; }
+  render();
 }
 
 function apply(data) {
   state.student = data.student || null;
   state.apps = data.apps || [];
-  state.notes = data.notes || [];
-  // 원서를 낸 뒤에 채워지는 칸. 생년월일은 학생당 하나라 id 가 비어 있다.
-  state.fields = new Map((data.fields || []).map((r) => [
-    `${String(r.id || '')}|${String(r.field)}`,
-    { value: String(r.value || ''), status: String(r.status || 'confirmed') },
-  ]));
-  state.results = new Map((data.results || []).map((r) => [String(r.id), {
-    stage1: String(r.stage1 || ''), final: String(r.final || ''),
-    reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
-    enrolled: String(r.enrolled || ''), status: String(r.status || 'confirmed'),
-  }]));
   state.placement = new Map((data.state || []).map((r) => [String(r.id), {
     slot: r.slot || 'pool',
     rank: r.rank === '' || r.rank == null ? null : Number(r.rank),
@@ -109,38 +141,114 @@ function apply(data) {
   // 배치를 마지막으로 본 시각. 순위를 바꿀 때 되돌려 보내 한 발 늦은 화면이
   // 담임의 변경을 덮어쓰지 못하게 한다. CONTRACT §2.4
   state.seen = (data.state || []).reduce((hi, r) => (String(r.at || '') > hi ? String(r.at) : hi), '');
-  // 옛 배포의 서버가 시트의 Date 칸을 UTC 로 적어 보낼 수 있다 — 받는 쪽에서도 씻는다
-  state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
-    from: isoDay(r.from), to: isoDay(r.to || r.from), status: r.status || 'pending',
-  }]));
   summaryCache.clear();
   state.aliases = new Map((data.aliases || []).map((r) => [
     `${r.univ}|${r.dept}`,
     { toUniv: String(r.toUniv || ''), toDept: String(r.toDept || ''), note: String(r.note || '') },
   ]));
+  // 원서를 낸 뒤에 채워지는 칸. 생년월일은 학생당 하나라 id 가 비어 있다.
+  // 마감(★)과 면접여부가 여기 있어 카드 모양을 정한다 — 그래서 핵심 응답에 든다.
+  state.fields = new Map((data.fields || []).map((r) => [
+    `${String(r.id || '')}|${String(r.field)}`,
+    { value: String(r.value || ''), status: String(r.status || 'confirmed'), by: r.by || '', at: r.at || '' },
+  ]));
+  // 핵심만 온 응답(lite)이 아니면 나머지도 이 안에 있다 — 보기용 자료와 옛 서버
+  state.gotFull = !data.lite;
+  if (state.gotFull) applyRest(data);
 }
 
-/** 입결은 공개 자료라 학생 화면에서도 그대로 받는다. */
+/** 날짜·결과·메모 — `studentRest` 또는 전체 응답에서. */
+function applyRest(data) {
+  state.notes = data.notes || [];
+  state.results = new Map((data.results || []).map((r) => [String(r.id), {
+    stage1: String(r.stage1 || ''), final: String(r.final || ''),
+    reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
+    enrolled: String(r.enrolled || ''), status: String(r.status || 'confirmed'),
+  }]));
+  // 옛 배포의 서버가 시트의 Date 칸을 UTC 로 적어 보낼 수 있다 — 받는 쪽에서도 씻는다
+  state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
+    from: isoDay(r.from), to: isoDay(r.to || r.from), status: r.status || 'pending',
+  }]));
+  summaryCache.clear();
+}
+
+/** 공개 자료를 받는 도우미 — 못 받으면 null. 그 자료 없이 그린다. */
+async function grab(url, build) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error();
+    return build(await res.json());
+  } catch (err) { return null; }
+}
+
+/**
+ * 입결은 공개 자료라 학생 화면에서도 그대로 받는다.
+ *
+ * **다만 통째로는 아니다.** 정본은 9MB(gzip 1.2MB)인데 학생 한 명에게 필요한
+ * 대학은 열 곳 안팎이다. 여기서는 대학 이름 표(`data/ipgyeol/index.json`, gzip 1KB)만
+ * 받아 두고, 지원 목록을 안 뒤 `loadIpgyeol` 이 제 대학의 파일만 받는다 — 큰 대학도
+ * gzip 23KB 라 여덟 곳이어도 정본의 몇 분의 일이고 폰의 파싱 부담도 사라진다.
+ * 표가 없으면(옛 배포·조각을 안 만든 저장소) 예전처럼 정본을 통째로 받는다.
+ *
+ * 전형일정표도 받는다. 예전에는 안 받아서, 선생님 화면은 「면접 11/21~11/23」을
+ * 아는데 학생 화면은 같은 지원에 「아직 날짜가 없습니다」라고 말했다.
+ * 같은 지원이 두 화면에서 다른 말을 하면 안 된다.
+ */
+let pubBase = null;
 async function loadPublic() {
-  const grab = async (url, build) => {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error();
-      return build(await res.json());
-    } catch (err) { return null; }
-  };
-  /*
-   * 전형일정표도 받는다. 예전에는 안 받아서, 선생님 화면은 「면접 11/21~11/23」을
-   * 아는데 학생 화면은 같은 지원에 「아직 날짜가 없습니다」라고 말했다.
-   * 같은 지원이 두 화면에서 다른 말을 하면 안 된다.
-   */
-  const [ipgyeol, mojip, college, sched] = await Promise.all([
-    grab('data/ipgyeol.json', indexIpgyeol),
-    grab('data/mojip2027.json', indexMojip),
-    grab('../College/data/departments.json', indexCollege),
-    grab('data/schedule2027.json', indexSchedule),
-  ]);
-  state.src = { ipgyeol, mojip, college, sched, related: new Map() };
+  pubBase = (async () => {
+    const [ipIndex, mojip, college, sched] = await Promise.all([
+      grab('data/ipgyeol/index.json', (j) => (j && j.univs && j.columns ? j : null)),
+      grab('data/mojip2027.json', indexMojip),
+      grab('../College/data/departments.json', indexCollege),
+      grab('data/schedule2027.json', indexSchedule),
+    ]);
+    state.ipIndex = ipIndex;
+    const parts = { mojip, college, sched, related: new Map() };
+    if (!ipIndex) {
+      // 옛 길 — 표가 없으면 정본을 통째로
+      parts.ipgyeol = await grab('data/ipgyeol.json', indexIpgyeol);
+      state.src = parts;
+      summaryCache.clear();
+      render();
+      return;
+    }
+    /*
+     * **입결 조각이 오기 전에는 `state.src` 를 짓지 않는다.** 요약(`makeLink`)은
+     * `src.ipgyeol.index` 를 바로 읽어서, 입결 자리가 비어 있는 src 를 주면 카드를
+     * 그리다 터진다. 조각까지 갖춰지면 `loadIpgyeol` 이 한 번에 짓는다.
+     */
+    state.pubParts = parts;
+  })();
+  return pubBase;
+}
+
+/**
+ * 제 대학의 입결 파일만 받아 정본과 같은 모양의 색인을 짓는다.
+ * 대학 찾기는 **전체 이름 표**로 한다(`resolveUniv` 가 정본과 같은 답을 내게) —
+ * 지원의 대학명과 선생님이 이어 준 별칭의 대학명을 다 본다. 못 찾은 대학은
+ * 정본을 통째로 받았을 때도 못 붙던 대학이다.
+ */
+async function loadIpgyeol() {
+  await pubBase;
+  const idx = state.ipIndex;
+  if (!idx || state.src || !state.pubParts) return;
+  const names = Object.keys(idx.univs);
+  const uindex = buildUnivIndex(names);
+  const wanted = new Set();
+  for (const app of state.apps) {
+    const alias = state.aliases.get(`${app.univ}|${app.dept}`);
+    for (const nm of [app.univ, alias && alias.toUniv]) {
+      if (!nm) continue;
+      const u = resolveUniv(nm, uindex);
+      if (u && idx.univs[u]) wanted.add(idx.univs[u]);
+    }
+  }
+  const parts = await Promise.all([...wanted].map((k) => grab(`data/ipgyeol/u/${k}.json`, (j) => j.rows || [])));
+  const rows = [];
+  for (const part of parts) if (part) rows.push(...part);
+  state.src = { ...state.pubParts, ipgyeol: indexIpgyeol({ columns: idx.columns, rows }, names) };
+  state.ipFiles = wanted.size;
   summaryCache.clear();
   render();
 }
@@ -187,6 +295,23 @@ function summaryOf(app) {
 }
 
 /**
+ * 이 전형에 면접이 있나. **선생님 화면(store.interviewOf)과 같은 규칙**이다.
+ *
+ * 선생님이 카드에서 「있음/없음」으로 못박아 두면 시트 `면접여부` 로 내려와
+ * 여기까지 따라온다. 두 화면이 다른 말을 하면 학생은 없는 면접을 준비하거나
+ * 있는 면접에 날짜를 못 적는다. 비어 있으면 예전 그대로 모집요강 자동 판정.
+ */
+function interviewForce(app) {
+  const row = state.fields.get(`${app.id}|면접여부`);
+  return forcedInterview(row && row.value);
+}
+
+function hasInterviewOf(app) {
+  const s = summaryOf(app);
+  return hasInterview(s && s.mojip, s && s.stages, interviewForce(app));
+}
+
+/**
  * 이 지원의 일정. **선생님 화면(store.dateOf)과 같은 차례**여야 한다 —
  * 내가 넣은 값 → 즐겨찾기 확정일 → 전형일정표(이름까지 맞을 때만) → 즐겨찾기 기간.
  */
@@ -197,7 +322,10 @@ function dateOf(app, kind) {
   }
   const d = (app.dates && app.dates[kind]) || null;
   if (d && d.fixed) return { ...d, status: 'source' };
-  if (state.src && state.src.sched && examKindFits(app, kind)) {
+  // 선생님이 「면접 없음」이라고 정해 두면 일정표에서 면접일을 끌어오지 않는다 —
+  // 교사 화면(store.dateOf)과 같은 규칙이다.
+  const noIv = kind === '면접' && interviewForce(app) === '없음';
+  if (state.src && state.src.sched && examKindFits(app, kind) && !noIv) {
     const found = examDate(app, state.src.sched);
     // 전형 이름을 못 맞춘 값(loose)은 이 지원의 날짜가 아니다 — 상세에서 참고로만
     if (found && !found.loose) {
@@ -247,9 +375,28 @@ function render() {
     return;
   }
   if (!state.student) {
-    main.appendChild(el('p', 'empty-state', '내 지원 내역을 불러오는 중입니다.'));
+    /*
+     * **빈 6칸을 먼저 그린다.** 서버 응답(보통 3~5초)을 「불러오는 중」 한 줄로
+     * 기다리게 하면 길게 느껴진다. 곧 채워질 자리를 보여 주고 얼마나 걸리는지
+     * 말해 두면 같은 시간이 짧다. 숫자는 지어내지 않는다 — 칸만 있다.
+     */
+    main.appendChild(el('p', 'empty-state', '내 지원 내역을 불러오는 중입니다 — 보통 3~5초 걸립니다.'));
+    const sk = el('section', 'panel');
+    const head = el('div', 'panel-head');
+    head.appendChild(el('h2', '', '지원 6칸'));
+    sk.appendChild(head);
+    const grid = el('div', 'slots mine thin');
+    for (const r of RANKS) {
+      const box = el('div', 'slot-card empty');
+      box.appendChild(el('div', 'rank', `${r}순위`));
+      grid.appendChild(box);
+    }
+    sk.appendChild(grid);
+    main.appendChild(sk);
+    if (state.timing) main.appendChild(timingLine());
     return;
   }
+  if (state.timing) main.appendChild(timingLine());
 
   const s = state.student;
   // 수능 D-n — 학생이 매일 세는 숫자다. 지났으면 안 적는다(keydates.js).
@@ -277,7 +424,15 @@ function render() {
     .filter((a) => (state.placement.get(String(a.id)) || {}).slot === 'rank'
       && !outsideLimit(a))
     .sort((a, b) => state.placement.get(String(a.id)).rank - state.placement.get(String(b.id)).rank);
-  const rest = state.apps.filter((a) => !ranked.includes(a));
+  /*
+   * **전문대·특수대는 교사 보드와 같은 자리에 선다.** 「지원」(tray)으로 올린 것은
+   * 6칸 아래 제 묶음이고, 아직 후보인 것은 6칸에 안 넣은 일반대와 함께 「그 밖의
+   * 지원」이다. 예전에는 둘이 다 「그 밖」에 섞여 있어서, 원서를 내기로 한 전문대와
+   * 견주기만 하던 전문대가 학생 화면에서는 같은 줄에 보였다.
+   */
+  const tray = state.apps.filter((a) => outsideLimit(a)
+    && (state.placement.get(String(a.id)) || {}).slot === 'tray');
+  const rest = state.apps.filter((a) => !ranked.includes(a) && !tray.includes(a));
 
   /*
    * **빈 칸 여섯이 먼저 보인다.**
@@ -285,9 +440,7 @@ function render() {
    * 수시는 여섯 장이다. 그 사실이 화면 맨 위에 그대로 있어야, 학생이 「나는 지금
    * 몇 칸을 채웠나」를 세지 않고 본다. 아래 카드마다 순위를 고르면 이 칸이 찬다.
    */
-  main.appendChild(slotGrid(ranked,
-    state.apps.filter((a) => outsideLimit(a)
-      && (state.placement.get(String(a.id)) || {}).slot === 'tray')));
+  main.appendChild(slotGrid(ranked, tray));
 
   /*
    * 위의 격자와 **제목이 겹치면 안 된다.** 둘 다 「지원 6칸」이면 같은 것이 두 번
@@ -295,6 +448,10 @@ function render() {
    */
   main.appendChild(group('순위를 정한 지원', ranked, `${ranked.length}곳`,
     ranked.length ? '' : '아직 순위가 없습니다. 아래 지원에서 순위를 골라 보세요.'));
+  if (tray.length) {
+    main.appendChild(group('전문대 지원', tray, `${tray.length}곳`,
+      '수시 6회 제한 밖이라 순위는 없지만, 원서를 내기로 한 곳입니다.'));
+  }
 
   /*
    * 숫자를 처음 만나는 자리에 읽는 법을 둔다.
@@ -320,9 +477,9 @@ function render() {
 
   if (rest.length) {
     main.appendChild(group('그 밖의 지원', rest, `${rest.length}곳`,
-      '6칸에 넣지 않았거나 6회 제한 밖(전문대·특수대)인 지원입니다.'));
-    if (rest.some((a) => a.univType === '전문대')) main.appendChild(jcNotice());
+      '6칸에 넣지 않은 지원과, 아직 후보인 전문대·특수대입니다.'));
   }
+  if ([...tray, ...rest].some((a) => a.univType === '전문대')) main.appendChild(jcNotice());
 
   main.appendChild(upcoming());
   main.appendChild(clashPanel());
@@ -649,8 +806,12 @@ function slotFigures(box, app, brief) {
     const short = minReqShort(minTxt);
     pin(short ? `최저 ${short}` : '최저 있음', 'mark', minTxt);
   }
-  const share = s ? interviewShare(s.mojip) : null;
+  // 선생님이 못박아 둔 값이 먼저다 — 교사 보드 꼬리표와 같은 규칙.
+  const ivYes = hasInterviewOf(app);
+  const force = interviewForce(app);
+  const share = ivYes && s ? interviewShare(s.mojip) : null;
   if (s && s.stages > 1) pin(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`);
+  else if (ivYes && force) pin('면접 있음');
   else if (share != null) pin(`면접 ${share}%`);
   const iv = dateOf(app, '면접');
   if (iv) {
@@ -673,14 +834,17 @@ function slotGrid(ranked, tray = []) {
   const wrap = el('section', 'panel');
   const head = el('div', 'panel-head');
   head.appendChild(el('h2', '', '지원 6칸'));
+  // 확정(★)한 카드 수 — 낸 원서가 몇 장 잠겼는지. 하나도 없으면 안 적는다.
+  const locked = [...ranked, ...tray].filter((a) => lockOf(a)).length;
   head.appendChild(el('span', 'count num',
-    `${filled}/6${tray.length ? ` · 전문대 ${tray.length}` : ''}`));
+    `${filled}/6${tray.length ? ` · 전문대 ${tray.length}` : ''}${locked ? ` · ★ ${locked}` : ''}`));
   wrap.appendChild(head);
   const grid = el('div', ranked.length ? 'slots mine' : 'slots mine thin');
   for (const r of RANKS) {
     const here = at(r);
     const box = el('div', here.length ? (here.length > 1 ? 'slot-card pair' : 'slot-card') : 'slot-card empty');
-    box.appendChild(el('div', 'rank', here.length > 1 ? `${r}순위 · 같이 고민` : `${r}순위`));
+    const starred = here.length === 1 && lockOf(here[0]) ? ' ★' : '';
+    box.appendChild(el('div', 'rank', (here.length > 1 ? `${r}순위 · 같이 고민` : `${r}순위`) + starred));
     /*
      * **한 칸에 둘이 들면 한 칸 안에 세로로 선다** — 사이에 「또는」. 끝까지
      * 둘 사이에서 못 정하는 칸이 있다. 고르개의 「같이 고민」으로 넣고, 정해지면
@@ -713,7 +877,7 @@ function slotGrid(ranked, tray = []) {
     const tgrid = el('div', 'slots mine');
     for (const app of tray) {
       const box = el('div', 'slot-card');
-      box.appendChild(el('div', 'rank', '전문대'));
+      box.appendChild(el('div', 'rank', `전문대${lockOf(app) ? ' ★' : ''}`));
       box.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
       box.appendChild(el('div', 'dept', tidy(app.dept)));
       const iv = dateOf(app, '면접');
@@ -750,7 +914,7 @@ function rankPicker(app) {
 
   const sel = document.createElement('select');
   sel.id = id;
-  sel.disabled = state.busy;
+  sel.disabled = state.busy || Boolean(lockOf(app));
   const now = state.placement.get(String(app.id)) || { slot: 'pool', rank: null };
   const opt = (value, text) => {
     const o = document.createElement('option');
@@ -782,6 +946,33 @@ function rankPicker(app) {
   return wrap;
 }
 
+/**
+ * **전문대·특수대의 고르개 — 「후보」와 「지원」.** 6회 밖이라 순위는 없지만
+ * 「원서를 낸다」는 결정은 학생의 것이다. 「지원」으로 올리면 6칸 아래 제 묶음에
+ * 서고, 선생님 보드에서도 같은 자리에 카드로 선다. 기본은 후보다.
+ */
+function trayPicker(app) {
+  const wrap = el('div', 'field rank-pick');
+  const id = `r-${app.id}`;
+  const lab = el('label', '', '지원 여부');
+  lab.htmlFor = id;
+  wrap.appendChild(lab);
+  const sel = document.createElement('select');
+  sel.id = id;
+  sel.disabled = state.busy || Boolean(lockOf(app));
+  const now = state.placement.get(String(app.id)) || { slot: 'pool' };
+  for (const [value, text] of [['pool', '후보 — 아직 고민 중'], ['tray', '지원 — 원서를 낸다']]) {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    sel.appendChild(o);
+  }
+  sel.value = now.slot === 'tray' ? 'tray' : 'pool';
+  sel.onchange = () => { moveRank(app, sel.value); };
+  wrap.appendChild(sel);
+  return wrap;
+}
+
 /*
  * **끌어다 놓기 — 교사 보드와 같은 버릇.**
  *
@@ -791,7 +982,7 @@ function rankPicker(app) {
  * 들쭉날쭉해서(안드로이드 크롬은 아예 안 된다) 고르개가 늘 남아 있어야 한다.
  */
 function dragify(node, app) {
-  if (outsideLimit(app)) return;
+  if (outsideLimit(app) || lockOf(app)) return;   // 마감된 카드는 끌지 않는다
   node.draggable = true;
   node.addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('text/plain', String(app.id));
@@ -822,6 +1013,11 @@ function dropify(node, where) {
 
 async function moveRank(app, value) {
   if (state.busy) return;
+  if (lockOf(app)) {
+    state.notice = `★ ${tidy(shortUniv(app.univ))}은(는) 확정한 지원이라 옮길 수 없습니다. 바꿔야 하면 담임 선생님께 말해 주세요.`;
+    render();
+    return;
+  }
   const [kind, rankText] = String(value).split(':');
   // `pair:3` 은 3순위에 「같이 고민」 — 밀어내지 않고 나란히
   const pair = kind === 'pair';
@@ -833,6 +1029,13 @@ async function moveRank(app, value) {
   // 둘이 든 칸은 못 받는다 — 어느 쪽을 밀어낼지는 사람이 정할 일이다
   if (there.length > 1) {
     state.notice = `${rank}순위에는 이미 둘이 같이 고민 중입니다. 하나를 먼저 옮겨 주세요.`;
+    render();
+    return;
+  }
+  // 확정한 카드가 있는 칸에는 밀어내지도, 옆에 같이 고민을 걸지도 못한다
+  const lockedThere = there.find((a) => lockOf(a));
+  if (lockedThere) {
+    state.notice = `${rank}순위의 ${tidy(shortUniv(lockedThere.univ))}은(는) ★ 확정한 지원이라 밀어내거나 옆에 둘 수 없습니다.`;
     render();
     return;
   }
@@ -858,6 +1061,9 @@ async function moveRank(app, value) {
   } else if (pair && there.length) {
     state.notice = `${plainUniv(there[0].univ)}${josa(plainUniv(there[0].univ), '과', '와')} ${rank}순위에 같이 두었습니다. 정해지면 하나를 옮겨 주세요.`;
   }
+  // 무엇을 했는지는 서버 응답과 무관하게 정해져 있다 — 보기용(offline)에서도 같은 말이 나오게 먼저 적는다
+  state.notice = state.notice || (slot === 'tray' ? '지원으로 올렸습니다.'
+    : (slot === 'pool' && outsideLimit(app)) ? '후보로 내렸습니다.' : '순위를 바꿨습니다.');
   render();
 
   if (offline) { state.busy = false; render(); return; }
@@ -869,7 +1075,6 @@ async function moveRank(app, value) {
       seen: state.seen || '',
     });
     if (res && res.at) state.seen = String(res.at);
-    state.notice = state.notice || '순위를 바꿨습니다.';
   } catch (err) {
     state.placement = before;
     /*
@@ -885,12 +1090,93 @@ async function moveRank(app, value) {
       try {
         apply(await api.call('student', { token: state.token }, { timeout: 45000 }));
       } catch (e2) { state.notice = `다시 불러오지 못했습니다 — ${e2.message}`; }
+    } else if (err.locked) {
+      // 선생님이 방금 마감했다 — 새로 받아 ★ 를 띄운다
+      state.notice = `${err.message} 새로 불러왔습니다.`;
+      try {
+        apply(await api.call('student', { token: state.token }, { timeout: 45000 }));
+      } catch (e2) { state.notice = `다시 불러오지 못했습니다 — ${e2.message}`; }
     } else {
       state.notice = `순위를 바꾸지 못했습니다 — ${err.message}`;
     }
   }
   state.busy = false;
   render();
+}
+
+/* ── 마감(★) — 카드마다 ────────────────────────────────────────
+ * 원서는 카드 단위로 낸다. 낸 카드를 「★ 확정」하면 그 카드의 순위(전문대는 지원
+ * 여부)가 잠기고 선생님 보드에도 ★ 가 붙는다. 안 낸 카드는 그대로 움직인다.
+ * 푸는 것은 담임 선생님만 — 학생이 풀 수 있으면 마감이 아니다.
+ * 날짜·결과·메모는 마감 뒤에도 적는다.
+ */
+const lockOf = (app) => state.fields.get(`${app.id}|마감`) || null;
+
+/** 카드 아래 한 줄 — 확정 단추, 또는 확정됐다는 말. 6칸·전문대 지원에 든 카드에만. */
+function lockLine(app) {
+  const place = state.placement.get(String(app.id)) || {};
+  if (place.slot !== 'rank' && place.slot !== 'tray') return null;
+  const lk = lockOf(app);
+  const line = el('div', 'lock-line');
+  if (lk) {
+    const who = /학생$/.test(String(lk.by || '')) ? '내가 확정한' : '담임 선생님이 마감한';
+    const p = el('p', 'hint', `★ ${who} 지원입니다. 순위는 바꿀 수 없습니다 — 바꿔야 하면 담임 선생님께 말해 주세요.`);
+    p.setAttribute('role', 'status');
+    line.appendChild(p);
+    return line;
+  }
+  const fold = document.createElement('details');
+  const sum = document.createElement('summary');
+  sum.textContent = '★ 이대로 확정';
+  fold.appendChild(sum);
+  const field = el('div', 'field');
+  field.appendChild(el('p', 'hint',
+    '이 대학에 원서를 냈으면 눌러 두세요. 이 카드의 순위가 잠기고 선생님 보드에도 ★ 가 붙습니다.'
+      + ' 되돌리려면 담임 선생님께 부탁해야 합니다.'));
+  const btn = el('button', 'btn', '★ 확정');
+  btn.type = 'button';
+  btn.disabled = state.busy;
+  btn.onclick = () => lockMine(app);
+  field.appendChild(btn);
+  fold.appendChild(field);
+  line.appendChild(fold);
+  return line;
+}
+
+async function lockMine(app) {
+  if (state.busy || lockOf(app)) return;
+  state.busy = true;
+  render();
+  const mark = { value: '★', status: 'confirmed', by: `${state.hak} 학생`, at: new Date().toISOString() };
+  const name = tidy(shortUniv(app.univ));
+  if (offline) {
+    state.fields.set(`${app.id}|마감`, mark); state.busy = false;
+    state.notice = `★ ${name} 지원을 확정했습니다. 이 카드의 순위는 이제 바뀌지 않습니다.`;
+    render(); return;
+  }
+  try {
+    await api.call('studentLock', { token: state.token, id: app.id });
+    state.fields.set(`${app.id}|마감`, mark);
+    state.notice = `★ ${name} 지원을 확정했습니다. 이 카드의 순위는 이제 바뀌지 않습니다.`;
+  } catch (err) {
+    state.notice = `확정하지 못했습니다 — ${err.message}`;
+  }
+  state.busy = false;
+  render();
+}
+
+/** ?t=1 — 구간별로 걸린 시간 한 줄. 서버 안 시간(took)과 캐시 여부까지. */
+function timingLine() {
+  const t = state.timing || {};
+  const sec = (ms) => (ms == null ? '…' : `${(ms / 1000).toFixed(1)}초`);
+  const bits = [
+    `서버 ${sec(t.server)}${t.took != null ? ` (안에서 ${t.took}ms${t.cached === false ? ' · 원본 새로 읽음' : t.cached ? ' · 캐시' : ''})` : ''}`,
+    `나머지 ${sec(t.rest)}`,
+    `자료 ${sec(t.pub)}${state.ipFiles != null ? ` (입결 ${state.ipFiles}개 대학만)` : ''}`,
+  ];
+  const p = el('p', 'hint timing', `걸린 시간 — ${bits.join(' · ')}`);
+  p.setAttribute('role', 'status');
+  return p;
 }
 
 function group(title, apps, count, help) {
@@ -1004,15 +1290,16 @@ function marks(app) {
   // 단계 꼬리표에 면접 비중을 같이 적는다 — 교사 보드와 같은 규칙.
   // 일괄인데 면접이 든 전형(학생부60+면접40 꼴)도 여기서 처음 면접이 보인다.
   {
-    const share = s ? interviewShare(s.mojip) : null;
-    if (s && s.stages > 1) {
-      const p = add(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`);
+    const ivYes = hasInterviewOf(app);
+    const force = interviewForce(app);
+    const share = ivYes && s ? interviewShare(s.mojip) : null;
+    const txt = s && s.stages > 1
+      ? (share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`)
+      : (ivYes && force ? '면접 있음' : share != null ? `면접 ${share}%` : '');
+    if (txt) {
+      const p = add(txt);
       const line = methodLine(s.mojip);
-      if (line) p.title = line;
-    } else if (share != null) {
-      const p = add(`면접 ${share}%`);
-      const line = methodLine(s.mojip);
-      if (line) p.title = line;
+      p.title = [force ? `면접 ${force} (선생님 확인)` : '', line].filter(Boolean).join(' · ');
     }
   }
   /*
@@ -1063,6 +1350,13 @@ function card(app) {
     const mate = pairOf(app);
     // 짝 이름은 학과가 아니라 대학으로 — 같은 학과 둘을 놓고 고민하는 일이 흔하다
     box.appendChild(el('div', 'rank', mate ? `${place.rank}순위 · ${plainUniv(mate.univ)}와 같이 고민` : `${place.rank}순위`));
+  } else if (place.slot === 'tray') {
+    // 교사 보드의 「전문대 지원」 머리와 같은 자리. 사관학교 같은 특수대는 전문대가 아니다.
+    box.appendChild(el('div', 'rank', app.univType === '전문대' ? '전문대 지원' : '6회 밖 지원'));
+  }
+  if (lockOf(app)) {
+    const head = box.querySelector('.rank');
+    if (head) head.textContent += ' ★';
   }
   /*
    * 머리에 「자세히」를 둔다. 카드 전체를 누르게 하면 안 된다 — 카드 안이
@@ -1089,7 +1383,12 @@ function card(app) {
   if (!outside) {
     box.appendChild(rankPicker(app));
     dragify(box, app);
+  } else {
+    // 순위 대신 「후보 / 지원」 — 교사 보드의 전문대 고르개와 같은 두 갈래다.
+    box.appendChild(trayPicker(app));
   }
+  const lock = lockLine(app);
+  if (lock) box.appendChild(lock);
 
   // 모의면접은 여러 번 한다. 잡힌 것을 다 보여 준다.
   const mocks = MOCKS.map((k) => dateOf(app, k)).filter(Boolean);
@@ -1111,7 +1410,9 @@ function card(app) {
    * 이제 **볼 근거가 있으면 빈 칸이라도 세운다.**
    *
    *   면접   모집요강이 단계별전형이라고 말하거나(전형단계 ≥ 2),
-   *          전형 방법 글에 면접이 있을 때 (일괄 「학생부60+면접40」 꼴)
+   *          전형 방법 글에 면접이 있을 때 (일괄 「학생부60+면접40」 꼴).
+   *          **선생님이 「있음/없음」으로 정해 두었으면 그 값이 먼저다** —
+   *          시트 `면접여부` 로 내려온다.
    *   논술   전형 유형이 논술일 때
    *   실기   전형 유형이 실기일 때
    *
@@ -1124,7 +1425,7 @@ function card(app) {
   const s = summaryOf(app);
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
   const expects = (kind) => {
-    if (kind === '면접') return s ? (s.stages > 1 || methodHasInterview(s.mojip)) : false;
+    if (kind === '면접') return hasInterviewOf(app);
     if (kind === '논술') return cat === '논술';
     if (kind === '실기') return cat === '실기';
     return false;                       // 적성은 즐겨찾기가 줄 때만
@@ -1156,14 +1457,15 @@ function card(app) {
   strip.appendChild(applyNoRow(app));
 
   /*
-   * 수험번호·최종경쟁률은 **원서를 내고 나서야** 알 수 있다.
-   * 학생 화면에는 단계 단추가 없으니 날짜로 저절로 갈린다 —
-   * 접수번호를 이미 적었거나, 원서 마감이 지났으면 나온다.
-   * 「곧 있습니다」와 같은 방식이다. 켜고 끄는 단추를 두지 않는 까닭이다.
+   * 수험번호·최종경쟁률 — **접힌 한 줄로 늘 둔다.**
+   *
+   * 여태는 접수번호를 적은 카드에만 나왔다. 그런데 경쟁률은 접수 기간에도
+   * 대학이 실시간으로 내걸고, 학생은 접수번호를 안 적고 넘어가기도 한다.
+   * 그러면 적을 자리가 어디에도 없어서 「경쟁률 적는 데가 없다」가 됐다.
+   * 접힌 줄은 카드 높이를 거의 안 늘리니 가리지 않는다. 생년월일만 여전히
+   * 원서를 낸 뒤(`afterApply`)에 묻는다.
    */
-  if (afterApply(app)) {
-    for (const spec of CARD_FIELDS) strip.appendChild(fieldRow(app, spec));
-  }
+  for (const spec of CARD_FIELDS) strip.appendChild(fieldRow(app, spec));
   strip.appendChild(resultRow(app));
 
   /*
@@ -1583,6 +1885,12 @@ async function saveResult(app, label, waitNo, enrolled) {
  *
  * `생년월일` 은 지원마다 묻지 않는다 — 학생 한 명에 하나라 화면 맨 위에 한 번만 묻는다.
  */
+/** 학생이 적어 둔 최종경쟁률을 「12.45:1」 꼴로. 없으면 null — 표가 줄을 비운다. */
+function finalRateText(app) {
+  const f = state.fields.get(`${app.id}|최종경쟁률`);
+  return f ? typedRateText(f.value) : null;
+}
+
 const CARD_FIELDS = [
   { name: '수험번호', hint: '원서를 내면 대학이 주는 번호입니다. 면접장에서 이 번호로 부릅니다.',
     mode: 'numeric', ph: '예) 20260012' },
@@ -1591,15 +1899,15 @@ const CARD_FIELDS = [
 ];
 
 /**
- * 이 지원의 원서를 이미 냈나.
+ * 이 지원의 원서를 이미 냈나. 생년월일을 물을지 가르는 데 쓴다.
  *
- * **접수번호가 적혀 있으면 낸 것이다.** 원서를 내야 받는 번호라 순서가 어긋날 수 없다.
- * 학생 화면은 전형일정표를 안 받아서 마감일로는 가릴 수 없고, 단계 단추도 없다.
- * 그래서 학생이 이미 한 일로 가른다 — 9월에는 저절로 안 보이고, 원서를 내고
- * 접수번호를 적는 순간 그 카드에만 나타난다.
+ * **접수번호나 수험번호가 적혀 있으면 낸 것이다.** 원서를 내야 받는 번호라
+ * 순서가 어긋날 수 없다. 학생 화면은 전형일정표를 안 받아서 마감일로는 가릴 수
+ * 없고, 단계 단추도 없다. 그래서 학생이 이미 한 일로 가른다.
+ * 최종경쟁률은 여기 안 넣는다 — 접수 중에도 적을 수 있는 값이라 냈다는 증거가 아니다.
  */
 function afterApply(app) {
-  if (CARD_FIELDS.some((f) => state.fields.has(`${app.id}|${f.name}`))) return true;
+  if (state.fields.has(`${app.id}|수험번호`)) return true;
   return state.notes.some((n) => String(n.id) === String(app.id)
     && String(n.text || '').startsWith('접수번호'));
 }
@@ -1859,6 +2167,7 @@ function openDetail(app) {
     ['작년 모집', s && s.quotaPrev != null ? `${s.quotaPrev}명` : null],
     [s && s.year ? `${s.year} 경쟁률` : '경쟁률', s && s.rate != null ? `${rate1(s.rate)}:1` : null],
     ['작년 실질 경쟁률', s && s.real && s.real.value != null ? `${rate1(s.real.value)}:1` : null],
+    ['올해 최종 경쟁률', finalRateText(app)],
   ]));
 
   /* 충원(추가합격) 3개년 — 예비번호가 어디까지 도는 전형인지. 선생님 상세와 같은 표 */

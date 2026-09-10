@@ -250,12 +250,34 @@ export const demo = {
       value: '14.9', status: 'confirmed', by: '보기용 계정', at: '2026-09-15T10:00:00Z' },
     { id: '', hak: '3201', field: '생년월일',
       value: '2008-03-14', status: 'confirmed', by: '보기용 계정', at: '2026-09-15T10:00:00Z' },
+    // 마감(★) — 원서를 낸 카드. 3201 은 1순위만 냈고(학생이 확정), 3204 는 지원 전문대를 담임이 마감했다.
+    { id: at('건국대', '영어영문학과').id, hak: '3201', field: '마감',
+      value: '★', status: 'confirmed', by: '3201 학생', at: '2026-09-14T21:30:00Z' },
+    { id: at('광주보건대', '치위생과').id, hak: '3204', field: '마감',
+      value: '★', status: 'confirmed', by: '보기용 계정', at: '2026-09-15T09:00:00Z' },
   ],
   unknownCols: [],
   skipped: 0,
 };
 
 /** 학생 화면 확인용 — 3201 가나다가 자기 링크로 열었을 때 */
+/**
+ * 다른 학번으로 학생 화면을 보고 싶을 때 — `student.html?demo=3204`.
+ * 3204 는 전문대를 「지원」과 후보로 나눠 가진 학생이라 그 자리가 맞는지 볼 수 있다.
+ * 메모·결과·날짜는 3201 것뿐이므로 다른 학번은 배치와 지원만 든다.
+ */
+export function studentDemoFor(hak) {
+  const student = students.find((s) => s.hak === hak);
+  if (!student || hak === '3201') return studentDemo;
+  return {
+    ok: true, hak, student,
+    apps: A.filter((a) => a.hak === hak),
+    state: placed.filter((r) => r.hak === hak),
+    dates: [], notes: [], results: [],
+    fields: demo.fields.filter((r) => String(r.hak) === hak),
+  };
+}
+
 export const studentDemo = {
   ok: true,
   hak: '3201',
@@ -295,10 +317,13 @@ export const studentDemo = {
     { id: at('가톨릭대', '영어영문학과').id, hak: '3201', stage1: '합격', final: '',
       reason: '', waitNo: '', enrolled: '', status: 'confirmed' },
   ],
-  // 접수번호가 적힌 건국대에만 「수험번호·최종경쟁률」 칸이 나온다 — 원서를 냈다는 뜻이다
+  // 학생 화면의 「수험번호·최종경쟁률 적기」는 모든 카드에 접힌 채 있고, 값이 적힌 건국대만 펼친 글이 보인다
   fields: [
     { id: at('건국대', '영어영문학과').id, hak: '3201', field: '수험번호',
       value: '20260012', status: 'student' },
     { id: '', hak: '3201', field: '생년월일', value: '2008-03-14', status: 'confirmed' },
+    // 교사 데모와 같은 카드가 마감(★) — 두 화면이 같은 것을 보는지 여기서 맞춘다
+    { id: at('건국대', '영어영문학과').id, hak: '3201', field: '마감',
+      value: '★', status: 'confirmed', by: '3201 학생', at: '2026-09-14T21:30:00Z' },
   ],
 };

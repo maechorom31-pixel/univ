@@ -21,7 +21,6 @@
  */
 import * as store from './store.js';
 import { catOf, outsideLimit } from './match.js';
-import { methodHasInterview } from './text.js';
 import { KEY_DATES, suneungDday } from './keydates.js';
 
 /** 가야 하는 것 — 겹치면 한 곳은 포기해야 한다 */
@@ -54,6 +53,8 @@ const el = (tag, cls, text) => {
 };
 const tidy = (s) => String(s || '').replace(/ (?=[^ ]{1,4}$)/, ' ');
 const shortUniv = (name) => String(name || '').replace(/\s*[-–—]\s*.*$/, '').replace(/\(.*/, '');
+/* 달력 칩은 칸이 좁다 — 「국민대학교」는 「국민대」로. 전문대학·사관학교는 그대로 둔다 */
+const chipUniv = (name) => shortUniv(name).replace(/대학교$/, '대');
 
 /* ── 날짜 ─────────────────────────────────────────────────────── */
 
@@ -403,7 +404,7 @@ function month(ym, events, withName) {
       const tag = document.createElement('button');
       tag.type = 'button';
       tag.className = `ev ${kind}`.trim();
-      tag.appendChild(el('span', '', `${shortUniv(e.app.univ)} ${e.kind}`));
+      tag.appendChild(el('span', '', `${chipUniv(e.app.univ)} ${e.kind}`));
       // 학생 한 명의 달력에서는 학과가, 반 전체 달력에서는 누구인지가 갈라 준다
       tag.appendChild(el('i', 'd', withName ? `${e.hak} ${tidy(e.name)}` : tidy(e.app.dept)));
       const src = e.status === 'sched' ? ' · 전형일정표'
@@ -453,17 +454,18 @@ function month(ym, events, withName) {
  * 이 지원이 **가야 할 법한** 고사. 날짜가 아직 없어도 근거가 말해 준다.
  * 학생 화면의 날짜 칸과 같은 규칙이다 — 두 화면이 다른 지원을 세우면 안 된다.
  *
- *   면접   모집요강이 단계별전형이라고 말하거나(전형단계 ≥ 2),
- *          전형 방법 글에 면접이 있을 때 (일괄 「학생부60+면접40」 꼴 —
- *          실제 지원 500건에 18건이 단계 수만으로는 안 잡히던 면접이다)
+ *   면접   `store.interviewOf` 가 있다고 할 때. 모집요강이 단계별전형이라고
+ *          말하거나(전형단계 ≥ 2) 전형 방법 글에 면접이 있으면 있다고 본다
+ *          (일괄 「학생부60+면접40」 꼴 — 실제 지원 500건에 18건이 단계 수만
+ *          으로는 안 잡히던 면접이다). **카드에서 선생님이 「있음/없음」으로
+ *          못박아 두었으면 그 값이 먼저다.**
  *   논술   전형 유형이 논술
  *   실기   전형 유형이 실기
  */
 function expectedKinds(app) {
-  const s = store.summary(app);
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
   const out = [];
-  if (s && (s.stages > 1 || methodHasInterview(s.mojip))) out.push('면접');
+  if (store.interviewOf(app).yes) out.push('면접');
   if (cat === '논술') out.push('논술');
   if (cat === '실기') out.push('실기');
   return out;
@@ -538,7 +540,8 @@ function outsideAdder(apps) {
 
   const wrap = el('div', 'field');
   wrap.appendChild(el('p', 'hint',
-    '일괄전형이라 면접이 없는 것으로 본 지원들입니다. 그래도 고사가 잡혔으면 여기서 넣어 주세요.'));
+    '면접이 없는 것으로 본 지원들입니다(일괄전형이거나, 카드에서 「없음」으로 정해 둔 것).'
+    + ' 그래도 고사가 잡혔으면 여기서 넣어 주세요.'));
   const line = el('div', 'field-in');
 
   const who = document.createElement('select');
@@ -574,6 +577,19 @@ function outsideAdder(apps) {
   };
   line.appendChild(save);
   wrap.appendChild(line);
+  /*
+   * **반대쪽 잘못도 여기서 되돌린다.** 일괄전형인데 면접을 보면서 전형 방법 글이
+   * 「구술평가」로만 적힌 줄이 있다. 날짜를 넣으면 이 지원도 판에 서기는 하지만,
+   * 아직 날짜를 모를 때가 더 많다 — 「면접이 있다」만 정해 두면 날짜 칸이 먼저
+   * 서고 그 자리에서 기다린다.
+   */
+  const yes = el('button', 'btn aside', '고른 지원은 면접이 있습니다');
+  yes.type = 'button';
+  yes.onclick = () => {
+    const app = apps.find((a) => a.id === who.value);
+    if (app) saveInterview(app, '있음');
+  };
+  wrap.appendChild(yes);
   fold.appendChild(wrap);
   return fold;
 }
@@ -658,6 +674,18 @@ function fixedRow(app, kind, d) {
     fix.appendChild(line);
     txt.appendChild(fix);
   }
+  /*
+   * **일정표에서 끌어온 면접일은 「이 전형에 면접이 있다」는 근거가 못 된다.**
+   * 대학 전체를 두고 한 말이라, 면접이 없는 전형에도 날짜가 붙는다. 여기가
+   * 「얘 면접 없는데」 싶어지는 자리라 되돌리는 단추를 같이 둔다 — 누르면
+   * 이 지원이 판에서 빠지고 꼬리표·학생 화면도 같이 따라간다.
+   */
+  if (kind === '면접' && d.status === 'sched' && !store.interviewForce(app)) {
+    const no = el('button', 'btn aside', '이 전형은 면접이 없습니다');
+    no.type = 'button';
+    no.onclick = () => saveInterview(app, '없음');
+    txt.appendChild(no);
+  }
   row.appendChild(txt);
   const tag = d.status === 'pending' ? '학생 입력 · 확인 대기'
     : d.status === 'confirmed' ? '확정'
@@ -716,7 +744,37 @@ function missingRow(app, other, kind) {
   save.onclick = () => saveDate(app, kind, input.value);
   line.appendChild(save);
   wrap.appendChild(line);
+  /*
+   * **틀린 판정을 그 자리에서 되돌린다.**
+   *
+   * 이 줄이 선 까닭은 모집요강이 「2단계」라고 했거나 전형 방법 글에 「면접」이
+   * 들어서다. 둘 다 틀릴 수 있다 — 2단계가 면접이 아닌 전형이 있다. 여태는
+   * 없는 면접을 위해 날짜 칸이 계속 서 있었고, 고치려면 카드를 열어야 했다.
+   * 판을 보다가 「얘 면접 없는데」 싶은 자리가 바로 여기라, 여기서 끝낸다.
+   * 되돌리기는 카드 상세의 「면접 있음 · 없음 정하기」에서 자동으로 돌리면 된다.
+   */
+  if (kind === '면접' && !store.interviewForce(app)) {
+    const no = el('button', 'btn aside', '이 전형은 면접이 없습니다');
+    no.type = 'button';
+    no.onclick = () => saveInterview(app, '없음');
+    wrap.appendChild(no);
+  }
   return chip(`${kind}일 적기`, wrap);
+}
+
+/**
+ * 면접이 있나 없나를 못박는다. 저장에 실패하면 말한다 — 조용히 넘어가면
+ * 선생님은 고쳐 놓은 줄 알고 판을 닫는다.
+ */
+async function saveInterview(app, value) {
+  try {
+    await store.setField(app, store.INTERVIEW_FIELD, value);
+  } catch (err) {
+    const hint = /모르는 칸/.test(err.message)
+      ? '\n\nApps Script 코드가 예전 것입니다. board/apps-script/Code.gs 를 다시 붙여 넣고 새로 배포해 주세요.'
+      : '';
+    window.alert(`저장하지 못했습니다 — ${err.message}${hint}`);
+  }
 }
 
 /** 이미 잡힌 모의면접. */
