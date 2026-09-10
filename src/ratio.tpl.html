@@ -40,7 +40,11 @@ p{margin:0 0 10px}
 .bar{background:var(--surface); border:1px solid var(--line); border-radius:6px;
      padding:16px; margin-top:24px; display:grid;
      grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px 16px; align-items:end}
-.f label{display:block; font-size:12px; color:var(--ink2); margin-bottom:4px; font-weight:600}
+.f label{display:block; font-size:12px; color:var(--ink2); margin-bottom:4px; font-weight:600;
+         white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.f label .hint{font-weight:400; color:var(--mute); margin-left:4px}
+.f.wide{grid-column:span 2}
+.f input::placeholder{color:#A8A39C}
 .f select,.f input[type=text]{
   width:100%; height:38px; padding:0 10px; font-size:16px; color:var(--ink);
   background:var(--surface); border:1px solid var(--line); border-radius:4px;
@@ -141,6 +145,7 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
   h1{font-size:20px}
   .tiles{grid-template-columns:repeat(2,1fr)}
   .bar{grid-template-columns:1fr}
+  .f.wide{grid-column:auto}
   #paneUnit .tblwrap{display:none}
   #paneUnit .legend{display:none}
   .cards{display:block}
@@ -169,6 +174,11 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
 <section class="tiles" id="tiles" aria-label="요약"></section>
 
 <div class="bar">
+  <div class="f wide">
+    <label for="fQ">검색</label>
+    <input type="text" id="fQ" placeholder="전남대 간호 · 간호 -농어촌 · ㄱㅎ" autocomplete="off"
+           title="대학·전형·모집단위·단과대를 함께 찾습니다. 띄어쓰면 모두 만족, -단어는 빼기, 자음만 치면 초성. Esc로 지웁니다">
+  </div>
   <div class="f">
     <label for="fRg">지역</label>
     <select id="fRg"><option value="">전체</option></select>
@@ -187,16 +197,13 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
       <option value="자연">자연</option><option value="공통">공통</option></select>
   </div>
   <div class="f">
-    <label for="fQ">검색 (띄어쓰면 모두 만족, -단어는 빼기)</label>
-    <input type="text" id="fQ" placeholder="예: 전남대 간호 · 간호 -농어촌 · ㄱㅎ" autocomplete="off">
-  </div>
-  <div class="f">
-    <label for="fMinRc">최소 모집인원</label>
+    <label for="fMinRc">모집인원 <span class="hint">이상</span></label>
     <input type="text" id="fMinRc" inputmode="numeric" placeholder="예: 5" autocomplete="off">
   </div>
   <div class="f">
-    <label for="fGrade">내 등급 (전교과, 저장 안 함)</label>
-    <input type="text" id="fGrade" inputmode="decimal" placeholder="예: 3.2" autocomplete="off">
+    <label for="fGrade">내 등급 <span class="hint">저장 안 함</span></label>
+    <input type="text" id="fGrade" inputmode="decimal" placeholder="예: 3.2" autocomplete="off"
+           title="전교과 등급. 이 화면의 메모리에만 있고 새로 고치면 지워집니다">
   </div>
   <div class="f">
     <label for="fSort">정렬</label>
@@ -220,16 +227,16 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
       <label><input type="checkbox" id="cLow"> 1:1 미만</label>
       <label><input type="checkbox" id="cSub2"> 2:1 미만</label></span>
     <span class="g"><span class="grp">최종 예측</span>
-      <label><input type="checkbox" id="cP2"> 2:1 미만 확률 50% 이상</label></span>
+      <label><input type="checkbox" id="cP2"> 2:1 미만 확률 50%↑</label></span>
     <span class="g"><span class="grp">작년</span>
-      <label><input type="checkbox" id="cDown"> {{HY}}년 같은 시점보다 낮음</label>
+      <label><input type="checkbox" id="cDown"> {{HY}} 동시점보다 낮음</label>
       <label><input type="checkbox" id="cMatched" checked> 작년 자료가 붙은 것만</label></span>
     <span class="g"><span class="grp">성적</span>
-      <label><input type="checkbox" id="cFit" checked> 내 등급으로 닿는 곳만 (70%컷 기준, 0.3 여유)</label></span>
+      <label title="작년 70%컷이 내 등급보다 0.3등급 넘게 높지 않은 곳"><input type="checkbox" id="cFit" checked> 내 등급으로 닿는 곳만</label></span>
     <span class="g"><span class="grp">전형</span>
       <label><input type="checkbox" id="cLocal"> 지역인재만</label></span>
     <span class="g"><span class="grp">거르기</span>
-      <label><input type="checkbox" id="cGen" checked> 일반고가 못 내는 전형 빼기</label>
+      <label title="특성화고·재직자·성인학습자·특기자·군사학과 전형을 이름으로 거릅니다"><input type="checkbox" id="cGen" checked> 일반고 전형만</label>
       <label><input type="checkbox" id="cZero" checked> 지원 0명 제외</label>
       <label><input type="checkbox" id="cFav"> ★ 즐겨찾기만</label></span>
   </div>
