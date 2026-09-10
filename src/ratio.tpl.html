@@ -101,6 +101,7 @@ td.trk{color:var(--ink2); font-size:12px; line-height:1.45}
 .hi{color:var(--amber-ink); font-weight:600}
 .warm{color:var(--amber-ink)}
 .band{color:var(--mute); font-size:12px}
+.band.when{font-size:11px}
 .dim{color:var(--mute)}
 .empty{padding:40px 16px; text-align:center; color:var(--mute)}
 .more{margin-top:12px}
@@ -254,7 +255,7 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
         <th>대학</th><th>전형</th><th>모집단위</th>
         <th class="n opt">모집</th>
         <th class="n" id="thAp">지원</th>
-        <th class="n" title="페이지 기준시각의 경쟁률">현재</th>
+        <th class="n" title="아래 작은 시각이 그 대학 페이지의 기준시각. ≈는 페이지가 시각을 안 적어 수집 시각으로 본 것">현재</th>
         <th class="n opt" title="{{HY}}학년도, 마감까지 같은 날수가 남았을 때의 경쟁률">{{HY}} 동시점</th>
         <th class="n opt" title="현재 ÷ {{HY}} 동시점. 1보다 작으면 작년 이맘때보다 낮음">대비</th>
         <th class="n" title="과거 3개년 배율의 중앙값. 아래 작은 숫자는 80% 구간(열에 여덟은 이 안에 들어옴)">예측 최종</th>
@@ -420,6 +421,21 @@ function probCell(r){
 
 var rows = DATA.rows;
 var units = rows.filter(function(r){ return !r.sm; });
+
+/* 대학별 기준시각 — 「현재」 밑에 붙인다. 페이지가 시각을 안 적으면 수집 시각(≈). */
+var STAMP = {};
+DATA.univs.forEach(function(u){ STAMP[u.univ] = u; });
+function whenCell(r){
+  var u = STAMP[r.u];
+  if(!u || !u.stamp) return '';
+  var m = u.stamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if(!m) return '';
+  var today = DATA.collected.slice(0,10) === u.stamp.slice(0,10);
+  var txt = (today ? '' : (+m[2])+'/'+(+m[3])+' ') + m[4]+':'+m[5];
+  var approx = !!u.stampNote;
+  return '<span class="band num when'+(approx ? ' dim' : '')+'" title="'+esc(approx ? u.stampNote : '페이지 기준시각')+'">'+
+    (approx ? '≈' : '')+txt+'</span>';
+}
 var tracks = rows.filter(function(r){ return r.sm; });
 
 /* 검색 — 공백·가운뎃점·괄호를 무시하고, 띄어쓴 조건은 모두 만족해야 한다.
@@ -681,7 +697,7 @@ function cell(r){
     '<td class="n num-cell opt">'+r.rc+'</td>' +
     '<td class="n num-cell">'+r.ap.toLocaleString()+
       (r.dp !== undefined && r.dp > 0 ? '<span class="badge">+'+r.dp+'</span>' : '')+'</td>' +
-    '<td class="n num-cell">'+rr+'</td>' +
+    '<td class="n num-cell">'+rr+'<br>'+whenCell(r)+'</td>' +
     '<td class="n num-cell opt">'+(r.p_b !== undefined && r.p_b !== null ? f2(r.p_b) : '<span class="dim">-</span>')+'</td>' +
     '<td class="n num-cell opt">'+(vs || '<span class="dim">-</span>')+'</td>' +
     '<td class="n num-cell">'+predCell(r)+'</td>' +
@@ -710,7 +726,7 @@ function card(r){
       '" aria-label="즐겨찾기">'+(on ? '★' : '☆')+'</button>'+esc(r.u.replace('대학교','대'))+' · '+esc(r.tr)+'</div>' +
     '<div class="name">'+esc(tail(r.un))+(r.cl ? '<span class="cl">'+esc(r.cl)+'</span>' : '')+'</div>' +
     '<div class="nums">' +
-      num('현재', (r.r < 1 ? '<span class="low">'+f2(r.r)+'</span>' : f2(r.r)) + '<span class="band nw">모집 '+r.rc+' · 지원 '+r.ap.toLocaleString()+'</span>') +
+      num('현재 ' + whenCell(r), (r.r < 1 ? '<span class="low">'+f2(r.r)+'</span>' : f2(r.r)) + '<span class="band nw">모집 '+r.rc+' · 지원 '+r.ap.toLocaleString()+'</span>') +
       num('예측 최종', pred) +
       num('최종 2:1 미만', probCell(r)) +
       num('작년 최종', last + (r.pr26 !== undefined ? '<span class="band">진도 '+Math.round(r.pr26*100)+'%</span>' : '')) +
@@ -786,7 +802,7 @@ document.getElementById('btnMore').addEventListener('click', function(){
     return '<tr><td class="univ">'+esc(r.u.replace('대학교','대'))+'</td>'+
       '<td class="unit">'+esc(r.un)+'</td>'+
       '<td class="n num-cell">'+r.rc+'</td><td class="n num-cell">'+r.ap.toLocaleString()+'</td>'+
-      '<td class="n num-cell">'+(r.r<1?'<span class="low">'+f2(r.r)+'</span>':f2(r.r))+'</td>'+
+      '<td class="n num-cell">'+(r.r<1?'<span class="low">'+f2(r.r)+'</span>':f2(r.r))+'<br>'+whenCell(r)+'</td>'+
       '<td class="n num-cell">'+pred+'</td>'+
       '<td class="n num-cell">'+probCell(r)+'</td></tr>';
   }).join('') || '<tr><td colspan="7" class="empty">총괄 표를 찾지 못했습니다.</td></tr>';

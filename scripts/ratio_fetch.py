@@ -324,7 +324,13 @@ def main(argv):
     pages, log = [], []
     for kind, url, key in jobs:
         try:
-            html = get(url)
+            try:
+                html = get(url)
+            except urllib.error.HTTPError:
+                raise
+            except Exception:
+                time.sleep(2)                 # 끊김·타임아웃은 한 번 더
+                html = get(url)
         except urllib.error.HTTPError as e:
             log.append({'key': key, 'kind': kind, 'error': 'HTTP %s' % e.code})
             print('  [건너뜀] %s %s HTTP %s' % (kind, key, e.code))
