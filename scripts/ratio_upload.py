@@ -123,7 +123,7 @@ def push_one_commit(tok, files, msg):
         tree.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': blob['sha']})
     st, t = git_api(tok, 'POST', '/trees', {'base_tree': base_tree, 'tree': tree})
     if st != 201:
-        return False, 'tree HTTP %s'
+        return False, 'tree HTTP %s' % st
     st, c = git_api(tok, 'POST', '/commits', {'message': msg, 'tree': t['sha'], 'parents': [head]})
     if st != 201:
         return False, 'commit HTTP %s' % st
