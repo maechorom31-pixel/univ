@@ -624,6 +624,8 @@ def main():
     collected_at = datetime.datetime.strptime(cur['collected'][:16], '%Y-%m-%dT%H:%M')
     out_rows, univ_meta, unmatched = [], [], 0
     for p in cur['pages']:
+        if not p['rows']:
+            continue                     # 표를 못 읽은 페이지(로그인 화면 등)
         meta = p['meta']
         pname = clean_univ(meta['univ'])
         hu = resolve_univ(pname, hist_univs)
