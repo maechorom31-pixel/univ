@@ -41,8 +41,20 @@ def get(url, timeout=40):
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
     })
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw = r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read()
+    except urllib.error.URLError as e:
+        # 자체 사이트(창신대) 인증서가 검증되지 않는다. 공개 경쟁률 페이지라
+        # 그 경우에만 검증 없이 다시 받는다.
+        if 'CERTIFICATE_VERIFY_FAILED' not in str(e):
+            raise
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+            raw = r.read()
     head = raw[:2000].decode('latin1', 'replace').lower()
     enc = 'euc-kr'
     m = re.search(r'charset=["\']?([\w-]+)', head)

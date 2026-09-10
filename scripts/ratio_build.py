@@ -130,15 +130,48 @@ def bucket_of(stamp, deadline):
 
 
 # ------------------------------------------------------------- 이름 정규화
-def norm_unit(s):
+def _pre_unit(s):
     s = re.sub(r'\s+', '', s or '')
     s = re.sub(r'[\[［].*?[\]］]', '', s)          # [교직] [신설] [간호교육인증]
     s = re.sub(r'[▲■★☆※◆●○△□▶▷*]', '', s)
-    s = s.replace('ㆍ', '·').replace('•', '·').replace('․', '·').replace('.', '·')
+    return s.replace('ㆍ', '·').replace('•', '·').replace('․', '·').replace('.', '·')
+
+
+def norm_unit(s):
+    """모집단위 이름의 기본형. 괄호·「-」 뒤를 떼되 야간은 남긴다(주간과 다른 모집단위)."""
+    s = _pre_unit(s)
+    night = bool(re.search(r'[（(]야간?[)）]|야간', s))
     s = re.sub(r'[（(].*?[)）]', '', s)
     s = re.sub(r'[-–—/].*$', '', s)
     s = re.sub(r'(전공|과정)$', '', s)
-    return s
+    return s + ('야간' if night and not s.endswith('야간') else '')
+
+
+def unit_full(s):
+    """괄호·「-」를 살린 긴 형. 「인문학부-국어국문학」「학부(수학/핀테크)」를 구별한다."""
+    s = _pre_unit(s)
+    s = re.sub(r'[-–—/()（）]', '·', s)
+    s = re.sub(r'·+', '·', s).strip('·')
+    return re.sub(r'(전공|과정)$', '', s)
+
+
+def unit_keys(s):
+    """엑셀·요강 쪽 이름 하나에서 맞춰 볼 열쇠들: 기본형 · 긴 형 · 「-」 뒤 전공."""
+    keys = [norm_unit(s), unit_full(s)]
+    p = _pre_unit(s)
+    tail = re.split(r'[-–—]', re.sub(r'[（(].*?[)）]', '', p))
+    if len(tail) > 1 and tail[-1]:
+        keys.append(re.sub(r'(전공|과정)$', '', tail[-1]))
+    return [k for i, k in enumerate(keys) if k and k not in keys[:i]]
+
+
+def index_units(rows, name_of):
+    """이름 열쇠 -> 행. 여러 행이 같은 열쇠를 쓰면(학부-수학/학부-통계의 기본형) 그 열쇠는 버린다."""
+    hit = {}
+    for r in rows:
+        for k in unit_keys(name_of(r)):
+            hit.setdefault(k, []).append(r)
+    return {k: v[0] for k, v in hit.items() if len(v) == 1}
 
 
 def paren_inner(s):
@@ -173,8 +206,9 @@ def norm_track(t):
     t = re.sub(r'\s+', '', t or '')
     t = re.sub(r'실기/?실적', '', t)
     t = re.sub(r'전형기간자율화', '', t)
-    t = re.sub(r'(학생부교과|학생부종합|전형|위주|모집|정원내|정원외)', '', t)
+    t = re.sub(r'(학생부교과|학생부종합|전형|위주|모집|정원내|정원외|학생부)', '', t)
     t = re.sub(r'[（(](.*?)[)）]', r'\1', t)
+    t = re.sub(r'(교과|종합)', '', t)          # 유형은 따로 맞추므로 이름에서 뺀다
     t = t.replace('Ⅰ', '1').replace('Ⅱ', '2').replace('Ⅲ', '3')
     t = re.sub(r'[^0-9A-Za-z가-힣]', '', t)
     if not t:
@@ -192,8 +226,8 @@ def track_score(a, b):
     if not a or not b:
         return 0.0
     sc = difflib.SequenceMatcher(None, a, b).ratio()
-    if a in b or b in a:
-        sc = max(sc, 0.86)
+    if a in b or b in a:                       # 「일반」은 「기회균형일반」보다 「일반교과」에 가깝다
+        sc = max(sc, 0.86 - 0.004 * abs(len(a) - len(b)))
     if sorted(a) == sorted(b):
         sc = max(sc, 0.9)
     return sc
@@ -219,6 +253,10 @@ def unit_probes(row):
     for cand in list(raw):
         raw += paren_inner(cand)
     out = []
+    for cand in raw[:3]:
+        n = unit_full(cand or '')
+        if n and n not in out:
+            out.append(n)                      # 긴 형이 먼저 — 가장 구체적이다
     for cand in raw:
         n = norm_unit(cand or '')
         if n and n not in out:
@@ -629,6 +667,20 @@ def main():
         meta = p['meta']
         pname = clean_univ(meta['univ'])
         hu = resolve_univ(pname, hist_univs)
+        # 같은 이름으로 캠퍼스가 따로 오는 페이지(홍익대 서울·세종): 모집단위 이름이
+        # 어느 캠퍼스 자료와 더 많이 겹치는지로 가리고, 이름에 캠퍼스를 붙인다.
+        if hu and '(' not in hu:
+            units_here = set(norm_unit(r['unit']) for r in p['rows'] if not r.get('summary'))
+            best_v, best_c = None, 0
+            base_c = len(units_here & set(norm_unit(r['m']) for r in by_univ.get(hu, [])))
+            for v in hist_univs:
+                if v != hu and v.split('(')[0] == hu and '(' in v:
+                    c = len(units_here & set(norm_unit(r['m']) for r in by_univ[v]))
+                    if c > best_c:
+                        best_v, best_c = v, c
+            if best_v and best_c > base_c:
+                hu = best_v
+                pname = pname + best_v[best_v.index('('):]
         # 같은 대학의 캠퍼스 자료(홍익대(세종)·단국대(천안))도 뒤에 붙여 둔다.
         # 전형·모집단위 이름은 앞쪽(본 캠퍼스)이 먼저 잡히고, 없을 때 캠퍼스 것이 잡힌다.
         # 페이지가 본 캠퍼스 이름(「홍익대」)일 때만 캠퍼스 자료를 뒤에 붙인다.
@@ -695,24 +747,19 @@ def main():
                 pool = [r for r in rows_here if r['t'] == htrack and (r['k'] or '') == kind]
                 if not pool:
                     pool = [r for r in rows_here if r['t'] == htrack]
-                names = {}
-                for r in pool:
-                    names.setdefault(norm_unit(r['m']), r)
-                hrec = match_unit(probes, names)
+                hrec = match_unit(probes, index_units(pool, lambda r: r['m']))
             # 모집요강 자료의 최근 최종 경쟁률
             mrec = None
             if mrows and not summary:
                 if track not in mcache:
-                    mcache[track] = best_track(track, mtracks)
+                    same = [t for t in mtracks if kind_of(t) == kind] if kind != '기타' else []
+                    mcache[track] = best_track(track, same or mtracks)
                 mt = mcache[track]
                 if mt:
-                    names = {}
-                    for r in mrows:
-                        if r['t'] != mt:
-                            continue
-                        names.setdefault(norm_unit(r['m']), r)
-                        if r['sub']:
-                            names.setdefault(norm_unit(r['sub']), r)
+                    pool = [r for r in mrows if r['t'] == mt]
+                    names = index_units(pool, lambda r: r['m'])
+                    for k, r in index_units([r for r in pool if r['sub']], lambda r: r['sub']).items():
+                        names.setdefault(k, r)
                     mrec = match_unit(probes, names, 0.8)
             if hrec is None and mrec is None and not summary:
                 unmatched += 1
