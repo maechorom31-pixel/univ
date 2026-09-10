@@ -102,6 +102,8 @@ def is_final(meta, collected=None, deadline=None):
         return False
     if meta.get('stampISO'):
         return True
+    if re.search(r'최종\s*경쟁률\s*입니다|최종\s*마감\s*(되었|입니다)', meta.get('notice') or ''):
+        return True                         # 고려대: 「최종현황 · 최종 경쟁률입니다」
     return bool(collected and deadline and collected >= deadline)
 
 
@@ -481,6 +483,7 @@ def ip_univ_cands(page_name, campus, ip_univs):
     base = re.sub(r'\((서울|서울캠퍼스)\)|서울캠퍼스$', '', base)
     base = base.replace('(세종)', '(세)').replace('(글로컬)', '(글)').replace('(ERICA)', '(에)')
     base = base.replace('여자대', '여대').replace('한국외국어대', '한국외대')
+    base = base.replace('과학기술대', '과기대').replace('(천안)', '(천)')
     cands = []
     if campus:
         cands.append('%s(%s)' % (base, campus))

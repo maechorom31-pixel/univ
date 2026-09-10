@@ -68,11 +68,12 @@ class Tables(HTMLParser):
         except Exception:
             return 1
 
-    HEAD_TAGS = ('h2', 'h3', 'h4', 'h5')
+    HEAD_TAGS = ('h2', 'h3', 'h4', 'h5', 'h6')
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
         is_title = (tag == 'caption' or tag in self.HEAD_TAGS
+                    or (tag == 'a' and not a.get('href'))          # 탭 이름(창신대)
                     or a.get('id', '').startswith('strTitleId')
                     or (tag in ('span', 'div', 'p', 'strong', 'b') and
                         ('tit' in a.get('class', '') or 'subject' in a.get('class', ''))))
@@ -144,6 +145,12 @@ def expand(tbl):
 
 
 RATIO_RE = re.compile(r'^([\d.,]+)\s*:\s*1$')
+PLAIN_RE = re.compile(r'^\d+(\.\d+)?$')          # 「4.70」처럼 「: 1」 없이 적는 대학
+
+
+def _ratio_val(v):
+    m = RATIO_RE.match(v)
+    return float((m.group(1) if m else v).replace(',', ''))
 RATIO_HEAD = ('경쟁률', '경쟁율', '지원현황', '지원율')
 UNIT_HEAD = ('모집단위', '모집단위명', '학과', '전공')
 SUMM_HEAD = ('구분', '전형명', '전형', '모집구분')
@@ -188,7 +195,8 @@ def parse_page(html, univ):
             if any('{' in x for x in line):
                 continue
             cand = [i for i, v in enumerate(line)
-                    if RATIO_RE.match(v) and i < len(hcols) and hcols[i] in RATIO_HEAD]
+                    if i < len(hcols) and hcols[i] in RATIO_HEAD
+                    and (RATIO_RE.match(v) or PLAIN_RE.match(v))]
             if not cand:
                 cand = [i for i, v in enumerate(line) if RATIO_RE.match(v)]
             if not cand:
@@ -228,7 +236,7 @@ def parse_page(html, univ):
                 'sub': sub,
                 'recruit': recruit,
                 'applied': applied,
-                'ratio': float(RATIO_RE.match(line[i]).group(1).replace(',', '')),
+                'ratio': _ratio_val(line[i]),
                 'summary': 1 if is_summary else 0,
             })
         if is_summary and seen_summary:
@@ -299,6 +307,7 @@ def main(argv):
     jobs = [('uway', uway_url(t, 2027), t) for t in src['uway']]
     jobs += [('jinhak', 'https://addon.jinhakapply.com/RatioV1/RatioH/Ratio%s.html' % c, c)
              for c in src['jinhak']]
+    jobs += [('other', u, u.split('//')[-1].split('/')[0]) for u in src.get('other', [])]
 
     pages, log = [], []
     for kind, url, key in jobs:
