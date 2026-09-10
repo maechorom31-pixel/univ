@@ -93,9 +93,16 @@ def page_deadline(notice, fallback):
     return fallback, '공지에 마감이 없어 다른 대학의 마감일로 봄'
 
 
-def is_final(meta):
-    """페이지가 「최종」이라 적은 것만. 공지문의 「최종 경쟁률은 … 이후 공지」에 속지 않는다."""
-    return bool(meta.get('final')) and '최종' in (meta.get('stamp') or '')
+def is_final(meta, collected=None, deadline=None):
+    """페이지가 「최종」이라 적은 것만. 공지문의 「최종 경쟁률은 … 이후 공지」나
+    진학어플라이의 탭 이름 「최종 마감 현황」에 속지 않는다 — 날짜가 함께 있거나,
+    수집 시각이 마감을 지났을 때만 최종이다."""
+    stamp = meta.get('stamp') or ''
+    if not (bool(meta.get('final')) and '최종' in stamp):
+        return False
+    if meta.get('stampISO'):
+        return True
+    return bool(collected and deadline and collected >= deadline)
 
 
 def parse_stamp(iso):
@@ -151,7 +158,10 @@ def kind_of(text):
 
 
 def clean_track(t):
-    t = re.sub(r'\s*경쟁률\s*현황\s*(\[.*?\])?\s*$', '', t or '')
+    t = t or ''
+    t = re.sub(r'\s*경쟁률\s*현황.*$', '', t)            # 「… 경쟁률 현황 (천안)」「… ※ 안내」
+    t = re.sub(r'^\s*\[([^\]]*)\]\s*', r'\1 ', t)        # 「[학생부교과] 교과우수」→「학생부교과 교과우수」
+    t = re.sub(r'\[정원\s*[내외]\]', '', t)
     t = re.sub(r'^\s*[가-힣]+캠퍼스\s*', '', t)
     return t.strip()
 
@@ -168,6 +178,11 @@ def norm_track(t):
     if not t:
         t = re.sub(r'[^0-9A-Za-z가-힣]', '', re.sub(r'\s+', '', s0))
     return t
+
+
+def type_only(t):
+    """「학생부 교과」「학생부종합」처럼 유형 이름만 있는 전형 표시인지."""
+    return norm_track(t) in ('', '학생부', '교과', '종합', '논술', '실기', '실기실적')
 
 
 def track_score(a, b):
@@ -405,7 +420,10 @@ def recover_tracks(rows):
     모집·지원이 총괄표의 어느 전형과 같은지로 표의 전형을 알아내고, 총계 줄은 뺀다.
     """
     units = [r for r in rows if not r.get('summary')]
-    if not units or any(r['track'] for r in units):
+    labels = set(clean_track(r['track']) for r in units)
+    generic = labels <= {''} or (len(labels) == 1 and
+                                 re.match(r'^(전형별|모집단위별|계열별|학과별)', list(labels)[0]))
+    if not units or not generic:
         return rows
     summ = [r for r in rows if r.get('summary')
             and not any(k in r['unit'] for k in TOTAL_NAMES + ('정원',))]
@@ -519,6 +537,7 @@ def main():
                 prev_map[(p['meta']['univ'], row['track'], row['unit'])] = row['applied']
 
     dl_all = consensus_deadline(cur['pages'])
+    collected_at = datetime.datetime.strptime(cur['collected'][:16], '%Y-%m-%dT%H:%M')
     out_rows, univ_meta, unmatched = [], [], 0
     for p in cur['pages']:
         meta = p['meta']
@@ -526,9 +545,14 @@ def main():
         hu = resolve_univ(pname, hist_univs)
         stamp = parse_stamp(meta.get('stampISO'))
         dl, dl_note = page_deadline(meta.get('notice', ''), dl_all)
-        b = 'fin' if is_final(meta) else bucket_of(stamp, dl)
+        stamp_note = ''
+        if not stamp:
+            stamp = collected_at              # 기준시각을 안 적는 페이지는 수집 시각으로
+            stamp_note = '기준시각이 없어 수집 시각으로 봄'
+        b = 'fin' if is_final(meta, collected_at, dl) else bucket_of(stamp, dl)
         univ_meta.append({
-            'univ': pname, 'hist': hu, 'stamp': meta.get('stampISO', ''),
+            'univ': pname, 'hist': hu, 'stamp': stamp.strftime('%Y-%m-%dT%H:%M'),
+            'stampNote': stamp_note,
             'deadline': dl.strftime('%m/%d %H:%M') if dl else '',
             'dlNote': dl_note,
             'bucket': b, 'final': b == 'fin', 'rows': len(p['rows']),
@@ -543,6 +567,8 @@ def main():
         univ_meta[-1]['rows'] = len(page_rows)
 
         for row in page_rows:
+            if not row.get('summary') and row['unit'] in TOTAL_NAMES:
+                continue                       # 표 안의 소계·총계 줄
             track = clean_track(row['track'])
             summary = bool(row.get('summary')) or bool(
                 re.match(r'^전형별|^계열별|^모집시기', track))
@@ -551,7 +577,12 @@ def main():
             # 작년 시점별 자료의 전형
             if probe not in track_cache:
                 cands = [t for t, k in htracks if k == kind] or [t for t, _ in htracks]
-                track_cache[probe] = best_track(probe, cands)
+                found = best_track(probe, cands)
+                if found is None and not summary and type_only(probe):
+                    same = [t for t, k in htracks if k == kind]
+                    if len(same) == 1:         # 「학생부 교과」뿐인데 작년 교과 전형도 하나면 그것
+                        found = same[0]
+                track_cache[probe] = found
             htrack = track_cache[probe]
             probes = unit_probes(row)
             # 모집단위 매칭 (시점별 자료)

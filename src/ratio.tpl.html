@@ -63,8 +63,9 @@ p{margin:0 0 10px}
 .tabs button:active{transform:scale(0.98)}
 :focus-visible{outline:2px solid var(--amber); outline-offset:2px}
 
-.tblwrap{overflow-x:auto; background:var(--surface); border:1px solid var(--line);
-         border-radius:6px; margin-top:16px}
+.tblwrap{overflow:auto; max-height:calc(100vh - 24px); background:var(--surface);
+         border:1px solid var(--line); border-radius:6px; margin-top:16px}
+.note .tblwrap{max-height:none}
 table{border-collapse:collapse; width:100%; font-size:13px; table-layout:fixed;
        min-width:1180px}
 #tblTrack{min-width:820px}
@@ -85,7 +86,7 @@ thead th:first-child{z-index:30}
 th.n,td.n{text-align:right; font-variant-numeric:tabular-nums}
 tbody tr:last-child td{border-bottom:0}
 td.unit{line-height:1.45}
-td.univ{font-weight:600}
+td.univ{font-weight:600; white-space:nowrap}
 td.trk{color:var(--ink2); font-size:12px; line-height:1.45}
 .sub2{display:block; color:var(--mute); font-size:11px; margin-top:1px}
 .badge{display:inline-block; padding:1px 6px; border-radius:3px; font-size:11px;
@@ -202,7 +203,7 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
   <div class="tblwrap">
     <table id="tblUnit">
       <colgroup>
-        <col style="width:78px"><col style="width:180px"><col style="width:230px">
+        <col style="width:104px"><col style="width:176px"><col style="width:226px">
         <col style="width:54px"><col style="width:84px"><col style="width:64px">
         <col style="width:84px"><col style="width:64px">
         <col style="width:104px"><col style="width:80px">
@@ -595,7 +596,8 @@ document.getElementById('btnMore').addEventListener('click', function(){
       '<td>'+esc(u.final ? '최종' : (DATA.bucketKo[u.bucket]||u.bucket))+'</td>'+
       '<td class="n">'+u.rows+'</td>'+
       '<td>'+(u.hist ? esc(u.hist) : '<span class="dim">대응 없음</span>')+'</td>'+
-      '<td>'+(u.dlNote ? '<span class="warm">'+esc(u.dlNote)+'</span>' : '')+'</td></tr>';
+      '<td>'+[u.stampNote, u.dlNote].filter(Boolean).map(function(x){
+         return '<span class="warm">'+esc(x)+'</span>'; }).join('<br>')+'</td></tr>';
   }).join('');
   if(DATA.skipped && DATA.skipped.length){
     document.getElementById('skipbox').innerHTML =
