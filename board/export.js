@@ -38,6 +38,16 @@ const el = (tag, cls, text) => {
 };
 const tidy = (s) => String(s || '').replace(/ (?=[^ ]{1,4}$)/, ' ');
 const g2 = (n) => (n == null || n === '' ? '—' : Number(n).toFixed(2));
+/*
+ * 문서의 「환산」 칸 — **환산이 없으면 학생의 전교과로 대신 적는다.** 보드와 같은
+ * 규칙(store.gradeOf)이다. 관심대학 리스트의 내등급은 전형별 환산이라 종합전형은
+ * 0(=없음)으로 오는데, 그러면 칸이 비거나 「0.00」이 찍혔다. 비면 담임이 대장을
+ * 들고 다시 찾아 적어야 하니, 잣대는 달라도 학생의 등급을 적어 둔다.
+ */
+const myGrade = (app) => {
+  const g = store.gradeOf(app);
+  return g.value != null ? Number(g.value).toFixed(2) : '';
+};
 const p1 = (n) => (n == null ? '—' : `${Number(n).toFixed(1)}%`);
 /*
  * 경쟁률은 **소수 첫째 자리로 못박는다.** 화면(`board/text.js` 의 `rate1`)과
@@ -982,7 +992,6 @@ function detailTable(key, rows) {
       String(a.student.hak).localeCompare(String(b.student.hak)));
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
-      const score = app.myScore || {};
       n += 1;
       const tr = document.createElement('tr');
       [
@@ -993,7 +1002,7 @@ function detailTable(key, rows) {
         ['type', brk(typeText(app))],
         ['num', app.quota ?? ''],
         ['num', rateText(app, sm)],
-        ['num', score.grade != null ? Number(score.grade).toFixed(2) : ''],
+        ['num', myGrade(app)],
         ['num', sm.quotaPrev ?? ''],
         ['num', rt(sm.linked ? sm.rate : null)],
         ['num', sm.linked && sm.cut != null ? Number(sm.cut).toFixed(2) : ''],
@@ -1187,7 +1196,6 @@ function statusTable(names, byUniv) {
       String(a.student.hak).localeCompare(String(b.student.hak)));
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
-      const mine = app.myScore || {};
       const r = store.resultOf(app) || {};
       const txt = statusText(app);
       const won = /합격/.test(txt) && !/불합격/.test(txt);
@@ -1201,7 +1209,7 @@ function statusTable(names, byUniv) {
         ['type', brk(typeText(app))],
         ['num', app.quota ?? ''],
         ['num', rateText(app, sm)],
-        ['num', mine.grade != null ? Number(mine.grade).toFixed(2) : ''],
+        ['num', myGrade(app)],
         ['nm', r.stage1 || ''],
         [won ? 'won verdict' : 'verdict', txt],
         ['num', sm.quotaPrev ?? ''],
@@ -1527,7 +1535,6 @@ function finalDetail(key, rows) {
       String(a.student.hak).localeCompare(String(b.student.hak)));
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
-      const score = app.myScore || {};
       const r = store.resultOf(app);
       const v = vOf(app);
       n += 1;
@@ -1540,7 +1547,7 @@ function finalDetail(key, rows) {
         ['type', brk(typeText(app))],
         ['num', app.quota ?? ''],
         ['num', rateText(app, sm)],
-        ['num', score.grade != null ? Number(score.grade).toFixed(2) : ''],
+        ['num', myGrade(app)],
         [v.passed ? 'won verdict' : 'verdict', resultText(r)],
       ].forEach(([cl, val]) => tr.appendChild(
         el('td', cl, val === '' || val == null ? '—' : String(val)),
@@ -1701,13 +1708,12 @@ function finalTable(rows) {
   out.push(['학번', '이름', '대학', '모집단위', '전형 유형', '모집 인원', '경쟁률',
     '환산 성적', '1단계 결과', '최종 결과']);
   for (const { app, student } of rows) {
-    const mine = app.myScore || {};
     const r = store.resultOf(app);
     // 경쟁률은 화면·종이 표와 같은 값 — 적어 둔 최종 경쟁률이 먼저, 없으면 작년 실질
     const rate = rateText(app, store.summary(app));
     out.push([student.hak, student.name, shortUniv(app.univ), app.dept || '',
       typeText(app),
-      app.quota ?? '', rate, mine.grade != null ? Number(mine.grade).toFixed(2) : '',
+      app.quota ?? '', rate, myGrade(app),
       (r && r.stage1) || '', resultText(r)]);
   }
   return out;
