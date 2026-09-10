@@ -89,6 +89,7 @@ td.unit{line-height:1.45}
 td.univ{font-weight:600; white-space:nowrap}
 td.trk{color:var(--ink2); font-size:12px; line-height:1.45}
 .sub2{display:block; color:var(--mute); font-size:11px; margin-top:1px}
+.sub2.why{color:var(--amber-ink)}
 .badge{display:inline-block; padding:1px 6px; border-radius:3px; font-size:11px;
        background:var(--amber-soft); color:var(--amber-ink); font-weight:600; margin-left:6px}
 .star{appearance:none; background:none; border:0; padding:0 6px 0 0; margin-left:-4px;
@@ -166,6 +167,7 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
   <div class="f">
     <label for="fSort">정렬</label>
     <select id="fSort">
+      <option value="-rec">상담 추천순 (낮게 끝날 가능성 × 근거)</option>
       <option value="r">현재 경쟁률 낮은 순</option>
       <option value="-r">현재 경쟁률 높은 순</option>
       <option value="-p2">최종 2:1 미만 확률 높은 순</option>
@@ -296,6 +298,15 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
     <li>마감 2~3일 전은 폭이 너무 넓어 순위를 가늠하는 정도로만 보는 편이 낫습니다.</li>
   </ul>
 
+  <h3>상담 추천순</h3>
+  <p>「낮게 끝날 가능성」에 「근거의 두께」를 더한 100점 점수 순서입니다.
+     최종 2:1 미만 확률이 45점, 예측 최종이 낮을수록 20점, 작년 최종 대비
+     진도율이 낮을수록 15점, 2025 동시점보다 낮을수록 10점, 그리고 작년 자료가
+     붙었는지·배율이 모집단위나 대학·전형 수준에서 나왔는지·모집인원이 5명
+     이상인지로 10점입니다. 정렬을 이것으로 두면 모집단위 아래에 그 근거가
+     적힙니다. 점수는 「지원하면 붙는다」가 아니라 「경쟁이 낮게 끝날 근거가
+     있다」는 뜻이고, 성적 적합 여부는 상담 도구의 입결과 함께 봐야 합니다.</p>
+
   <h3>2025 동시점 · 대비 · 작년 최종 · 진도율</h3>
   <p>시점별 자료가 있는 해는 2025·2024·2023학년도라, 같은 시점 비교는 2025학년도
      기준입니다. <strong>대비</strong>는 그때보다 몇 배인지입니다.
@@ -360,6 +371,32 @@ var tracks = rows.filter(function(r){ return r.sm; });
    학생이 있으니 남긴다. */
 var NOT_GEN = /특성화고|특성화|전문계|재직자|성인학습|평생학습|평생교육|만학|마이스터|산업체|북한이탈|장애|특수교육|검정고시|체육특기|특기자|군사|사관|외국인|재외국민|대안학교|자립지원|위탁/;
 units.forEach(function(r){ r.gen = !NOT_GEN.test(r.tr + ' ' + r.un); });
+
+/* 상담 추천 점수 — 낮게 끝날 가능성에 근거의 두께를 곱한 것. 기준은 아래 설명에. */
+function step(v, cuts){           // cuts: [[기준, 점수], ...] 오름차순, v가 기준 미만이면 그 점수
+  if(v === undefined || v === null) return null;
+  for(var i = 0; i < cuts.length; i++) if(v < cuts[i][0]) return cuts[i][1];
+  return 0;
+}
+units.forEach(function(r){
+  if(!(r.ap > 0) || r.p2 === undefined){ r.rec = undefined; return; }
+  var why = [];
+  var sP = r.p2;                                        // 0~1
+  var sPm = step(r.pm, [[1,1],[2,0.7],[3,0.4],[5,0.15]]);
+  var sPr = step(r.pr26, [[0.5,1],[0.7,0.7],[1,0.3]]);
+  var sVs = step(r.vs, [[0.7,1],[1,0.6],[1.3,0.2]]);
+  var linked = r.p_f !== undefined || r.y26 !== undefined;
+  var rel = (linked ? 1 : 0) + (r.kl && r.kl <= 2 ? 1 : 0) + (r.rc >= 5 ? 1 : 0);
+  var score = 45*sP + 20*(sPm||0) + 15*(sPr === null ? 0.3 : sPr) + 10*(sVs === null ? 0.3 : sVs) + 10*(rel/3);
+  if(r.p2 >= 0.5) why.push('2:1 미만 확률 ' + pct(r.p2));
+  if(r.pm !== undefined && r.pm < 3) why.push('예측 최종 ' + f1(r.pm));
+  if(r.pr26 !== undefined && r.pr26 < 0.7) why.push('진도율 ' + Math.round(r.pr26*100) + '%');
+  if(r.vs && r.vs < 1) why.push('작년 동시점의 ' + f2(r.vs) + '배');
+  if(!linked) why.push('작년 자료 없음');
+  if(r.rc < 5) why.push('모집 ' + r.rc + '명이라 흔들림');
+  r.rec = Math.round(score);
+  r.why = why.join(' · ');
+});
 
 /* 즐겨찾기 — 이 브라우저에만 남는다 */
 var FAV_KEY = 'ratio-fav';
@@ -519,7 +556,8 @@ function cell(r){
       '" aria-label="즐겨찾기">'+(on ? '★' : '☆')+'</button>'+esc(r.u.replace('대학교','대'))+'</td>' +
     '<td class="trk">'+esc(r.tr)+'</td>' +
     '<td class="unit">'+esc(tail(r.un))+
-      (r.cl ? '<span class="sub2">'+esc(r.cl)+'</span>' : '')+'</td>' +
+      (r.cl ? '<span class="sub2">'+esc(r.cl)+'</span>' : '')+
+      (SORT_REC && r.why ? '<span class="sub2 why">'+esc(r.why)+'</span>' : '')+'</td>' +
     '<td class="n num-cell">'+r.rc+'</td>' +
     '<td class="n num-cell">'+r.ap.toLocaleString()+
       (r.dp !== undefined && r.dp > 0 ? '<span class="badge">+'+r.dp+'</span>' : '')+'</td>' +
@@ -536,7 +574,9 @@ function cell(r){
     '</tr>';
 }
 
+var SORT_REC = false;
 function render(){
+  SORT_REC = document.getElementById('fSort').value === '-rec';
   var list = filtered();
   var tb = document.querySelector('#tblUnit tbody');
   if(!list.length){
