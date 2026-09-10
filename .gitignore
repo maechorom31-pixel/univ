@@ -19,3 +19,6 @@ __pycache__/
 # 상담 보드 — 시트 픽스처(학생 실명 포함)는 절대 커밋 금지
 board/fixture*.json
 board/*-local.*
+
+# 올해 스냅샷을 접은 것 — ratio_archive.py 가 언제든 다시 만든다
+data/ratio_hist_2027.json
