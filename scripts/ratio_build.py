@@ -493,6 +493,7 @@ def recover_tracks(rows):
 
 # ------------------------------------------------------------- 입결(70%컷)
 IPGYEOL = os.path.join(ROOT, 'data', 'ipgyeol.json')
+REGION = {}                 # 입결 자료의 대학 -> 지역(광주전남·서울 …)
 CAT_OF = {'학생부교과': '교과', '학생부종합': '종합', '논술': '논술', '실기': '실기'}
 
 
@@ -501,7 +502,9 @@ def load_ipgyeol():
     d = json.load(open(IPGYEOL, encoding='utf-8'))
     ix = {c: i for i, c in enumerate(d['columns'])}
     by = {}
+    REGION.clear()
     for r in d['rows']:
+        REGION.setdefault(r[ix['대학']], r[ix['지역']])
         g70 = r[ix['등급70']]
         if g70 is None:
             continue
@@ -709,6 +712,7 @@ def main():
         htracks = sorted(set((r['t'], r['k'] or '') for r in hrows if r['t']))
         track_cache, mcache = {}, {}
         ip_cache, n_cut = {}, 0
+        start_idx = len(out_rows)
 
         page_rows = recover_tracks(p['rows'])
         univ_meta[-1]['rows'] = len(page_rows)
@@ -824,6 +828,10 @@ def main():
                 rec['dp'] = row['applied'] - pv
             out_rows.append(rec)
         univ_meta[-1]['ipUniv'] = ' · '.join(sorted(set(c[0] for c in ip_cache.values() if c)))
+        rg = next((REGION[c[0]] for c in ip_cache.values() if c and c[0] in REGION), '')
+        univ_meta[-1]['region'] = rg
+        for rec_ in out_rows[start_idx:]:
+            rec_['rg'] = rg
         univ_meta[-1]['cuts'] = n_cut
 
     payload = {

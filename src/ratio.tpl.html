@@ -169,6 +169,10 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
 
 <div class="bar">
   <div class="f">
+    <label for="fRg">지역</label>
+    <select id="fRg"><option value="">전체</option></select>
+  </div>
+  <div class="f">
     <label for="fUniv">대학</label>
     <select id="fUniv"><option value="">전체</option></select>
   </div>
@@ -182,8 +186,12 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
       <option value="자연">자연</option><option value="공통">공통</option></select>
   </div>
   <div class="f">
-    <label for="fQ">모집단위 검색</label>
-    <input type="text" id="fQ" placeholder="예: 간호, 전남대" autocomplete="off">
+    <label for="fQ">검색 (띄어쓰면 모두 만족, -단어는 빼기)</label>
+    <input type="text" id="fQ" placeholder="예: 전남대 간호 · 간호 -농어촌 · ㄱㅎ" autocomplete="off">
+  </div>
+  <div class="f">
+    <label for="fMinRc">최소 모집인원</label>
+    <input type="text" id="fMinRc" inputmode="numeric" placeholder="예: 5" autocomplete="off">
   </div>
   <div class="f">
     <label for="fGrade">내 등급 (전교과, 저장 안 함)</label>
@@ -217,6 +225,8 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
       <label><input type="checkbox" id="cMatched" checked> 작년 자료가 붙은 것만</label></span>
     <span class="g"><span class="grp">성적</span>
       <label><input type="checkbox" id="cFit" checked> 내 등급으로 닿는 곳만 (70%컷 기준, 0.3 여유)</label></span>
+    <span class="g"><span class="grp">전형</span>
+      <label><input type="checkbox" id="cLocal"> 지역인재만</label></span>
     <span class="g"><span class="grp">거르기</span>
       <label><input type="checkbox" id="cGen" checked> 일반고가 못 내는 전형 빼기</label>
       <label><input type="checkbox" id="cZero" checked> 지원 0명 제외</label>
@@ -365,6 +375,11 @@ footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
     <li>「일반고가 못 내는 전형 빼기」는 특성화고·재직자·성인학습자·특기자·군사학과
         같은 전형을 이름으로 거릅니다. 농어촌·기회균형·사회배려·국가보훈은 자격이 되는
         학생이 있어 남겨 두었습니다. 계열(인문·자연)은 작년 자료가 붙은 행에만 있습니다.</li>
+    <li>검색은 대학·전형·모집단위·단과대를 함께 봅니다. 공백·가운뎃점·괄호는 무시하고,
+        띄어쓴 말은 모두 만족해야 하며, 「-농어촌」처럼 앞에 빼기를 붙이면 그 말이 든 행을
+        뺍니다. 자음만 치면 초성으로 찾습니다(「ㄱㅎ」→간호). Esc로 지웁니다.</li>
+    <li>지역은 입결 자료의 구분을 그대로 씁니다. 「지역인재만」은 전형 이름에 지역인재·
+        지역균형·지역학생·지역혁신·지역의사가 든 것만 남깁니다.</li>
     <li>즐겨찾기(★)는 이 브라우저에만 남습니다. 다른 컴퓨터에서는 다시 표시해야 합니다.</li>
     <li>마감 시각은 대학 페이지의 공지에서 읽습니다. 공지가 없거나 작년 문구가 남아
         있으면 다른 대학들의 마감일로 대신하고 「대학별 기준시각」 탭에 그 사유를 적습니다.</li>
@@ -406,6 +421,31 @@ function probCell(r){
 var rows = DATA.rows;
 var units = rows.filter(function(r){ return !r.sm; });
 var tracks = rows.filter(function(r){ return r.sm; });
+
+/* 검색 — 공백·가운뎃점·괄호를 무시하고, 띄어쓴 조건은 모두 만족해야 한다.
+   자음만 치면 초성으로 찾는다(「ㄱㅎ」 → 간호). */
+var CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+function snorm(s){ return String(s || '').toLowerCase().replace(/[\s·ㆍ•\-–—()（）\[\]\/,.]/g, ''); }
+function cho(s){
+  var out = '';
+  for(var i = 0; i < s.length; i++){
+    var c = s.charCodeAt(i);
+    out += (c >= 0xAC00 && c <= 0xD7A3) ? CHO.charAt(Math.floor((c - 0xAC00) / 588)) : s.charAt(i);
+  }
+  return out;
+}
+function isCho(t){ for(var i = 0; i < t.length; i++) if(CHO.indexOf(t.charAt(i)) < 0) return false; return t.length > 0; }
+units.forEach(function(r){
+  r.hay = snorm(r.u + ' ' + r.tr + ' ' + r.un + ' ' + (r.cl || ''));
+  r.hcho = cho(r.hay);
+});
+function matchQ(r, toks){
+  for(var i = 0; i < toks.length; i++){
+    var t = toks[i];
+    if(isCho(t) ? r.hcho.indexOf(t) < 0 : r.hay.indexOf(t) < 0) return false;
+  }
+  return true;
+}
 
 /* 일반고 학생이 낼 수 없는 전형. 농어촌·기회균형·사회배려·국가보훈은 자격이 되는
    학생이 있으니 남긴다. */
@@ -532,9 +572,11 @@ var mainBucket = (function(){
 
 /* 선택지 */
 (function(){
-  var us = {}, ks = {};
-  rows.forEach(function(r){ us[r.u]=1; ks[r.kd]=1; });
-  var su = document.getElementById('fUniv'), sk = document.getElementById('fKind');
+  var us = {}, ks = {}, rgs = {};
+  rows.forEach(function(r){ us[r.u]=1; ks[r.kd]=1; if(r.rg) rgs[r.rg]=(rgs[r.rg]||0)+1; });
+  var su = document.getElementById('fUniv'), sk = document.getElementById('fKind'), sr = document.getElementById('fRg');
+  Object.keys(rgs).sort(function(a,b){ return rgs[b]-rgs[a]; }).forEach(function(g){
+    var o=document.createElement('option'); o.value=g; o.textContent=g; sr.appendChild(o); });
   Object.keys(us).sort().forEach(function(u){
     var o=document.createElement('option'); o.value=u; o.textContent=u; su.appendChild(o); });
   Object.keys(ks).sort().forEach(function(k){
@@ -555,7 +597,13 @@ function filtered(){
   var u = document.getElementById('fUniv').value;
   var k = document.getElementById('fKind').value;
   var g = document.getElementById('fG').value;
-  var q = document.getElementById('fQ').value.trim();
+  var raw = document.getElementById('fQ').value.split(/\s+/).filter(Boolean);
+  var toks = [], nots = [];
+  raw.forEach(function(w){ if(w.charAt(0) === '-' && w.length > 1) nots.push(snorm(w.slice(1))); else { var n = snorm(w); if(n) toks.push(n); } });
+  var rg = document.getElementById('fRg').value;
+  var local = document.getElementById('cLocal').checked;
+  var minRc = parseInt(document.getElementById('fMinRc').value.replace(/[^\d]/g, ''), 10);
+  if(!(minRc > 0)) minRc = 0;
   var low = document.getElementById('cLow').checked;
   var sub2 = document.getElementById('cSub2').checked;
   var p2 = document.getElementById('cP2').checked;
@@ -572,8 +620,11 @@ function filtered(){
     if(k && r.kd !== k) return false;
     if(g && r.g !== g) return false;
     if(gen && !r.gen) return false;
-    if(q && (r.un.indexOf(q) < 0 && r.tr.indexOf(q) < 0 && (r.cl||'').indexOf(q) < 0
-             && r.u.indexOf(q) < 0)) return false;
+    if(rg && r.rg !== rg) return false;
+    if(local && !/지역인재|지역균형|지역학생|지역혁신|지역기회|지역의사|지역인/.test(r.tr)) return false;
+    if(minRc && !(r.rc >= minRc)) return false;
+    if(toks.length && !matchQ(r, toks)) return false;
+    if(nots.length && matchQ(r, nots)) return false;
     if(low && !(r.r < 1)) return false;
     if(sub2 && !(r.r < 2)) return false;
     if(p2 && !(r.p2 !== undefined && r.p2 >= 0.5)) return false;
@@ -709,14 +760,18 @@ window.addEventListener('resize', function(){
   clearTimeout(resizeT);
   resizeT = setTimeout(function(){ if(narrow() !== wasNarrow){ wasNarrow = narrow(); render(); } }, 150);
 });
-['fUniv','fKind','fG','fSort'].forEach(function(id){
+['fUniv','fKind','fG','fRg','fSort'].forEach(function(id){
   document.getElementById(id).addEventListener('change', function(){ shown = PAGE; render(); });
 });
-['cLow','cSub2','cP2','cDown','cMatched','cGen','cZero','cFav'].forEach(function(id){
+['cLow','cSub2','cP2','cDown','cMatched','cGen','cZero','cFav','cLocal'].forEach(function(id){
   document.getElementById(id).addEventListener('change', function(){ shown = PAGE; render(); });
 });
 document.getElementById('fQ').addEventListener('input', function(){ shown = PAGE; render(); });
+document.getElementById('fQ').addEventListener('keydown', function(e){
+  if(e.key === 'Escape'){ this.value = ''; shown = PAGE; render(); }
+});
 document.getElementById('fGrade').addEventListener('input', function(){ readGrade(); shown = PAGE; render(); });
+document.getElementById('fMinRc').addEventListener('input', function(){ shown = PAGE; render(); });
 document.getElementById('cFit').addEventListener('change', function(){ shown = PAGE; render(); });
 document.getElementById('btnMore').addEventListener('click', function(){
   shown += PAGE * 2; render(); });
