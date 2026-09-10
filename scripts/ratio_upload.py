@@ -12,6 +12,7 @@ Personal access tokens → Fine-grained tokens → Generate new token.
 Repository access 에서 이 저장소만 고르고, Permissions → Contents 를 Read and write 로.
 
 올리는 것: data/ratio/snap-*.json 중 저장소에 없는 것 전부, 그리고 ratio.html.
+한 커밋으로 묶어 올린다 — 페이지 배포가 커밋마다 새로 시작되어 앞 것을 취소하기 때문.
 """
 import base64, hashlib, json, os, sys, urllib.request, urllib.error
 
@@ -100,6 +101,38 @@ def put(tok, path, data, sha, msg):
     return False
 
 
+def git_api(tok, method, path, body=None):
+    return call(tok, method, '/git' + path, body)
+
+
+def push_one_commit(tok, files, msg):
+    """여러 파일을 한 커밋으로 올린다(Git Data API). 페이지 배포가 한 번만 돌게."""
+    branch = REPO['branch']
+    st, ref = call(tok, 'GET', '/git/ref/heads/' + branch)
+    if st != 200:
+        return False, 'ref HTTP %s' % st
+    head = ref['object']['sha']
+    st, commit = git_api(tok, 'GET', '/commits/' + head)
+    base_tree = commit['tree']['sha']
+    tree = []
+    for path, data in files:
+        st, blob = git_api(tok, 'POST', '/blobs', {'content': base64.b64encode(data).decode(),
+                                                   'encoding': 'base64'})
+        if st != 201:
+            return False, 'blob %s HTTP %s' % (path, st)
+        tree.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': blob['sha']})
+    st, t = git_api(tok, 'POST', '/trees', {'base_tree': base_tree, 'tree': tree})
+    if st != 201:
+        return False, 'tree HTTP %s'
+    st, c = git_api(tok, 'POST', '/commits', {'message': msg, 'tree': t['sha'], 'parents': [head]})
+    if st != 201:
+        return False, 'commit HTTP %s' % st
+    st, r = call(tok, 'PATCH', '/git/refs/heads/' + branch, {'sha': c['sha'], 'force': False})
+    if st != 200:
+        return False, 'ref update HTTP %s %s' % (st, r.get('message', ''))
+    return True, c['sha'][:7]
+
+
 def main():
     tok = token()
     st, _ = call(tok, 'GET', '')
@@ -110,24 +143,32 @@ def main():
     snaps = remote_listing(tok, 'data/ratio')
     local = sorted(f for f in os.listdir(os.path.join(ROOT, 'data', 'ratio'))
                    if f.startswith('snap-') and f.endswith('.json'))
-    n = 0
+    files, names = [], []
     for f in local:
         if f in snaps:
             continue
-        data = open(os.path.join(ROOT, 'data', 'ratio', f), 'rb').read()
-        if put(tok, 'data/ratio/' + f, data, None, '경쟁률 스냅샷 ' + f[5:-5]):
-            n += 1
-            print('  올림 %s' % f)
+        files.append(('data/ratio/' + f, open(os.path.join(ROOT, 'data', 'ratio', f), 'rb').read()))
+        names.append(f[5:-5])
     html_path = os.path.join(ROOT, 'ratio.html')
     if os.path.exists(html_path):
         data = open(html_path, 'rb').read()
         cur = remote_listing(tok, 'ratio.html').get('ratio.html')
-        if cur == blob_sha(data):
-            print('  ratio.html 은 이미 같습니다.')
-        elif put(tok, 'ratio.html', data, cur, '경쟁률 화면 갱신'):
-            n += 1
-            print('  올림 ratio.html')
-    print('  %d개 올렸습니다. 배포 주소는 1~2분 뒤 갱신됩니다.' % n)
+        if cur != blob_sha(data):
+            files.append(('ratio.html', data))
+    if not files:
+        print('  올릴 것이 없습니다(저장소와 같습니다).')
+        return
+    msg = '경쟁률 스냅샷 ' + ', '.join(names) if names else '경쟁률 화면 갱신'
+    ok, info = push_one_commit(tok, files, msg)
+    if ok:
+        print('  %d개를 한 커밋(%s)으로 올렸습니다. 배포 주소는 1~2분 뒤 갱신됩니다.' % (len(files), info))
+    else:
+        print('  실패: %s' % info)
+        # 한 커밋이 안 되면 파일마다 따로라도 올린다
+        for path, data in files:
+            sha = remote_listing(tok, path).get(os.path.basename(path)) if path == 'ratio.html' else None
+            if put(tok, path, data, sha, msg):
+                print('  올림 %s' % path)
 
 
 if __name__ == '__main__':
