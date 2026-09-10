@@ -795,7 +795,8 @@ def main():
                 rec['g'] = hrec['g']
             if hrec and LAST in hrec['y']:
                 v = hrec['y'][LAST]
-                rc25, r25b, r25f = v[0], v[BUCKET_IDX.get(b, 3)], v[6]
+                # 최종이면 「같은 시점」은 작년 최종이다. 1일 전 값을 가져오면 안 된다.
+                rc25, r25b, r25f = v[0], (v[6] if b == 'fin' else v[BUCKET_IDX.get(b, 3)]), v[6]
                 rec['p_rc'] = rc25
                 rec['p_b'] = r25b
                 rec['p_f'] = r25f
