@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2027 수시 경쟁률 통합</title>
+<style>
+:root{
+  --bg:#FAF9F7; --surface:#FFFFFF; --line:#E8E6E2;
+  --ink:#1A1A1A; --ink2:#4A4744; --mute:#6B6B6B;
+  --amber:#F59E0B; --amber-soft:#FDF3E0; --amber-ink:#B45309; --alert:#9F2D20;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  font-size:14px; line-height:1.6; word-break:keep-all;
+  overflow-wrap:break-word; overflow-wrap:anywhere;
+}
+.wrap{max-width:1320px; margin:0 auto; padding:0 24px 64px}
+header{padding-top:40px; padding-bottom:8px}
+h1{font-size:24px; font-weight:700; line-height:1.3; margin:0 0 6px; letter-spacing:-0.01em}
+h2{font-size:17px; font-weight:700; margin:40px 0 12px; line-height:1.3}
+h3{font-size:14px; font-weight:600; margin:24px 0 8px; color:var(--ink2)}
+p{margin:0 0 10px}
+.sub{color:var(--mute); font-size:13px; margin:0}
+.num{font-variant-numeric:tabular-nums}
+
+.tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-top:24px}
+.tile{background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:14px 16px 16px}
+.tile .lab{font-size:12px; color:var(--mute); margin-bottom:4px}
+.tile .val{font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.2}
+.tile .val small{font-size:13px; font-weight:400; color:var(--mute); margin-left:3px}
+
+.bar{background:var(--surface); border:1px solid var(--line); border-radius:6px;
+     padding:16px; margin-top:24px; display:grid;
+     grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px 16px; align-items:end}
+.f label{display:block; font-size:12px; color:var(--ink2); margin-bottom:4px; font-weight:600}
+.f select,.f input[type=text]{
+  width:100%; height:38px; padding:0 10px; font-size:16px; color:var(--ink);
+  background:var(--surface); border:1px solid var(--line); border-radius:4px;
+  font-family:inherit}
+.f input[type=text]{font-size:16px}
+.checks{grid-column:1/-1; display:flex; flex-wrap:wrap; gap:8px 20px; padding-top:4px;
+        border-top:1px solid var(--line); margin-top:4px}
+.checks label{display:inline-flex; align-items:center; gap:6px; font-size:13px;
+              min-height:32px; cursor:pointer}
+.checks input{width:17px; height:17px; accent-color:var(--amber)}
+
+.tabs{display:flex; gap:4px; margin-top:32px; border-bottom:1px solid var(--line)}
+.tabs button{
+  appearance:none; background:none; border:0; border-bottom:2px solid transparent;
+  padding:10px 14px; font-size:14px; font-family:inherit; color:var(--mute);
+  cursor:pointer; font-weight:600; margin-bottom:-1px}
+.tabs button[aria-selected=true]{color:var(--ink); border-bottom-color:var(--amber)}
+@media (hover:hover){.tabs button:hover{color:var(--ink)}}
+.tabs button:active{transform:scale(0.98)}
+
+.tblwrap{overflow-x:auto; background:var(--surface); border:1px solid var(--line);
+         border-radius:6px; margin-top:16px}
+table{border-collapse:collapse; width:100%; font-size:13px; table-layout:fixed;
+       min-width:1080px}
+#tblTrack{min-width:720px}
+#tblUniv{min-width:760px}
+caption{text-align:left; padding:12px 16px; color:var(--mute); font-size:12px}
+th,td{padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle;
+      overflow-wrap:break-word; word-break:keep-all}
+td.num-cell,th.n{white-space:nowrap}
+thead th{position:sticky; top:0; background:var(--surface); z-index:20; font-weight:600;
+         font-size:12px; color:var(--ink2); text-align:left;
+         border-bottom:1px solid var(--line); white-space:nowrap}
+tbody td:first-child,thead th:first-child{position:sticky; left:0; z-index:10;
+         background:var(--surface)}
+thead th:first-child{z-index:30}
+th.n,td.n{text-align:right; font-variant-numeric:tabular-nums}
+tbody tr:last-child td{border-bottom:0}
+td.unit{line-height:1.45}
+td.univ{font-weight:600}
+td.trk{color:var(--ink2); font-size:12px; line-height:1.45}
+.sub2{display:block; color:var(--mute); font-size:11px; margin-top:1px}
+.badge{display:inline-block; padding:1px 6px; border-radius:3px; font-size:11px;
+       background:var(--amber-soft); color:var(--amber-ink); font-weight:600; margin-left:6px}
+.low{font-weight:700; color:var(--alert)}
+.hi{color:var(--amber-ink); font-weight:600}
+.band{color:var(--mute); font-size:12px}
+.dim{color:var(--mute)}
+.empty{padding:40px 16px; text-align:center; color:var(--mute)}
+.more{margin-top:12px}
+.more button{appearance:none; background:var(--surface); border:1px solid var(--line);
+  border-radius:4px; padding:10px 18px; font-family:inherit; font-size:14px;
+  font-weight:600; cursor:pointer; color:var(--ink)}
+.more button:active{transform:scale(0.98)}
+
+.note{background:var(--surface); border:1px solid var(--line); border-radius:6px;
+      padding:16px 20px 20px; margin-top:16px; max-width:760px}
+.note p,.note li{font-size:13px; color:var(--ink2); line-height:1.7}
+.note ul{margin:0 0 10px; padding-left:18px}
+.stamp{margin-top:16px; font-size:12px; color:var(--mute)}
+.stamp table{font-size:12px}
+details summary{cursor:pointer; font-size:13px; color:var(--ink2); font-weight:600;
+                padding:8px 0; min-height:32px}
+footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
+       color:var(--mute); font-size:12px}
+@media (max-width:640px){
+  .wrap{padding:0 16px 48px}
+  h1{font-size:20px}
+}
+@media print{
+  .bar,.tabs,.more,.checks{display:none}
+  body{background:#fff; color:#000; font-size:11px}
+  .tblwrap{border:0; overflow:visible}
+  th,td{border-bottom:1px solid #999}
+  tr{page-break-inside:avoid}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>2027학년도 수시 경쟁률 통합</h1>
+  <p class="sub" id="hdrsub"></p>
+</header>
+
+<main>
+<section class="tiles" id="tiles" aria-label="요약"></section>
+
+<div class="bar">
+  <div class="f">
+    <label for="fUniv">대학</label>
+    <select id="fUniv"><option value="">전체</option></select>
+  </div>
+  <div class="f">
+    <label for="fKind">전형 유형</label>
+    <select id="fKind"><option value="">전체</option></select>
+  </div>
+  <div class="f">
+    <label for="fQ">모집단위 검색</label>
+    <input type="text" id="fQ" placeholder="예: 간호" autocomplete="off">
+  </div>
+  <div class="f">
+    <label for="fSort">정렬</label>
+    <select id="fSort">
+      <option value="r">현재 경쟁률 낮은 순</option>
+      <option value="-r">현재 경쟁률 높은 순</option>
+      <option value="vs">2025년 같은 시점 대비 낮은 순</option>
+      <option value="-vs">2025년 같은 시점 대비 높은 순</option>
+      <option value="pr26">작년 최종 대비 진도율 낮은 순</option>
+      <option value="pm">예측 최종 낮은 순</option>
+      <option value="-dp">직전 대비 증가 큰 순</option>
+      <option value="u">대학·전형 순</option>
+    </select>
+  </div>
+  <div class="checks">
+    <label><input type="checkbox" id="cLow"> 미달(1:1 미만)만</label>
+    <label><input type="checkbox" id="cSub2"> 2:1 미만만</label>
+    <label><input type="checkbox" id="cDown"> 2025년 같은 시점보다 낮은 것만</label>
+    <label><input type="checkbox" id="cMatched"> 작년 자료가 붙은 것만</label>
+    <label><input type="checkbox" id="cZero"> 지원 0명 제외</label>
+  </div>
+</div>
+
+<div class="tabs" role="tablist">
+  <button role="tab" id="tabUnit" aria-selected="true">모집단위</button>
+  <button role="tab" id="tabTrack" aria-selected="false">전형별 총괄</button>
+  <button role="tab" id="tabUniv" aria-selected="false">대학별 기준시각</button>
+</div>
+
+<div id="paneUnit">
+  <div class="tblwrap">
+    <table id="tblUnit">
+      <colgroup>
+        <col style="width:78px"><col style="width:186px"><col style="width:236px">
+        <col style="width:56px"><col style="width:70px"><col style="width:68px">
+        <col style="width:88px"><col style="width:66px"><col style="width:100px">
+        <col style="width:80px"><col style="width:68px">
+      </colgroup>
+      <thead><tr>
+        <th>대학</th><th>전형</th><th>모집단위</th>
+        <th class="n">모집</th><th class="n">지원</th><th class="n">현재</th>
+        <th class="n">2025 동시점</th><th class="n">대비</th>
+        <th class="n">예측 최종</th><th class="n">작년 최종</th><th class="n">진도율</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="more"><button type="button" id="btnMore">더 보기</button></div>
+  <p class="sub" id="cnt" role="status"></p>
+</div>
+
+<div id="paneTrack" hidden>
+  <div class="tblwrap">
+    <table id="tblTrack">
+      <colgroup>
+        <col style="width:96px"><col style="width:300px"><col style="width:70px">
+        <col style="width:80px"><col style="width:76px"><col style="width:150px">
+      </colgroup>
+      <thead><tr>
+        <th>대학</th><th>전형</th>
+        <th class="n">모집</th><th class="n">지원</th><th class="n">현재</th>
+        <th class="n">예측 최종</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="paneUniv" hidden>
+  <div class="tblwrap">
+    <table id="tblUniv">
+      <colgroup>
+        <col style="width:150px"><col style="width:130px"><col style="width:170px">
+        <col style="width:100px"><col style="width:80px"><col style="width:110px">
+      </colgroup>
+      <thead><tr>
+        <th>대학</th><th>페이지 기준시각</th><th>접수 마감</th>
+        <th>적용 시점</th><th class="n">모집단위</th><th>작년 자료</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div id="skipbox"></div>
+</div>
+
+<h2>이 숫자를 어떻게 읽는지</h2>
+<div class="note">
+  <h3>예측 최종</h3>
+  <p>2023~2025학년도 같은 시점의 경쟁률이 최종까지 몇 배로 늘었는지를 모아
+     중앙값을 적용한 값입니다. 옆의 작은 숫자는 그 배수의 25~75% 구간이라,
+     실제 최종은 대체로 그 사이에 놓입니다.</p>
+  <p>배수는 <strong>모집단위 → 대학·전형 → 대학·유형 → 전형유형</strong> 순으로
+     표본이 충분한 단계를 찾아 씁니다. 표본이 적은 단계는 건너뜁니다.</p>
+  <h3>정확도가 시점에 따라 크게 다릅니다</h3>
+  <ul>
+    <li>마감일 오후: 배수 중앙값 약 1.16배, 비교적 잘 맞습니다.</li>
+    <li>마감일 오전: 약 1.29배, 쓸 만합니다.</li>
+    <li>마감 1일 전: 약 2.0배이고 폭이 넓어 어림값으로만 보는 편이 낫습니다.</li>
+    <li>마감 2~3일 전: 폭이 너무 넓어 예측으로 쓰기 어렵습니다.</li>
+  </ul>
+  <h3>2025 동시점 · 대비 · 진도율</h3>
+  <p>시점별 자료가 있는 해는 2025·2024·2023학년도라, 같은 시점 비교는
+     2025학년도 기준입니다. <strong>대비</strong>는 그때보다 몇 배인지를 뜻합니다.</p>
+  <p><strong>작년 최종</strong>은 저장소의 2027 모집요강 요약에 들어 있는
+     2026학년도 최종 경쟁률이고, <strong>진도율</strong>은 지금 경쟁률이
+     그 값의 몇 퍼센트까지 왔는지입니다. 예측치보다 흔들림이 적어
+     상담에서는 이 두 값이 더 쓸모 있을 때가 많습니다.
+     회색으로 표시된 최종값은 2026학년도 자료가 없어 2025학년도 값을 대신 보인 것입니다.</p>
+  <h3>남는 한계</h3>
+  <ul>
+    <li>작년 시점 자료는 3일 전·2일 전·1일 전·마감일 오전·마감일 오후
+        다섯 구간으로만 있어, 시각 단위로 맞춘 예측은 되지 않습니다.</li>
+    <li>신설·개편 모집단위와 예체능 실기 세부종목은 작년 대응 항목이 없어
+        빈칸으로 둡니다. 억지로 잇지 않았습니다.</li>
+    <li>대학이 페이지에 적어 둔 마감 시각을 그대로 읽습니다. 대학 공지에
+        오기가 있으면 시점 판정도 따라 흔들립니다.</li>
+  </ul>
+</div>
+</main>
+
+<footer>
+  <p id="foot"></p>
+</footer>
+</div>
+
+<script>
+document.addEventListener('touchstart', function(){}, {passive:true});
+var DATA = /*__DATA__*/null;
+
+function f1(v){ return (v===undefined||v===null) ? '' : v.toFixed(1); }
+function f2(v){ return (v===undefined||v===null) ? '' : v.toFixed(2); }
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function tail(s){ return String(s).replace(/ (?=[^ ]{1,4}$)/, String.fromCharCode(160)); }
+function stampKo(iso){
+  if(!iso) return '';
+  var m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  return m ? (+m[2])+'월 '+(+m[3])+'일 '+m[4]+':'+m[5] : iso;
+}
+
+var rows = DATA.rows;
+var units = rows.filter(function(r){ return !r.sm; });
+var tracks = rows.filter(function(r){ return r.sm; });
+
+/* 머리말 */
+(function(){
+  var c = DATA.collected.replace('T',' ').slice(0,16);
+  var stamps = DATA.univs.map(function(u){ return u.stamp; }).filter(Boolean).sort();
+  var range = stamps.length
+    ? stampKo(stamps[0]) + ' ~ ' + stampKo(stamps[stamps.length-1])
+    : '확인 불가';
+  document.getElementById('hdrsub').textContent =
+    '수집 ' + c + ' · 대학별 페이지 기준시각 ' + range;
+  var bk = {}; DATA.univs.forEach(function(u){ bk[u.bucket]=(bk[u.bucket]||0)+1; });
+  var bl = Object.keys(bk).map(function(k){
+    return (DATA.bucketKo[k]||'최종') + ' ' + bk[k] + '곳'; }).join(' · ');
+  document.getElementById('foot').textContent =
+    '작년 자료: ' + DATA.histSource + ' · 시점 판정: ' + bl +
+    ' · 예측은 참고용이며 최종 경쟁률은 대학 발표를 따릅니다.';
+})();
+
+/* 요약 타일 */
+(function(){
+  var low = units.filter(function(r){ return r.r < 1; }).length;
+  var sub2 = units.filter(function(r){ return r.r < 2; }).length;
+  var down = units.filter(function(r){ return r.vs && r.vs < 1; }).length;
+  var t = [
+    ['대학', DATA.univs.length, '곳'],
+    ['모집단위', units.length.toLocaleString(), '개'],
+    ['미달 (1:1 미만)', low, '개'],
+    ['2:1 미만', sub2, '개'],
+    ['2025 동시점보다 낮음', down, '개']
+  ];
+  document.getElementById('tiles').innerHTML = t.map(function(x){
+    return '<div class="tile"><div class="lab">'+tail(x[0])+'</div>'+
+      '<div class="val">'+x[1]+'<small>'+x[2]+'</small></div></div>';
+  }).join('');
+})();
+
+/* 선택지 */
+(function(){
+  var us = {}, ks = {};
+  rows.forEach(function(r){ us[r.u]=1; ks[r.kd]=1; });
+  var su = document.getElementById('fUniv'), sk = document.getElementById('fKind');
+  Object.keys(us).sort().forEach(function(u){
+    var o=document.createElement('option'); o.value=u; o.textContent=u; su.appendChild(o); });
+  Object.keys(ks).sort().forEach(function(k){
+    var o=document.createElement('option'); o.value=k; o.textContent=k; sk.appendChild(o); });
+})();
+
+var PAGE = 300, shown = PAGE;
+
+function filtered(){
+  var u = document.getElementById('fUniv').value;
+  var k = document.getElementById('fKind').value;
+  var q = document.getElementById('fQ').value.trim();
+  var low = document.getElementById('cLow').checked;
+  var sub2 = document.getElementById('cSub2').checked;
+  var down = document.getElementById('cDown').checked;
+  var mt = document.getElementById('cMatched').checked;
+  var nz = document.getElementById('cZero').checked;
+  var out = units.filter(function(r){
+    if(u && r.u !== u) return false;
+    if(k && r.kd !== k) return false;
+    if(q && (r.un.indexOf(q) < 0 && r.tr.indexOf(q) < 0 && (r.cl||'').indexOf(q) < 0)) return false;
+    if(low && !(r.r < 1)) return false;
+    if(sub2 && !(r.r < 2)) return false;
+    if(down && !(r.vs && r.vs < 1)) return false;
+    if(mt && r.p_f === undefined && r.y26 === undefined) return false;
+    if(nz && !(r.ap > 0)) return false;
+    return true;
+  });
+  var s = document.getElementById('fSort').value;
+  var key = s.replace('-',''), desc = s.charAt(0) === '-';
+  out.sort(function(a,b){
+    if(key === 'u'){
+      return (a.u+a.tr+a.un).localeCompare(b.u+b.tr+b.un, 'ko');
+    }
+    var x = a[key], y = b[key];
+    if(x === undefined || x === null) return 1;
+    if(y === undefined || y === null) return -1;
+    if(x === y) return b.rc - a.rc;
+    return desc ? y - x : x - y;
+  });
+  return out;
+}
+
+function cell(r){
+  var vs = '';
+  if(r.vs){
+    var cls = r.vs < 1 ? 'low' : (r.vs >= 1.5 ? 'hi' : '');
+    vs = '<span class="'+cls+'">'+f2(r.vs)+'배</span>';
+  }
+  var pred = '';
+  if(r.pm !== undefined && r.ap > 0){
+    pred = f1(r.pm) + '<br><span class="band num">' + f1(r.pl) + '~' + f1(r.ph) + '</span>';
+  } else if(r.fin){ pred = '<span class="dim">최종</span>'; }
+  var rr = r.r < 1 ? '<span class="low">'+f2(r.r)+'</span>' : f2(r.r);
+  return '<tr>' +
+    '<td class="univ">'+esc(r.u.replace('대학교','대'))+'</td>' +
+    '<td class="trk">'+esc(r.tr)+'</td>' +
+    '<td class="unit">'+esc(tail(r.un))+
+      (r.cl ? '<span class="sub2">'+esc(r.cl)+'</span>' : '')+'</td>' +
+    '<td class="n num-cell">'+r.rc+'</td>' +
+    '<td class="n num-cell">'+r.ap.toLocaleString()+
+      (r.dp !== undefined && r.dp > 0 ? '<span class="badge">+'+r.dp+'</span>' : '')+'</td>' +
+    '<td class="n num-cell">'+rr+'</td>' +
+    '<td class="n num-cell">'+(r.p_b !== undefined && r.p_b !== null ? f2(r.p_b) : '<span class="dim">-</span>')+'</td>' +
+    '<td class="n num-cell">'+(vs || '<span class="dim">-</span>')+'</td>' +
+    '<td class="n num-cell">'+(pred || '<span class="dim">-</span>')+'</td>' +
+    '<td class="n num-cell">'+(r.y26 !== undefined ? f2(r.y26) :
+       (r.p_f !== undefined && r.p_f !== null ? '<span class="dim">'+f2(r.p_f)+'</span>' : '<span class="dim">-</span>'))+'</td>' +
+    '<td class="n num-cell">'+(r.pr26 !== undefined ?
+       '<span class="'+(r.pr26<0.7?'low':(r.pr26>=1.2?'hi':''))+'">'+Math.round(r.pr26*100)+'%</span>'
+       : '<span class="dim">-</span>')+'</td>' +
+    '</tr>';
+}
+
+function render(){
+  var list = filtered();
+  var tb = document.querySelector('#tblUnit tbody');
+  if(!list.length){
+    tb.innerHTML = '<tr><td colspan="11" class="empty">조건에 맞는 모집단위가 없습니다.</td></tr>';
+  } else {
+    tb.innerHTML = list.slice(0, shown).map(cell).join('');
+  }
+  document.getElementById('btnMore').style.display = list.length > shown ? '' : 'none';
+  document.getElementById('cnt').textContent =
+    list.length.toLocaleString() + '개 중 ' +
+    Math.min(shown, list.length).toLocaleString() + '개 표시';
+}
+
+['fUniv','fKind','fSort'].forEach(function(id){
+  document.getElementById(id).addEventListener('change', function(){ shown = PAGE; render(); });
+});
+['cLow','cSub2','cDown','cMatched','cZero'].forEach(function(id){
+  document.getElementById(id).addEventListener('change', function(){ shown = PAGE; render(); });
+});
+document.getElementById('fQ').addEventListener('input', function(){ shown = PAGE; render(); });
+document.getElementById('btnMore').addEventListener('click', function(){
+  shown += PAGE * 2; render(); });
+
+/* 전형별 총괄 */
+(function(){
+  var tb = document.querySelector('#tblTrack tbody');
+  var list = tracks.slice().sort(function(a,b){ return a.r - b.r; });
+  tb.innerHTML = list.map(function(r){
+    var pred = (r.pm !== undefined && r.ap > 0) ? f1(r.pm) +
+      ' <span class="band num">'+f1(r.pl)+'~'+f1(r.ph)+'</span>' : '<span class="dim">-</span>';
+    return '<tr><td class="univ">'+esc(r.u.replace('대학교','대'))+'</td>'+
+      '<td class="unit">'+esc(r.un)+'</td>'+
+      '<td class="n num-cell">'+r.rc+'</td><td class="n num-cell">'+r.ap.toLocaleString()+'</td>'+
+      '<td class="n num-cell">'+(r.r<1?'<span class="low">'+f2(r.r)+'</span>':f2(r.r))+'</td>'+
+      '<td class="n num-cell">'+pred+'</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="empty">총괄 표를 찾지 못했습니다.</td></tr>';
+})();
+
+/* 대학별 기준시각 */
+(function(){
+  var tb = document.querySelector('#tblUniv tbody');
+  tb.innerHTML = DATA.univs.map(function(u){
+    return '<tr><td class="univ">'+esc(u.univ)+'</td>'+
+      '<td>'+esc(stampKo(u.stamp) || '-')+'</td>'+
+      '<td>'+(u.deadline ? esc(u.deadline) :
+         '<span class="dim">공지 없음 · 1일 전으로 봄</span>')+'</td>'+
+      '<td>'+esc(u.final ? '최종' : (DATA.bucketKo[u.bucket]||u.bucket))+'</td>'+
+      '<td class="n">'+u.rows+'</td>'+
+      '<td>'+(u.hist ? esc(u.hist) : '<span class="dim">대응 없음</span>')+'</td></tr>';
+  }).join('');
+  if(DATA.skipped && DATA.skipped.length){
+    document.getElementById('skipbox').innerHTML =
+      '<details class="stamp"><summary>수집하지 못한 곳 '+DATA.skipped.length+
+      '곳 — 진학어플라이는 개인 PC에서만 열립니다</summary><p class="sub">'+
+      DATA.skipped.map(function(s){ return esc(s.key+' ('+s.error+')'); }).join(', ')+
+      '</p></details>';
+  }
+})();
+
+/* 탭 */
+(function(){
+  var map = [['tabUnit','paneUnit'],['tabTrack','paneTrack'],['tabUniv','paneUniv']];
+  map.forEach(function(pair){
+    document.getElementById(pair[0]).addEventListener('click', function(){
+      map.forEach(function(p){
+        var on = p[0] === pair[0];
+        document.getElementById(p[0]).setAttribute('aria-selected', on ? 'true':'false');
+        document.getElementById(p[1]).hidden = !on;
+      });
+    });
+  });
+})();
+
+render();
+</script>
+</body>
+</html>
