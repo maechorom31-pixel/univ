@@ -395,6 +395,43 @@ def backtest(hist_rows):
     return out
 
 
+TOTAL_NAMES = ('총계', '합계', '계', '소계')
+
+
+def recover_tracks(rows):
+    """전형 제목이 하나도 안 잡힌 페이지(진학어플라이)의 전형을 되찾는다.
+
+    그 페이지는 전형마다 표가 따로 있고 표 끝에 「총계」 줄이 있다. 총계의
+    모집·지원이 총괄표의 어느 전형과 같은지로 표의 전형을 알아내고, 총계 줄은 뺀다.
+    """
+    units = [r for r in rows if not r.get('summary')]
+    if not units or any(r['track'] for r in units):
+        return rows
+    summ = [r for r in rows if r.get('summary')
+            and not any(k in r['unit'] for k in TOTAL_NAMES + ('정원',))]
+    want = {}
+    for i, r in enumerate(summ):
+        want.setdefault((r['recruit'], r['applied']), []).append(i)
+    used, out, group = set(), [r for r in rows if r.get('summary')], []
+    for r in units:
+        if r['unit'] in TOTAL_NAMES:
+            cand = [i for i in want.get((r['recruit'], r['applied']), []) if i not in used]
+            if cand:
+                used.add(cand[0])
+                name = summ[cand[0]]['unit']
+                for g in group:
+                    g = dict(g)
+                    g['track'] = name
+                    out.append(g)
+            else:
+                out.extend(group)          # 전형을 못 찾아도 행은 남긴다
+            group = []
+        else:
+            group.append(r)
+    out.extend(group)
+    return out
+
+
 # ------------------------------------------------------------- 본체
 def load_mojip():
     """저장소의 2027 모집요강 요약에서 대학별 최근 최종 경쟁률을 꺼낸다."""
@@ -502,17 +539,7 @@ def main():
         htracks = sorted(set((r['t'], r['k'] or '') for r in hrows if r['t']))
         track_cache, mcache = {}, {}
 
-        # 전형 제목이 하나도 안 잡힌 페이지(진학어플라이)는 같은 모집단위를 두 표에서
-        # 두 번 줍는다. 숫자까지 같은 행은 하나만 남긴다.
-        page_rows = p['rows']
-        if not any(r['track'] for r in page_rows if not r.get('summary')):
-            seen, page_rows = set(), []
-            for r in p['rows']:
-                key = (r.get('summary'), r['unit'], r.get('college'), r['recruit'], r['applied'])
-                if key in seen:
-                    continue
-                seen.add(key)
-                page_rows.append(r)
+        page_rows = recover_tracks(p['rows'])
         univ_meta[-1]['rows'] = len(page_rows)
 
         for row in page_rows:
