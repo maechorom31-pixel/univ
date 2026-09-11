@@ -776,23 +776,79 @@ function lineOf(app) {
   return '기타';
 }
 
-/** 올해 지원을 (계열 × 전형) 격자로 센다. */
+/**
+ * **「기타」는 무전공이다.** 즐겨찾기의 계열 칸이 「공통」이거나 비어 있는 지원인데,
+ * 들여다보면 전부 자유전공·자율전공·융합 단위다 — 계열을 하나로 못 적는 모집단위니
+ * 그렇게 적힌 것이 맞다. 다만 표에서 넷째 줄로 따로 서면 예년 세 줄과 견주기가
+ * 어렵다. 그래서 **갈 만한 줄이 뚜렷할 때만** 세 줄 안으로 넣는다.
+ *
+ *   1) 모집단위 이름이 스스로 말할 때 — 「자유전공(공학)」·「ST자유전공학부_자연」
+ *   2) 그 학생의 **다른 지원**이 한쪽으로 몰려 있을 때 — 나머지 다섯 장이 모두
+ *      자연이면 이 한 장의 무전공도 자연으로 읽는 것이 실제에 가깝다
+ *
+ * 둘 다 아니면(다른 지원이 없거나 인문·자연이 갈릴 때) 「기타」로 남긴다.
+ * 넣은 건수는 표 아래에 적어 둔다 — 센 사람이 숫자만 보고 오해하지 않도록.
+ */
+function lineGuess(app, tally) {
+  const raw = lineOf(app);
+  if (raw !== '기타') return { line: raw, guessed: false };
+
+  /*
+   * 이름에서 힌트를 찾을 자리는 **괄호 안이나 밑줄 뒤**뿐이다. 이름 전체를 훑으면
+   * 「자유전공학부」의 「전공학부」에 든 「공학」이 걸려, 인문으로만 여섯 장을 쓴
+   * 학생의 KU자유전공학부가 자연·공학으로 간다 — 실제로 그랬다.
+   * 「전계열」처럼 계열을 안 가르는 꼬리는 힌트가 아니다.
+   */
+  const d = `${(app && app.dept) || ''}`;
+  const tail = ((d.match(/[(（]([^)）]*)[)）]/) || [])[1]
+    || (d.match(/_([^_]+)$/) || [])[1] || '').trim();
+  if (tail && !/전계열|전체|계열$/.test(tail)) {
+    if (/예체능|예능|체육|미술|음악/.test(tail)) return { line: '예체능', guessed: true };
+    if (/공학|자연|이학|의학|보건/.test(tail)) return { line: '자연·공학', guessed: true };
+    if (/인문|사회|상경|경상|어문|교육|법/.test(tail)) return { line: '인문', guessed: true };
+  }
+
+  const top = [...(tally || new Map())].sort((a, b) => b[1] - a[1]);
+  if (!top.length) return { line: '기타', guessed: false };
+  if (top.length > 1 && top[0][1] === top[1][1]) return { line: '기타', guessed: false };
+  return { line: top[0][0], guessed: true };
+}
+
+/** 올해 지원을 (계열 × 전형) 격자로 센다. 무전공을 넣은 건수도 함께. */
 function crossOf(rows) {
   const g = {};
   for (const line of [...LINE_ORDER, '기타']) {
     g[line] = { 계: 0 };
     for (const t of TYPE_ORDER) g[line][t] = 0;
   }
-  for (const { app } of rows) {
-    const line = lineOf(app);
+  /*
+   * 학생마다 계열이 또렷한 지원이 어느 쪽으로 몰렸는지 먼저 센다. **이 표가 세는
+   * 지원으로만** 센다 — 보관한 것이나 아직 후보인 것까지 넣으면 표의 숫자와
+   * 어긋난 근거로 넣게 된다.
+   */
+  const byHak = new Map();
+  for (const { app, student } of rows) {
+    const l = lineOf(app);
+    if (l === '기타') continue;
+    const hak = (student && student.hak) || '';
+    if (!byHak.has(hak)) byHak.set(hak, new Map());
+    const c = byHak.get(hak);
+    c.set(l, (c.get(l) || 0) + 1);
+  }
+  let guessed = 0;
+  for (const { app, student } of rows) {
+    const pick = lineGuess(app, byHak.get((student && student.hak) || ''));
+    const line = pick.line;
+    if (pick.guessed) guessed += 1;
     const t = typeLabel(app);
     if (!g[line]) continue;
     if (g[line][t] != null) g[line][t] += 1;
     g[line]['계'] += 1;
   }
+  g['_무전공'] = guessed;
   const total = { 계: 0 };
   for (const t of TYPE_ORDER) {
-    total[t] = Object.keys(g).reduce((a, k) => a + g[k][t], 0);
+    total[t] = [...LINE_ORDER, '기타'].reduce((a, k) => a + g[k][t], 0);
     total['계'] += total[t];
   }
   g['합계'] = total;
@@ -884,6 +940,15 @@ function crossTable(key, thisYear, subsetLabel, subsetRows) {
 
   table.appendChild(tbody);
   tw.appendChild(table);
+  /*
+   * 무전공을 세 줄 안에 넣었으면 그렇게 적어 둔다. 표에는 숫자만 남으므로,
+   * 어디서 온 숫자인지 한 줄이 없으면 다음 해에 이 표를 보는 사람이 알 길이 없다.
+   */
+  if (grid['_무전공']) {
+    tw.appendChild(el('p', 'note',
+      `자유전공·자율전공 등 계열이 하나로 정해지지 않은 지원 ${grid['_무전공']}건은,`
+      + ' 모집단위 이름과 그 학생의 다른 지원을 따라 세 계열에 넣어 세었습니다.'));
+  }
   return tw;
 }
 
