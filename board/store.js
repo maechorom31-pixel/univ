@@ -83,7 +83,12 @@ export function live() {
 }
 
 export async function load(opts) {
-  state.error = '';
+  /*
+   * 경고를 **통째로** 지우지 않는다. 공개 자료를 못 받은 것은 시트를 다시 받는다고
+   * 없어지는 일이 아니다. 지웠다가 `enrich()` 가 곧장 돌아오면 경고만 사라지고
+   * 자료는 여전히 없는 상태가 된다.
+   */
+  state.error = missingLabels().length ? state.error : '';
   offline = false;
   /*
    * **서버와 공개 자료를 동시에 부른다.** 예전에는 서버 응답(2~6초)을 다 기다린
@@ -225,29 +230,80 @@ const SOURCES = [
   ['ratio', 'data/ratio/board.json', indexRatio, ''],
 ];
 
-export async function enrich() {
-  if (state.enriched) return;
-  const missing = [];
-  const got = await Promise.all(SOURCES.map(async ([name, url, build, label]) => {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(String(res.status));
-      return build(await res.json());
-    } catch (err) {
-      if (label) missing.push(label);
-      return null;
-    }
-  }));
-  [ipgyeol, mojip, college, sched, ratio] = got;
-  rateCache.clear();
+/*
+ * **한 번 실패한 자료는 다시 받는다.**
+ * =====================================================================
+ * 예전에는 첫 시도가 끝나면 `state.enriched` 를 세우고 다음부터는 곧장 돌아왔다.
+ * 그래서 학교 망이 한 번 끊겨 입결·모집요강을 놓치면 **그 창을 닫을 때까지** 지표가
+ * 안 나왔다. 「새로고침」은 시트만 다시 받고 공개 자료는 손도 안 댔다. 더 나쁜 것은
+ * `load()` 가 맨 앞에서 `state.error` 를 비우는 바람에, 새로고침을 누르면 **경고만
+ * 사라지고 자료는 여전히 없는** 상태가 됐다는 것이다.
+ *
+ * 이제 **못 받은 것만** 다시 받는다. 받은 것은 건드리지 않으니 9MB 를 두 번 받는
+ * 일은 없다. 한 번 부를 때 그 자리에서 한 번 더 시도하고(짧은 망 끊김은 대개
+ * 여기서 걸린다), 그래도 안 되면 다음 「새로고침」 때 또 시도한다.
+ *
+ * 겹쳐 부르는 것도 막는다 — `load()` 가 화면마다 불려 같은 9MB 를 동시에 여러 번
+ * 받던 자리다.
+ */
+const loaded = Object.create(null);      // 이름 → 받았나
+let enriching = null;                    // 지금 받는 중인 약속
 
-  state.enriched = true;
-  linkCache.clear();
-  // 일부만 못 받아도 보드는 쓸 수 있다. 조용히 넘기지 말고 무엇이 빠졌는지 알린다.
-  state.error = missing.length
-    ? `불러오지 못한 자료 — ${missing.join(' · ')}. 해당 지표 없이 표시합니다.`
-    : '';
-  emit('change', 'enriched');
+const setSource = (name, value) => {
+  if (name === 'ipgyeol') ipgyeol = value;
+  else if (name === 'mojip') mojip = value;
+  else if (name === 'college') college = value;
+  else if (name === 'sched') sched = value;
+  else if (name === 'ratio') ratio = value;
+};
+
+/** 못 받은 자료의 이름들. 이름이 빈 자료(경쟁률)는 알리지 않는다. */
+function missingLabels() {
+  return SOURCES.filter(([name, , , label]) => label && !loaded[name]).map((s) => s[3]);
+}
+
+const pause = (ms) => new Promise((done) => { setTimeout(done, ms); });
+
+export async function enrich() {
+  if (enriching) return enriching;
+  const todo = SOURCES.filter(([name]) => !loaded[name]);
+  if (!todo.length) {
+    state.enriched = true;
+    return undefined;
+  }
+  enriching = (async () => {
+    await Promise.all(todo.map(async ([name, url, build]) => {
+      for (let i = 0; i < 2; i += 1) {
+        try {
+          // 다시 받을 때는 캐시를 건너뛴다 — 실패한 응답이 캐시에 남았을 수 있다
+          const res = await fetch(url, i ? { cache: 'reload' } : undefined);
+          if (!res.ok) throw new Error(String(res.status));
+          const built = build(await res.json());
+          setSource(name, built);
+          loaded[name] = true;
+          return;
+        } catch (err) {
+          if (i === 0) await pause(700);
+        }
+      }
+    }));
+    rateCache.clear();
+    state.enriched = true;
+    linkCache.clear();
+    // 일부만 못 받아도 보드는 쓸 수 있다. 조용히 넘기지 말고 무엇이 빠졌는지 알린다.
+    const missing = missingLabels();
+    state.error = missing.length
+      ? `불러오지 못한 자료 — ${missing.join(' · ')}. 해당 지표 없이 표시합니다.`
+        + ' 「새로고침」을 누르면 그것만 다시 받습니다.'
+      : '';
+    emit('change', 'enriched');
+  })();
+  try {
+    await enriching;
+  } finally {
+    enriching = null;
+  }
+  return undefined;
 }
 
 /* ── 선택 ───────────────────────────────────────────────────────── */
