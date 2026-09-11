@@ -224,6 +224,34 @@ def year_check(name, rows, units, url=''):
     return len(off) < 2, said
 
 
+def put(got, name, entry):
+    """받아 둔 것에 한 대학을 넣는다. **덮어쓰지 않는다.**
+
+    같은 주소를 다시 받은 것이면 제자리를 갈아 끼우지만, 같은 이름인데 주소가
+    다르면 둘 다 담는다. 홍익대가 그렇다 — 서울(11720891)과 세종(11720892)이
+    주소가 다른데 페이지는 둘 다 「홍익대학교」라고만 적는다. 덮어쓰면 한 장만
+    남아 멀쩡해 보이고, 세종 숫자가 서울 학생에게 붙는다.
+
+    둘 다 담으면 보드는 같은 이름이 둘인 것을 보고 「캠퍼스가 여럿입니다」라며
+    **비운다**(`board/ratio.js` 의 `pickUniv`). 틀린 숫자보다 빈 칸이 낫다.
+
+    두 장째를 담았으면 참을 돌려준다 — 부른 쪽이 선생님께 알린다.
+    """
+    key = univ_key(name)
+    old = got.get(key)
+    if old is None or not old.get('src') or old['src'] == entry.get('src'):
+        got[key] = entry
+        return False
+    n = 2
+    while '%s#%d' % (key, n) in got:
+        if got['%s#%d' % (key, n)].get('src') == entry.get('src'):
+            got['%s#%d' % (key, n)] = entry      # 같은 주소를 다시 받은 것
+            return False
+        n += 1
+    got['%s#%d' % (key, n)] = entry
+    return True
+
+
 def missing(univs):
     """지원한 대학 가운데 아직 최종이 없는 곳. 전문대는 뺀다(자료가 다르다)."""
     if not os.path.exists(WANTED):
@@ -246,7 +274,7 @@ def main(argv):
 
     got = {}
     for u in load_old():
-        got[univ_key(u['u'])] = u          # 이미 받아 둔 최종은 그대로 둔다
+        put(got, u['u'], u)                # 이미 받아 둔 최종은 그대로 둔다
     before = len(got)
 
     # 목록에 적어 준 주소는 사람이 확인한 것이라 그대로 담고,
@@ -257,7 +285,7 @@ def main(argv):
 
     stamp = rb.rb.kst_now().strftime('%Y-%m-%dT%H:%M')
     units = load_units()
-    fresh, failed, waiting, stale, odd = [], [], [], [], []
+    fresh, failed, waiting, stale, odd, twins = [], [], [], [], [], []
 
     # 전에 받아 둔 것도 같은 잣대로 한 번 더 본다 — 잣대가 없던 때 담긴 것이 있다
     for key, u in list(got.items()):
@@ -288,7 +316,8 @@ def main(argv):
             continue
         if why:
             odd.append((name, why))
-        got[univ_key(name)] = pack(name, rows, stamp, url)
+        if put(got, name, pack(name, rows, stamp, url)):
+            twins.append(name)
         fresh.append(name)
         mark = '' if (meta.get('final') or not trust) else '   ← 페이지는 아직 최종이라 안 적었습니다'
         print('  %-22s %4d행  「%s」%s' % (name, len(rows), said or '표기 없음', mark))
@@ -327,6 +356,12 @@ def main(argv):
               ' 다시 돌리면 됩니다.' % os.path.basename(URLS))
     else:
         print('\n지원한 대학은 모두 받았습니다.')
+    if twins:
+        print('\n같은 이름으로 두 장이 들어온 대학 %d곳 — 보드는 이런 대학의 경쟁률을'
+              ' 비웁니다.' % len(set(twins)))
+        for name in sorted(set(twins)):
+            print('   %-22s 페이지가 캠퍼스를 적지 않아 어느 쪽인지 가릴 수 없습니다'
+                  % name)
     if odd:
         # 전에 받아 둔 것을 다시 보고 새로 받기도 하므로 같은 대학이 두 번 들 수 있다
         seen, once = set(), []

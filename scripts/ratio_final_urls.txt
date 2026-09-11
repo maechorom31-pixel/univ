@@ -51,3 +51,9 @@ https://addon.jinhakapply.com/RatioV1/RatioH/Ratio12050481.html   # 서강대
 https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10860821.html   # 서울여대
 https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10501131.html   # 대전대
 https://ratio.uwayapply.com/Sl5KV2FhTVc6JkpmJSY6Jko3ZlRm          # 선문대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11720891.html   # 홍익대(서울)
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11720892.html   # 홍익대(세종)
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio30170741.html   # 한국공학대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10700541.html   # 국립목포해양대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10650761.html   # 명지대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10880591.html   # 서원대
