@@ -16,8 +16,10 @@
  *           하나뿐일 때만.
  *   모집단위 정규화한 이름이 **똑같은** 줄이 하나일 때만. 괄호 안까지 본다 —
  *           「건축학부」와 「건축학부(건축공학전공)」은 다른 모집단위다.
- *   모집인원 즐겨찾기와 대학 페이지가 둘 다 적었는데 다르면 붙이지 않는다.
- *           같은 이름의 다른 줄을 본 것일 수 있다.
+ *   모집인원 즐겨찾기와 대학 페이지가 둘 다 적었는데 다르면 **붙이되 표를 세운다**.
+ *           대학·전형·모집단위가 셋 다 똑같이 맞은 줄이라 다른 학과일 가능성은
+ *           낮고, 접수 중에 인원이 조정된 것이 흔하다. 다만 조용히 넘기지는
+ *           않는다 — 내보내기 화면이 양쪽 인원을 나란히 적어 확인을 청한다.
  *
  * 못 붙인 것은 사유와 함께 돌려준다. 내보내기 화면이 그 목록을 보여 주고,
  * 담임이 카드에서 손으로 적으면 그 값이 언제나 먼저다.
@@ -237,8 +239,8 @@ function appKind(app) {
 /**
  * 지원 한 건에 올해 경쟁률을 붙인다.
  *
- *   { ok: true, rate, quota, applied, univ, track, unit, stamp, final, why }
- *   { ok: false, reason: 'data'|'univ'|'track'|'unit'|'quota', note }
+ *   { ok: true, rate, quota, applied, univ, track, unit, stamp, final, why, warn }
+ *   { ok: false, reason: 'data'|'univ'|'track'|'unit', note }
  *
  * `final` 이 거짓이면 **아직 접수 중에 받아 둔 값**이다. 종이에는 싣지 않는다.
  */
@@ -255,10 +257,18 @@ export function rateOf(index, app) {
   const row = t.track.rows.get(key);
   if (row === null) return fail('unit', '같은 이름의 모집단위가 둘이라 가리지 못했습니다');
   if (!row) return fail('unit', `${t.track.name} 에 「${app.dept}」가 없습니다`);
-  // 모집인원이 어긋나면 같은 이름의 다른 줄을 본 것일 수 있다
-  if (app.quota != null && row.quota != null && Number(app.quota) !== Number(row.quota)) {
-    return fail('quota', `모집인원이 다릅니다 — 즐겨찾기 ${app.quota}명 · 경쟁률표 ${row.quota}명`);
-  }
+  /*
+   * 모집인원이 어긋나는 줄 — 붙이되 표를 세운다.
+   *
+   * 처음에는 여기서 버렸다. 그런데 여기까지 온 줄은 대학·전형·모집단위가 셋 다
+   * 똑같이 맞았고 그 전형에 그 이름의 줄이 하나뿐인 것이다. 다른 학과일 가능성보다
+   * 즐겨찾기의 인원이 대학 페이지와 다른 때의 것일 가능성이 훨씬 크다. 버리면
+   * 맞는 값을 손으로 옮겨 적게 된다. 대신 `warn` 을 달아 화면이 양쪽 인원을
+   * 나란히 보이고 확인을 청한다.
+   */
+  const warn = (app.quota != null && row.quota != null && Number(app.quota) !== Number(row.quota))
+    ? { kind: 'quota', mine: Number(app.quota), theirs: Number(row.quota) }
+    : null;
   return {
     ok: true,
     rate: row.rate,
@@ -270,5 +280,6 @@ export function rateOf(index, app) {
     stamp: u.univ.stamp,
     final: u.univ.final,
     why: t.why,
+    warn,
   };
 }

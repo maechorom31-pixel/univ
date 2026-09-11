@@ -239,18 +239,20 @@ function rateSource(app) {
     return { kind: 'typed', rate: typedRate(f.value), by: f.status === 'confirmed' ? '담임 확인' : '학생이 적음' };
   }
   const auto = store.finalRate(app);
-  if (auto.ok && auto.final && auto.rate != null) return { kind: 'auto', rate: auto.rate, hit: auto };
+  if (auto.ok && auto.final && auto.rate != null) {
+    return { kind: auto.warn ? 'warn' : 'auto', rate: auto.rate, hit: auto };
+  }
   if (auto.ok && auto.rate != null) return { kind: 'draft', rate: auto.rate, hit: auto };
   return { kind: 'miss', why: auto.note || '', reason: auto.reason || '' };
 }
 
 const REASON_KO = {
-  data: '자료 없음', univ: '대학', track: '전형', unit: '모집단위', quota: '모집인원',
+  data: '자료 없음', univ: '대학', track: '전형', unit: '모집단위',
 };
 
 function ratioPanel() {
   const rows = rowsForReport();
-  const seen = { typed: [], auto: [], draft: [], miss: [] };
+  const seen = { typed: [], auto: [], warn: [], draft: [], miss: [] };
   for (const { app, student } of rows) {
     const got = rateSource(app);
     seen[got.kind].push({ app, student, got });
@@ -259,7 +261,8 @@ function ratioPanel() {
   const box = el('section', 'panel ratio-panel');
   const head = el('div', 'panel-head');
   head.appendChild(el('h2', '', '올해 최종 경쟁률'));
-  head.appendChild(el('span', 'count num', `${seen.auto.length + seen.typed.length} / ${rows.length}건`));
+  const filled = seen.auto.length + seen.warn.length + seen.typed.length;
+  head.appendChild(el('span', 'count num', `${filled} / ${rows.length}건`));
   box.appendChild(head);
 
   if (!store.hasRatio()) {
@@ -272,10 +275,27 @@ function ratioPanel() {
 
   const stamp = store.ratioBuilt().replace('T', ' ');
   box.appendChild(el('p', 'section-label',
-    `대학 발표 최종 경쟁률에서 ${seen.auto.length}건이 저절로 붙었습니다.`
+    `대학 발표 최종 경쟁률에서 ${seen.auto.length + seen.warn.length}건이 저절로 붙었습니다.`
     + ` 카드에 적어 둔 값 ${seen.typed.length}건은 그대로 먼저 쓰입니다.`
     + ` 나머지 ${seen.draft.length + seen.miss.length}건은 비어 있습니다`
     + `(자료를 접은 때 ${stamp}).`));
+
+  /*
+   * 모집인원이 어긋난 채 붙은 것 — 맨 위에 둔다. 붙긴 붙었으니 종이에는 이미
+   * 실려 있고, 그래서 눈으로 한 번 보고 넘어갈 자리가 필요하다.
+   */
+  if (seen.warn.length) {
+    box.appendChild(fold(`모집인원이 다른 것 ${seen.warn.length}건 — 한 번 보아 주세요`,
+      '대학·전형·모집단위 이름은 셋 다 똑같이 맞았고, 그 전형에 그 이름의 줄은 하나뿐입니다.'
+      + ' 접수 중에 인원이 조정되면 이렇게 어긋납니다. 값은 붙여 두었으니 아닌 것만'
+      + ' 카드에서 지워 주시면 됩니다.',
+      seen.warn.map(({ app, student, got }) =>
+        `${student.hak} ${student.name} · ${shortUniv(app.univ)} ${app.dept} · ${typeText(app)}`
+        + ` — ${Number(got.rate).toFixed(2)} (즐겨찾기 ${got.hit.warn.mine}명 · 경쟁률표 ${got.hit.warn.theirs}명)`),
+      () => seen.warn.map(({ app, student, got }) =>
+        [student.hak, student.name, app.univ, app.dept, typeText(app),
+          Number(got.rate).toFixed(2), got.hit.warn.mine, got.hit.warn.theirs])));
+  }
 
   if (seen.draft.length) {
     box.appendChild(fold(`아직 최종이 아닌 곳 ${seen.draft.length}건`,
