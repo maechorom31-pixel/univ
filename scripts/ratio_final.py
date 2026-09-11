@@ -16,6 +16,7 @@
 진학어플라이는 학교·집 인터넷에서만 열린다(클라우드는 막혀 있다).
 """
 import json, os, re, sys, time, datetime
+import urllib.parse as urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -29,6 +30,25 @@ WANTED = os.path.join(HERE, 'ratio_wanted.json')
 SOURCES = os.path.join(HERE, 'ratio_sources.json')
 
 
+def unwrap(url):
+    """유웨이의 감싼 주소에서 표 주소를 꺼낸다.
+
+    대학 홈페이지의 「경쟁률 보기」가 이런 꼴을 주기도 한다.
+
+        https://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com
+        %2F<토큰>&applyURL=...&ratioNM=...
+
+    `ratioURL` 이 진짜 표 주소다. 그대로 두면 표가 없는 껍데기를 받는다.
+    """
+    m = re.search(r'[?&]ratioURL=([^&]+)', url or '')
+    if not m:
+        return url
+    inner = urlparse.unquote(m.group(1))
+    if inner.startswith('//'):
+        inner = 'https:' + inner
+    return inner if inner.startswith('http') else url
+
+
 def read_urls(path):
     """목록 파일에서 주소만 뽑는다. 「#」 뒤는 메모다."""
     out = []
@@ -37,7 +57,7 @@ def read_urls(path):
     for line in open(path, encoding='utf-8-sig'):
         line = line.split('#')[0].strip()
         if line.startswith('http'):
-            out.append(line)
+            out.append(unwrap(line))
     return out
 
 
@@ -220,7 +240,7 @@ def missing(univs):
 
 
 def main(argv):
-    urls = [a for a in argv if a.startswith('http')] or read_urls(URLS)
+    urls = [unwrap(a) for a in argv if a.startswith('http')] or read_urls(URLS)
     if not urls:
         raise SystemExit('받을 주소가 없습니다. %s 에 한 줄에 하나씩 적어 주세요.' % URLS)
 
@@ -308,8 +328,15 @@ def main(argv):
     else:
         print('\n지원한 대학은 모두 받았습니다.')
     if odd:
-        print('\n모집인원이 어긋나는 대학 %d곳 — 담긴 했으니 눈으로 한 번 보세요.' % len(odd))
+        # 전에 받아 둔 것을 다시 보고 새로 받기도 하므로 같은 대학이 두 번 들 수 있다
+        seen, once = set(), []
         for name, why in odd:
+            if name in seen:
+                continue
+            seen.add(name)
+            once.append((name, why))
+        print('\n모집인원이 어긋나는 대학 %d곳 — 담긴 했으니 눈으로 한 번 보세요.' % len(once))
+        for name, why in once:
             print('   %-22s %s' % (name, why))
     if stale:
         print('\n작년 표로 보여 뺀 대학 %d곳 — 올해 주소를 다시 구해 주세요.' % len(stale))
