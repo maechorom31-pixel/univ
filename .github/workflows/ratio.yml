@@ -3,11 +3,14 @@
 # 일정(schedule)은 저장소의 기본 브랜치에서만 돈다. 이 브랜치가 기본이 아니면
 # Actions 탭에서 「Run workflow」로 손수 돌리거나, 저장소 설정에서 기본 브랜치를 바꾼다.
 name: ratio
+# 접수가 끝나 **일정은 멈춰 두었다.** 이제 받는 것은 최종 경쟁률뿐이고, 그것은
+# 대학마다 주소가 따로라 사람이 구해 와야 한다(scripts/ratio_final_urls.txt).
+# 내년 접수 기간에 아래 cron 주석을 풀면 실시간 수집이 다시 돈다.
 on:
   workflow_dispatch:
-  schedule:
-    # UTC 기준. 한국 시각 9~21시 매시 정각 = UTC 0~12시. 접수 기간(9월 7~11일)만.
-    - cron: '0 0-12 7-11 9 *'
+  # schedule:
+  #   # UTC 기준. 한국 시각 9~21시 매시 정각 = UTC 0~12시. 접수 기간(9월 7~11일)만.
+  #   - cron: '0 0-12 7-11 9 *'
 permissions:
   contents: write
 concurrency:

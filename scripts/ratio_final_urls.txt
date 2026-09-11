@@ -1,0 +1,25 @@
+# 최종 경쟁률 주소 — 한 줄에 하나.
+#
+# 대학 이름은 페이지가 스스로 말해 주므로 주소만 적으면 됩니다.
+# 앞에 「#」을 붙이면 건너뜁니다. 같은 대학을 두 번 적으면 나중 것이 이깁니다.
+#
+# 진학어플라이  https://addon.jinhakapply.com/RatioV1/RatioH/Ratio########.html
+# 유웨이        https://ratio.uwayapply.com/<토큰>
+# 그 밖의 대학 자체 사이트 주소도 그대로 적으면 됩니다.
+
+# ── 2027 수시 (2026년 9월) ──────────────────────────────────
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10690271.html   # 목포대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10720401.html   # 국립부경대
+https://ratio.uwayapply.com/Sl5KOkxpSmYlJjomSjdmVGY=              # 배재대
+https://ratio.uwayapply.com/Sl5KcldhJmFhTkpmJSY6Jko3ZlRm          # 우송대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11690691.html   # 호남대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11010851.html   # 숭실대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10550541.html   # 동국대(서울)
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11080811.html   # 연세대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11650731.html   # 한양대(ERICA)
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10920591.html   # 성균관대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10281081.html   # 공주대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10100811.html   # 건양대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11540991.html   # 항공대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10950721.html   # 세종대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10981501.html   # 숙명여대
