@@ -27,7 +27,11 @@ const MY_CLASS_KEY = 'board.myClass';
 
 let myClass = '';    // 이 컴퓨터의 기본 반 (이 컴퓨터만의 취향이라 store에 두지 않는다)
 let notice = '';
-let busy = false;
+/*
+ * 예전에는 여기 `busy` 가 있었다 — 서버 왕복이 끝날 때까지 보드를 통째로 잠그는
+ * 빗장이다. 이제 쓰기는 `store` 가 줄 세워 뒤에서 보내고 화면은 기다리지 않는다.
+ * 아직 못 보낸 쓰기가 있는지는 `store.pendingWrites()` 가 안다.
+ */
 /** 명단을 「아직 다 마감 안 된 학생」만으로 좁혀 보는 중인가 — 접수 마감 뒤 챙길 때 */
 let onlyOpen = false;
 
@@ -78,7 +82,8 @@ export function start() {
   let lastPull = Date.now();
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState !== 'visible') return;
-    if (!store.live() || !store.state.ready || busy) return;
+    // 아직 못 보낸 쓰기가 있으면 다시 불러오지 않는다 — 방금 옮긴 것을 덮어쓴다
+    if (!store.live() || !store.state.ready || store.pendingWrites()) return;
     if (Date.now() - lastPull < 60000) return;
     lastPull = Date.now();
     try {
@@ -342,7 +347,16 @@ function render() {
       + store.state.unknownCols.slice(0, 4).join(', '),
     ));
   }
-  if (notice) main.appendChild(banner(notice));
+  /*
+   * **아직 안 보낸 쓰기가 있으면 그렇게 적는다.** 화면은 이미 바뀌어 있으니 선생님은
+   * 계속 옮기면 되지만, 창을 닫아도 되는지는 알아야 한다. 잠그는 대신 말해 준다.
+   */
+  const saving = store.pendingWrites();
+  if (notice || saving) {
+    const text = [notice, saving ? `저장 중 ${saving}건 — 끝날 때까지 창을 닫지 마세요.` : '']
+      .filter(Boolean).join(' ');
+    main.appendChild(banner(text));
+  }
   main.appendChild(waitingPanel());
 
   const student = store.state.students.get(store.selection.hak);
@@ -1237,7 +1251,7 @@ function mover(app) {
     }
   }
   const lk = store.lockOf(app);
-  sel.disabled = busy || Boolean(lk);
+  sel.disabled = Boolean(lk);
   if (lk) sel.title = '★ 마감된 카드 — 옮기려면 「★ 풀기」를 먼저 눌러 주세요';
   sel.onchange = () => move(app, sel.value);
   box.appendChild(sel);
@@ -1256,17 +1270,17 @@ function mover(app) {
       ? `★ 마감 — ${lk.by || ''}${lk.at ? ` · ${String(lk.at).slice(0, 10)}` : ''}. 누르면 풉니다`
       : '★ 마감 — 원서를 낸 카드를 잠급니다. 학생 화면도 같이 잠깁니다';
     star.setAttribute('aria-label', `${app.univ} ${app.dept} ${lk ? '마감 풀기' : '마감'}`);
-    star.disabled = busy;
-    star.onclick = async () => {
-      if (busy) return;
-      busy = true;
-      try {
-        await store.setLock(app, !lk);
-        notice = lk ? `${shortName(app)} 마감을 풀었습니다.` : `★ ${shortName(app)}을(를) 마감했습니다. 이 카드는 이제 옮기지 않습니다.`;
-      } catch (err) { notice = `오류: ${err.message}`; }
-      busy = false;
+    // 마감도 서버를 기다리지 않는다 — 표시는 곧바로 바뀌고, 쓰기는 줄을 선다
+    star.onclick = () => {
+      const write = store.setLock(app, !lk);
+      notice = lk ? `${shortName(app)} 마감을 풀었습니다.` : `★ ${shortName(app)}을(를) 마감했습니다. 이 카드는 이제 옮기지 않습니다.`;
       renderRoster();
       render();
+      Promise.resolve(write).catch((err) => {
+        notice = `오류: ${err.message}`;
+        renderRoster();
+        render();
+      });
     };
     box.appendChild(star);
   }
@@ -1477,7 +1491,6 @@ function glide(before) {
 }
 
 async function move(app, value) {
-  if (busy) return;
   if (store.lockOf(app)) {
     notice = `★ ${shortName(app)}은(는) 마감된 카드라 옮길 수 없습니다. 카드의 「★ 풀기」를 먼저 눌러 주세요.`;
     render();
@@ -1525,12 +1538,15 @@ async function move(app, value) {
       : { id: pushed.id, slot: 'pool', rank: null });
   }
 
-  busy = true;
-  let failed = null;
-  // 그리기 전에 자리를 재 둔다. `placeMany` 는 서버를 기다리기 전에 먼저
-  // 자리를 바꾸고 알리므로, 이 줄이 끝나면 화면은 이미 새로 그려져 있다.
+  /*
+   * **서버를 기다리지 않는다.** 자리는 `placeMany` 가 먼저 바꾸고 알리므로 카드는
+   * 누른 순간 움직인다. 예전에는 여기서 `busy` 를 세워 서버 왕복(1~6초)이 끝날
+   * 때까지 보드를 통째로 잠갔다 — 순위 고르개와 ★ 가 `disabled` 가 되어, 후보 넷을
+   * 올리려면 넷을 하나씩 기다려야 했다. 쓰기는 `store` 가 차례대로 줄 세워 보낸다.
+   */
+  // 그리기 전에 자리를 재 둔다. 이 줄이 끝나면 화면은 이미 새로 그려져 있다.
   const was = cardRects();
-  const write = store.placeMany(moves, { pair }).catch((err) => { failed = err; });
+  const write = store.placeMany(moves, { pair });
   glide(was);
 
   /*
@@ -1549,9 +1565,14 @@ async function move(app, value) {
     notice = '';
   }
 
-  await write;
-  busy = false;
-  if (failed) {
+  renderRoster();
+  render();
+
+  /*
+   * 실패는 **뒤늦게** 온다. 그때 화면을 다시 그려 알린다 — 그 사이 선생님이 다른
+   * 카드를 옮겼어도 그 뜻은 그대로 두고, 이 쓰기만 되돌아온다(`store.placeMany`).
+   */
+  write.catch(async (failed) => {
     /*
      * 「그 사이에 바뀌었다」(stale)면 **스스로 다시 불러온다.** 학생 화면과 같은
      * 처리다 — 안 그러면 seen 이 낡은 채 남아 다음 옮기기도 전부 거절되고,
@@ -1567,9 +1588,9 @@ async function move(app, value) {
     } else {
       notice = `오류: ${failed.message}`;
     }
-  }
-  renderRoster();
-  render();
+    renderRoster();
+    render();
+  });
 }
 
 /* ── 조각 ─────────────────────────────────────────────────────── */

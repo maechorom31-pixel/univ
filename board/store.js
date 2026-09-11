@@ -601,6 +601,38 @@ export const ratioBuilt = () => (ratio && ratio.built) || '';
  * `seen` 은 이 학생 배치를 마지막으로 본 시각이다. 그 사이에 저쪽이 바꿨으면
  * 서버가 안 쓰고 그렇다고 말한다 — 덮어쓰고 나서 알리는 것보다 낫다.
  */
+/*
+ * **쓰기는 줄을 세우고, 화면은 기다리지 않는다.**
+ * =====================================================================
+ * 자리를 옮기면 화면은 곧바로 바뀌지만(`emit` 이 먼저다), 서버 왕복은 Apps Script
+ * 라 1~6초가 걸린다. 예전에는 그 왕복이 끝날 때까지 보드가 **통째로 잠겼다** —
+ * 순위 고르개와 ★ 단추가 `disabled` 가 되고, 다음 카드를 못 옮겼다. 후보 넷을
+ * 올리려면 넷을 하나씩 기다려야 했다.
+ *
+ * 그렇다고 한꺼번에 보낼 수는 없다. 서버는 `seen`(마지막으로 본 시각)으로 「그 사이에
+ * 바뀌었나」를 가리는데, 두 쓰기가 겹치면 뒤엣것이 낡은 `seen` 을 들고 가 거절된다.
+ *
+ * 그래서 **차례는 지키되 화면은 안 붙잡는다.** 앞 쓰기가 끝나야 다음이 나가고,
+ * 선생님은 그동안 계속 옮길 수 있다. `seen` 은 보낼 때 읽는다 — 줄에 설 때 읽으면
+ * 앞 쓰기가 갱신한 값을 못 본다.
+ */
+let chain = Promise.resolve();
+let pending = 0;
+
+function enqueue(task) {
+  pending += 1;
+  if (pending === 1) emit('change', 'pending');
+  const run = chain.then(task, task);
+  chain = run.catch(() => {});          // 하나가 실패해도 줄은 계속 돈다
+  return run.then(
+    (v) => { pending -= 1; if (!pending) emit('change', 'pending'); return v; },
+    (e) => { pending -= 1; if (!pending) emit('change', 'pending'); throw e; },
+  );
+}
+
+/** 아직 서버에 못 보낸 쓰기 수. 화면이 「저장 중」을 적는 데 쓴다. */
+export const pendingWrites = () => pending;
+
 export async function placeMany(moves, opts = {}) {
   const before = moves.map(({ id }) => [String(id), placementOf(id)]);
   for (const { id, slot, rank } of moves) {
@@ -610,21 +642,38 @@ export async function placeMany(moves, opts = {}) {
   emit('change', 'state');
   if (offline) return;
   const head = moves[0];
-  const app = state.apps.get(String(head.id));
-  try {
-    const res = await api.setRank({
-      id: head.id, hak: app.hak, slot: head.slot,
-      rank: head.slot === 'rank' ? head.rank : '',
-      // 「같이 고민」 — 찬 칸에 밀어내지 않고 나란히 넣는다. 서버가 둘까지만 받는다.
-      pair: opts.pair ? 1 : '',
-      seen: state.seen.get(String(app.hak)) || '',
-    });
-    if (res && res.at) state.seen.set(String(app.hak), String(res.at));
-  } catch (err) {
-    for (const [id, was] of before) state.placement.set(id, was);
-    emit('change', 'state');
-    throw err;
-  }
+  return enqueue(async () => {
+    const app = state.apps.get(String(head.id));
+    try {
+      const res = await api.setRank({
+        id: head.id, hak: app.hak, slot: head.slot,
+        rank: head.slot === 'rank' ? head.rank : '',
+        // 「같이 고민」 — 찬 칸에 밀어내지 않고 나란히 넣는다. 서버가 둘까지만 받는다.
+        pair: opts.pair ? 1 : '',
+        seen: state.seen.get(String(app.hak)) || '',
+      });
+      if (res && res.at) state.seen.set(String(app.hak), String(res.at));
+    } catch (err) {
+      /*
+       * **되돌리되, 그 뒤에 또 옮긴 카드는 건드리지 않는다.** 화면이 안 기다리므로
+       * 실패를 알기 전에 같은 카드를 다시 옮겼을 수 있다. 지금 자리가 내가 적어 둔
+       * 그대로일 때만 되돌린다. 아니면 그 뒤의 뜻이 이긴다 — 서버 쪽 진실은
+       * 「그 사이에 바뀌었다」(stale)로 돌아와 화면이 다시 불러온다.
+       */
+      let undone = false;
+      for (const [id, was] of before) {
+        const now = state.placement.get(id) || { slot: 'pool', rank: null };
+        const mine = moves.find((m) => String(m.id) === id);
+        const same = mine && now.slot === mine.slot
+          && (now.rank || null) === (mine.slot === 'rank' ? mine.rank : null);
+        if (!same) continue;
+        state.placement.set(id, was);
+        undone = true;
+      }
+      if (undone) emit('change', 'state');
+      throw err;
+    }
+  });
 }
 
 /**
@@ -905,13 +954,15 @@ export async function setLock(app, on) {
   } else state.fields.delete(key);
   emit('change', 'state');
   if (offline) return;
-  try {
-    await api.setLock(app.hak, app.id, on);
-  } catch (err) {
-    state.fields = before;
-    emit('change', 'state');
-    throw err;
-  }
+  return enqueue(async () => {
+    try {
+      await api.setLock(app.hak, app.id, on);
+    } catch (err) {
+      state.fields = before;
+      emit('change', 'state');
+      throw err;
+    }
+  });
 }
 
 /** 이 학생의 6칸·전문대 지원 카드 중 마감된 것 — 명단의 ★ 는 전부 마감일 때만 붙는다. */
