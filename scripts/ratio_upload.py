@@ -15,7 +15,7 @@ Repository access 에서 이 저장소만 고르고, Permissions → Contents �
 data/ratio/board.json(상담 보드가 읽는 파일).
 한 커밋으로 묶어 올린다 — 페이지 배포가 커밋마다 새로 시작되어 앞 것을 취소하기 때문.
 """
-import base64, hashlib, json, os, sys, urllib.request, urllib.error
+import base64, hashlib, json, os, re, sys, urllib.request, urllib.error
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = json.load(open(os.path.join(ROOT, 'scripts', 'ratio_sources.json'), encoding='utf-8'))
@@ -153,6 +153,20 @@ def save_token():
         t = ''
     if not t:
         raise SystemExit('  아무것도 안 넣으셨습니다.')
+    # 붙여 넣다 엉뚱한 것이 들어오면 파이썬이 헤더를 만들다 그대로 터진다.
+    # 오류 덩어리 대신 무엇이 잘못됐는지 한 줄로 말해 준다.
+    bad = [c for c in t if not (32 < ord(c) < 127)]
+    if bad:
+        raise SystemExit('\n  토큰에 영문·숫자가 아닌 글자가 섞여 있습니다(%s).\n'
+                         '  다른 것을 붙여 넣으셨거나 복사할 때 딸려 온 것 같습니다.'
+                         % ''.join(sorted(set(bad))[:5]))
+    if len(t) < 20:
+        raise SystemExit('\n  토큰이 너무 짧습니다(%d글자). 앞뒤가 잘리지 않았는지 봐 주세요.'
+                         % len(t))
+    # GitHub 토큰은 github_pat_ · ghp_ 처럼 gh 로 시작한다(아주 옛 것은 16진수 40자).
+    if not (t.startswith('gh') or re.fullmatch(r'[0-9a-f]{40}', t)):
+        raise SystemExit('\n  GitHub 토큰으로 보이지 않습니다(토큰은 github_pat_ 나 ghp_ 로'
+                         ' 시작합니다).\n  비밀번호나 다른 것을 붙여 넣으신 것 같습니다.')
     st, d = call(t, 'GET', '')
     if st == 401:
         raise SystemExit('\n  토큰이 맞지 않습니다. 복사할 때 앞뒤가 잘리지 않았는지 봐 주세요.')
