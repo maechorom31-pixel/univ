@@ -672,6 +672,35 @@ console.log('특별전형 갈래가 어긋나면 후보가 아니다');
   eq(got.type, '종합(전남교육감)', '다문화 표시가 한쪽에만 있어도 이름이 맞으면 잇는다');
 }
 
+/* ── 모집요강 줄을 이름으로 못 맞추면 작년 숫자를 비운다 ───────── */
+
+console.log('전형 이름 정규화 — 모집요강 쪽도 같은 잣대');
+eq(normType('학생부교과[일반학생전형]'), normType('학생부교과(일반학생전형)'), '대괄호와 괄호');
+eq(normType('학생부교과:학교추천'), normType('학생부교과(학교추천전형)'), '쌍점과 「전형」');
+eq(normType('학생부종합(학생부종합전형I)'), normType('학생부종합(학생부종합전형Ⅰ)'),
+  '한글 뒤의 로마자 I 는 숫자 1 로 본다');
+eq(normType('AI융합학부') === normType('A1융합학부'), false, '「AI」의 I 는 건드리지 않는다');
+
+console.log('이름으로 못 맞춘 모집요강 줄의 숫자는 쓰지 않는다');
+{
+  const mk = (byName) => {
+    const rows = [{ type: '학생부종합(활동우수형)', quota: 15, quotaPrev: 15, rate26: 6.13, filled26: 20, stages: 1 }];
+    rows.byName = byName;
+    return { confidence: 'none', kind: 'univ', ipgyeol: [], college: [], mojip: rows,
+      related: [], before: null, why: '입결 자료에 없습니다', alias: null };
+  };
+  const app = { typeSub: '학생부종합(기회균형)', typeCat: '학생부위주(종합)', quota: null };
+  const off = summarize(mk(false), app);
+  eq(off.quotaPrev, null, '작년 모집인원을 비운다');
+  eq(off.real.value, null, '작년 실질경쟁률을 비운다');
+  eq(off.quotaNow, null, '올해 모집인원도 그 줄에서 가져오지 않는다');
+  eq(off.mojipOff, true, '왜 비었는지 화면이 말할 수 있게 표시를 남긴다');
+
+  const on = summarize(mk(true), app);
+  eq(on.quotaPrev, 15, '이름이 맞은 줄이면 그대로 쓴다');
+  eq(on.mojipOff, false, '표시도 서지 않는다');
+}
+
 if (!files.length) {
   console.log('\n시트 픽스처를 넘기지 않아 규칙 확인만 했습니다.');
   process.exit(fails ? 1 : 0);

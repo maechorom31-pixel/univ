@@ -343,6 +343,19 @@ export function detailPanel(app, student, onClose) {
    * 대조군의 78.3% 와 같은 수준이고, 같은 모집인원에 무작위 값을 넣었을 때의 16.9%
    * 와는 딴판이다. 시간 서식이었다면 이 정합이 나올 수 없다. 그대로 쓴다.
    */
+  /*
+   * **작년 숫자를 왜 비웠는지 적는다.** 모집요강에서 이 전형 줄을 못 찾으면 작년
+   * 모집인원도 실질경쟁률도 비운다(`summarize` 의 `mojipOff`). 그냥 비어 있으면
+   * 「자료가 덜 들어왔나」로 읽히지만, 실제로는 **모집요강에 이 전형 줄이 없는 것**이다.
+   * 기회균형·사회통합처럼 정원 외 전형에서 흔하다.
+   */
+  if (s && s.mojipOff) {
+    quotaBlock.appendChild(el('p', 'hint',
+      `모집요강에서 이 전형 줄을 찾지 못해 작년 모집인원과 실질경쟁률을 비웠습니다`
+      + `${s.mojip && s.mojip.type ? ` — 이 학과에는 「${s.mojip.type}」 줄이 있습니다` : ''}.`
+      + ' 옆 전형의 숫자를 대신 적지 않습니다.'));
+  }
+
   const rated = (s && s.mine ? s.mine : []).filter((r) => r.rate != null);
   const under = rated.filter((r) => r.rate < 1);
   if (under.length) {

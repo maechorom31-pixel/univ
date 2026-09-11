@@ -239,6 +239,13 @@ const ROMAN = { 'Ⅰ': '1', 'Ⅱ': '2', 'Ⅲ': '3', 'Ⅳ': '4', 'Ⅴ': '5', 'ⅰ
 export function normType(name) {
   return String(name || '')
     .replace(/[ⅠⅡⅢⅣⅤⅰⅱⅲ]/g, (c) => ROMAN[c])
+    /*
+     * 한글 바로 뒤의 「I·II·III」도 숫자로 본다. 즐겨찾기는 「학생부종합전형I」,
+     * 모집요강은 「학생부종합전형Ⅰ」로 적어 같은 전형이 남남이 됐다. 한글 뒤로 좁힌
+     * 것은 「AI」·「IT」를 건드리지 않으려는 것이고, 뒤돌아보기(lookbehind)를 안 쓴
+     * 것은 구형 사파리가 못 읽기 때문이다.
+     */
+    .replace(/([가-힣])(I{1,3})(?![A-Za-z])/g, (m, a, b) => a + b.length)
     .replace(/[\s()[\]·・,／/]/g, '')
     .replace(/[‐‑‒–—―\-ㆍ•∙‧，⋅+_']/g, '')
     .replace(/[:;~|.!?*#&=<>"“”‘’%@^`{}]/g, '')
@@ -1447,33 +1454,49 @@ export function pickIpgyeol(rows, app, mojip) {
  * 이름이 딱 맞는 줄 → 카테고리(교과/종합/논술/실기)라도 맞는 줄 → 그래도 없으면 원래 순서.
  * 골라낸 줄을 앞으로 옮길 뿐 버리지는 않는다. 상세에서 나머지도 볼 수 있어야 한다.
  */
+/*
+ * **이름 맞추기는 입결 쪽과 같은 잣대(`normType`)를 쓴다.**
+ *
+ * 여태 여기만 따로 약한 정규화(`norm`: 공백·괄호·가운뎃점만 제거)를 썼다. 그래서
+ * 같은 전형을 적은 것이 서로 다른 이름이 됐다.
+ *
+ *     고려대   학생부교과:학교추천        ↔  학생부교과(학교추천전형)      쌍점
+ *     경국대   학생부교과[일반학생전형]    ↔  학생부교과(일반학생전형)      대괄호
+ *     한국외대 학생부종합(학생부종합전형(면접형)) ↔ 학생부종합(면접형)      겹친 이름
+ *     중부대   학교생활우수자(항공…)      ↔  학교생활우수자전형(항공…)     「전형」
+ *
+ * 이름이 안 맞으면 그 학과의 **다른 전형 줄**이 맨 앞에 서고, 카드와 종이가 그 줄의
+ * 작년 모집인원·실질경쟁률을 이 지원의 것인 양 적는다.
+ *
+ * **비기면 이름으로 맞은 것이 아니다.** 두 줄이 똑같이 맞으면 어느 쪽인지 모르는
+ * 것이고, 모르면 숫자를 비우는 편이 맞다.
+ */
 function pickMojip(rows, app) {
-  const want0 = norm(app.typeSub) || norm(app.typeName);
-  if (rows.length < 2) {
-    const out = rows.slice();
-    const t = rows[0] ? norm(rows[0].type) : '';
-    out.byName = Boolean(want0 && t && (t === want0 || t.includes(want0) || want0.includes(t)));
-    return out;
-  }
-  const want = norm(app.typeSub) || norm(app.typeName);
+  const want = normType(app.typeSub) || normType(app.typeName);
   const cat = catOf(app.typeCat);
   const score = (r) => {
-    const t = norm(r.type);
-    if (want && t && (t === want || t.includes(want) || want.includes(t))) return 0;
-    if (cat && r.type && String(r.type).includes(cat)) return 1;
-    return 2;
+    const t = normType(r.type);
+    if (want && t) {
+      if (t === want) return 0;
+      if (t.includes(want) || want.includes(t)) return 1;
+    }
+    if (cat && r.type && String(r.type).includes(cat)) return 2;
+    return 3;
   };
   const sorted = rows.map((r, i) => [score(r), i, r])
     .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const out = sorted.map((x) => x[2]);
-  // 맨 앞 줄이 **이름으로** 맞은 것인지 표시해 둔다.
-  // 「올해 신설」은 이 줄의 작년 모집인원을 보고 말하는데, 이름도 못 맞춘 줄로
-  // 그런 말을 하면 옆 전형이 작년에 없었다는 이야기가 된다.
-  out.byName = sorted.length > 0 && sorted[0][0] === 0;
+  /*
+   * 맨 앞 줄이 **이름으로** 맞은 것인지 표시해 둔다. 「올해 신설」도, 작년 모집인원도,
+   * 작년 실질경쟁률도 이 표시를 보고 쓴다 — 이름도 못 맞춘 줄로 그런 말을 하면
+   * 옆 전형 이야기를 하는 셈이다.
+   */
+  const best = sorted.length ? sorted[0][0] : 3;
+  const tied = sorted.filter((x) => x[0] === best)
+    .map((x) => normType(x[2].type));
+  out.byName = best <= 1 && new Set(tied).size === 1;
   return out;
 }
-
-const norm = (s) => String(s || '').replace(/[\s()·]/g, '');
 
 /**
  * 전문대는 다른 자료를 본다 — College 저장소의 `data/departments.json`.
@@ -1592,9 +1615,12 @@ export function summarize(l, app) {
       // 입결을 못 붙였을 때는 **학과 단위**로 묻는다. 전형 줄이 아예 없어서다.
       isNew: deptIsNew(l.mojip), alias: l.alias || null, nearby: null, catMissing: null,
       mojip: mo,
-      quotaNow: app && app.quota != null ? app.quota : (mo ? mo.quota : null),
-      quotaPrev: mo ? mo.quotaPrev : null,
-      real: mo ? realRate(mo.rate26, mo.quotaPrev, mo.filled26) : NO_RATE,
+      /* 이름으로 맞은 줄일 때만 숫자를 쓴다 — 아래 일반 갈래와 같은 규칙이다. */
+      quotaNow: app && app.quota != null ? app.quota
+        : (l.mojip.byName && mo ? mo.quota : null),
+      quotaPrev: l.mojip.byName && mo ? mo.quotaPrev : null,
+      real: l.mojip.byName && mo ? realRate(mo.rate26, mo.quotaPrev, mo.filled26) : NO_RATE,
+      mojipOff: Boolean(mo) && !l.mojip.byName,
       stages: mo ? mo.stages : null,
     };
   }
@@ -1665,6 +1691,22 @@ export function summarize(l, app) {
    * 가리지 못했으면 끊긴 쪽 줄을 그대로 두고, 카드가 「2023년까지만 있습니다」라고
    * 적는다. 가린 근거도 화면에 적는다 — 숨기면 그냥 오연결이다.
    */
+  /*
+   * **이름으로 못 맞춘 모집요강 줄의 숫자는 이 지원의 것이 아니다.**
+   *
+   * 그 학과에 전형이 여럿이면 모집요강 줄도 여럿이고, 이름을 못 맞추면 맨 앞에 서는
+   * 것은 **다른 전형 줄**이다. 여태 그 줄의 작년 모집인원과 실질경쟁률을 그대로 적었다.
+   *
+   *     연세대 영어영문 기회균형   →  활동우수형의 작년 모집 15 · 실질 2.63
+   *     고려대 자유전공 고른기회   →  학업우수전형의 작년 모집 21 · 실질 6.88
+   *     순천향대 경찰행정 사회통합 →  일반학생전형의 작년 모집 7 · 실질 13.0
+   *
+   * 기회균형은 모집요강 자료에 줄 자체가 없는 일이 많다. 없는 것을 옆줄로 메우면
+   * 종이에 그럴듯한 숫자가 실리고, 그게 옆 전형 것이라고는 어디에도 안 적힌다.
+   * **없으면 비운다.** 전형단계는 학과·대학 단위 정보라 그대로 둔다.
+   */
+  const byName = Boolean(mo && l.mojip && l.mojip.byName);
+
   const stale = staleOf(rows, mineRows, app, l.mojip);
   if (stale && stale.heir) mineRows = stale.heir.rows;
 
@@ -1705,9 +1747,11 @@ export function summarize(l, app) {
     quota: latest ? latest.quota : null,
     mojip: mo,
     // 모집인원 증감과 실질경쟁률은 모집요강에서 온다. 화면에서 다시 계산하지 않는다.
-    quotaNow: app && app.quota != null ? app.quota : (mo ? mo.quota : null),
-    quotaPrev: mo ? mo.quotaPrev : null,
-    real: mo ? realRate(mo.rate26, mo.quotaPrev, mo.filled26) : NO_RATE,
+    // 이름으로 맞은 줄일 때만 쓴다 — 아니면 옆 전형의 숫자다.
+    quotaNow: app && app.quota != null ? app.quota : (byName ? mo.quota : null),
+    quotaPrev: byName ? mo.quotaPrev : null,
+    real: byName ? realRate(mo.rate26, mo.quotaPrev, mo.filled26) : NO_RATE,
+    mojipOff: Boolean(mo) && !byName,
     stages: mo ? mo.stages : null,
   };
 }
