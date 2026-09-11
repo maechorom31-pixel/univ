@@ -25,10 +25,17 @@ echo.
 echo   [2/2] 저장소에 올립니다. 보드는 1~2분 뒤 갱신됩니다.
 git rev-parse --is-inside-work-tree > nul 2>&1
 if errorlevel 1 goto upload
-git add data\ratio\board.json scripts\ratio_final_urls.txt > nul 2>&1
+git add data\ratio\board.json scripts\ratio_final_urls.txt scripts\ratio_sources.json > nul 2>&1
 git commit -q -m "최종 경쟁률 %date% %time:~0,5%" > nul 2>&1
-git push -q
-if errorlevel 1 echo   (올리지 못했습니다. 인터넷을 확인하고 다시 돌려 주세요.)
+rem git push 가 아이디·토큰을 못 물어보고 조용히 실패하는 자리가 있다.
+rem 그러면 받아 놓고도 안 올라간 채 끝나므로, 실패하면 토큰으로 넘긴다.
+git push
+if errorlevel 1 (
+  echo.
+  echo   git 으로 올리지 못했습니다. 토큰으로 올려 봅니다.
+  echo.
+  goto upload
+)
 goto done
 
 :upload
