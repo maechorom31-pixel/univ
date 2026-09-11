@@ -30,6 +30,27 @@ OUT = os.path.join(ROOT, 'data', 'ratio', 'board.json')
 
 GENERIC_TRACK = re.compile(r'^(전형별|계열별|모집시기|모집단위별|학과별)')
 
+# 캠퍼스는 전형 제목의 앞이나 뒤에 붙는다.
+#   「광주캠퍼스 학생부교과(일반) 경쟁률 현황」   전남대·경희대
+#   「[논술위주] 논술우수자 경쟁률 현황 (죽전)」  단국대
+CAMPUS_HEAD = re.compile(r'^\s*([가-힣A-Za-z]{1,6})캠퍼스')
+CAMPUS_TAIL = re.compile(r'경쟁률\s*현황\s*[（(]\s*([^)）]{1,8})\s*[)）]')
+
+
+def campus_of(track):
+    """전형 제목에 적힌 캠퍼스.
+
+    `rb.clean_track` 은 이 표시를 지운다 — 화면은 대학 단위로 보여서 지워도 됐다.
+    보드는 지우면 안 된다. 전남대 광주와 여수는 전형 이름이 똑같아서, 지우고 나면
+    한 전형으로 합쳐지고 **여수 지원자에게 광주 경쟁률이 붙는다.**
+    """
+    t = track or ''
+    m = CAMPUS_TAIL.search(t)
+    if m:
+        return m.group(1).strip()
+    m = CAMPUS_HEAD.match(t)
+    return m.group(1).strip() if m else ''
+
 
 def _num(x):
     try:
@@ -83,7 +104,7 @@ def latest_pages(snaps):
 
 
 def rows_of(page):
-    """내보낼 줄만 남긴다. (전형, 모집단위, 세부) 가 겹치는 줄은 통째로 버린다."""
+    """내보낼 줄만 남긴다. (캠퍼스, 전형, 모집단위, 세부) 가 겹치는 줄은 통째로 버린다."""
     kept, seen = [], {}
     for row in rb.recover_tracks(page['rows']):
         if row.get('summary'):
@@ -93,23 +114,26 @@ def rows_of(page):
             continue
         if ',' in unit:
             continue                           # 학과 여럿을 묶은 계열모집 줄
-        track = rb.clean_track(row.get('track') or '')
+        raw = row.get('track') or ''
+        track = rb.clean_track(raw)
         if not track or GENERIC_TRACK.match(track):
             continue                           # 전형을 못 읽은 줄
+        campus = campus_of(raw)
         ratio = _num(row.get('ratio'))
         recruit = _num(row.get('recruit'))
         applied = _num(row.get('applied'))
         if ratio is None or ratio < 0:
             continue
         sub = (row.get('sub') or '').strip()
-        key = (track, unit, sub)
+        key = (campus, track, unit, sub)
         if key in seen:
             seen[key] = None                   # 겹치면 둘 다 못 쓴다
             continue
         seen[key] = len(kept)
-        kept.append({'t': track, 'm': unit, 's': sub, 'n': recruit, 'a': applied, 'r': ratio})
+        kept.append({'c': campus, 't': track, 'm': unit, 's': sub,
+                     'n': recruit, 'a': applied, 'r': ratio})
     drop = set(k for k, v in seen.items() if v is None)
-    return [r for r in kept if (r['t'], r['m'], r['s']) not in drop], len(drop)
+    return [r for r in kept if (r['c'], r['t'], r['m'], r['s']) not in drop], len(drop)
 
 
 def build(quiet=False):
@@ -127,7 +151,7 @@ def build(quiet=False):
             continue
         by_track = {}
         for r in rows:
-            by_track.setdefault(r['t'], []).append(r)
+            by_track.setdefault((r['c'], r['t']), []).append(r)
         total += len(rows)
         univs.append({
             'u': name,
@@ -137,15 +161,16 @@ def build(quiet=False):
             'src': got['src'],
             't': [{
                 'n': track,
+                'c': campus,
                 'k': rb.kind_of(track),
                 'r': [([r['m'], r['n'], r['a'], r['r']] + ([r['s']] if r['s'] else []))
-                      for r in by_track[track]],
-            } for track in sorted(by_track)],
+                      for r in by_track[(campus, track)]],
+            } for campus, track in sorted(by_track)],
         })
 
     payload = {
         'built': rb.kst_now().strftime('%Y-%m-%dT%H:%M'),
-        'note': '대학이 적은 이름 그대로. 줄은 [모집단위, 모집인원, 지원인원, 경쟁률, 세부].',
+        'note': '대학이 적은 이름 그대로. 전형은 {n 이름, c 캠퍼스, k 유형}, 줄은 [모집단위, 모집인원, 지원인원, 경쟁률, 세부].',
         'univs': univs,
         'dropped': sorted(dropped, key=lambda x: x['u']),
     }

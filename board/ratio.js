@@ -78,6 +78,9 @@ export function normTrack(name) {
   const raw = String(name || '');
   let t = raw.replace(/\s+/g, '');
   t = t.replace(/^[가-힣A-Za-z]{1,6}캠퍼스/, '');
+  // 「학생부교과(일반고전형)_교과중심」 — 호남대 페이지가 전형 이름 뒤에 붙이는
+  // 반영 방식 표시다. 전형 이름의 일부가 아니다.
+  t = t.replace(/_[가-힣]{0,4}중심$/, '');
   t = t.replace(/실기\/?실적/g, '');
   t = t.replace(/전형기간자율화/g, '');
   t = t.replace(/(학생부교과|학생부종합|전형|위주|모집|정원내|정원외|학생부)/g, '');
@@ -114,7 +117,9 @@ export function normUnit(name) {
   let s = String(name || '').replace(/\s+/g, '');
   s = s.replace(/[[［][^\]］]*[\]］]/g, '');
   s = s.replace(/[▲■★☆※◆●○△□▶▷*]/g, '');
-  s = s.replace(/[ㆍ•․.]/g, '·');
+  // 가운뎃점은 자료마다 글자가 다르다. 즐겨찾기는 「・」(U+30FB), 대학 페이지는
+  // 「·」(U+00B7) 를 쓴다 — 같은 학과가 서로 다른 이름이 되던 자리다.
+  s = s.replace(/[ㆍ・･•․‧∙⋅.]/g, '·');
   s = s.replace(/[-–—/()（）]/g, '·');
   s = s.replace(/·+/g, '·').replace(/^·|·$/g, '');
   s = s.replace(/(전공|과정)$/, '');
@@ -147,7 +152,9 @@ export function indexRatio(doc) {
         name: t.n,
         kind: t.k || kindOf(t.n),
         norm: normTrack(t.n),
-        campus: (String(t.n || '').match(/^\s*([가-힣A-Za-z]{1,6})캠퍼스/) || [])[1] || '',
+        // 캠퍼스는 자료가 적어 준다. 전남대 광주와 여수는 전형 이름이 똑같아서
+        // 이것이 없으면 여수 지원자에게 광주 경쟁률이 붙는다.
+        campus: campusWord(t.c || ''),
         rows,
       };
     });
@@ -215,6 +222,26 @@ function pickTrack(entry, app) {
       return fail('track', `이름이 같은 전형이 ${hit.length}개입니다`);
     }
   }
+  /*
+   * 앞부분까지 같은 전형이 하나뿐이면 그것 — 다만 표를 세운다.
+   *
+   * 대학 페이지는 전형 이름 뒤에 권역을 붙이곤 한다(전북대 「지역인재1유형전형-호남권」).
+   * 즐겨찾기에는 「지역인재전형 1유형」이라 적혀 있어 글자가 딱 떨어지지 않는다.
+   * 앞부분이 같은 후보가 **하나뿐일 때만** 잇고, 화면에 양쪽 이름을 적어 확인을 청한다.
+   * 둘 이상이면(「지역의사선발-광역권·군산권·…」) 고르지 않는다.
+   */
+  for (const probe of [app.typeSub, app.typeName]) {
+    if (!probe || typeOnly(probe)) continue;
+    const want = normTrack(probe);
+    if (want.length < 2) continue;
+    const hit = sameKind.filter((t) => t.norm.length >= 2
+      && (t.norm.startsWith(want) || want.startsWith(t.norm)));
+    if (hit.length === 1) {
+      return { ok: true, track: hit[0], why: '전형 이름의 앞부분이 같고 후보가 하나',
+        warn: { kind: 'track', mine: probe, theirs: hit[0].name } };
+    }
+    if (hit.length > 1) return fail('track', `앞부분이 같은 전형이 ${hit.length}개입니다`);
+  }
   // 즐겨찾기가 「학생부교과」처럼 유형만 적어 둔 지원 — 그 유형이 하나뿐이면 그것
   if ([app.typeSub, app.typeName].every((x) => !x || typeOnly(x))) {
     const strict = kind === '기타' ? [] : tracks.filter((t) => t.kind === kind);
@@ -239,7 +266,9 @@ function appKind(app) {
 /**
  * 지원 한 건에 올해 경쟁률을 붙인다.
  *
- *   { ok: true, rate, quota, applied, univ, track, unit, stamp, final, why, warn }
+ *   { ok: true, rate, quota, applied, univ, track, campus, unit, stamp, final, why, warn }
+ *   `warn` 은 「붙이긴 했으나 한 번 보아 주세요」 목록이다(전형 이름이 딱 떨어지지
+ *   않음 · 모집인원이 다름). 화면이 그 줄을 따로 모아 보인다.
  *   { ok: false, reason: 'data'|'univ'|'track'|'unit', note }
  *
  * `final` 이 거짓이면 **아직 접수 중에 받아 둔 값**이다. 종이에는 싣지 않는다.
@@ -266,9 +295,11 @@ export function rateOf(index, app) {
    * 맞는 값을 손으로 옮겨 적게 된다. 대신 `warn` 을 달아 화면이 양쪽 인원을
    * 나란히 보이고 확인을 청한다.
    */
-  const warn = (app.quota != null && row.quota != null && Number(app.quota) !== Number(row.quota))
-    ? { kind: 'quota', mine: Number(app.quota), theirs: Number(row.quota) }
-    : null;
+  const warn = [];
+  if (t.warn) warn.push(t.warn);
+  if (app.quota != null && row.quota != null && Number(app.quota) !== Number(row.quota)) {
+    warn.push({ kind: 'quota', mine: Number(app.quota), theirs: Number(row.quota) });
+  }
   return {
     ok: true,
     rate: row.rate,
@@ -276,10 +307,11 @@ export function rateOf(index, app) {
     applied: row.applied,
     univ: u.univ.univ,
     track: t.track.name,
+    campus: t.track.campus,
     unit: row.unit,
     stamp: u.univ.stamp,
     final: u.univ.final,
     why: t.why,
-    warn,
+    warn: warn.length ? warn : null,
   };
 }

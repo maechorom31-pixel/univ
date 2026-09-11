@@ -250,6 +250,13 @@ const REASON_KO = {
   data: '자료 없음', univ: '대학', track: '전형', unit: '모집단위',
 };
 
+/** 「붙이긴 했으나 보아 주세요」의 사유를 한 줄로. */
+function warnText(hit) {
+  return (hit.warn || []).map((w) => (w.kind === 'quota'
+    ? `모집인원 즐겨찾기 ${w.mine}명 · 경쟁률표 ${w.theirs}명`
+    : `전형 이름 「${w.mine}」 → 「${w.theirs}」`)).join(' · ');
+}
+
 function ratioPanel() {
   const rows = rowsForReport();
   const seen = { typed: [], auto: [], warn: [], draft: [], miss: [] };
@@ -285,16 +292,15 @@ function ratioPanel() {
    * 실려 있고, 그래서 눈으로 한 번 보고 넘어갈 자리가 필요하다.
    */
   if (seen.warn.length) {
-    box.appendChild(fold(`모집인원이 다른 것 ${seen.warn.length}건 — 한 번 보아 주세요`,
-      '대학·전형·모집단위 이름은 셋 다 똑같이 맞았고, 그 전형에 그 이름의 줄은 하나뿐입니다.'
-      + ' 접수 중에 인원이 조정되면 이렇게 어긋납니다. 값은 붙여 두었으니 아닌 것만'
-      + ' 카드에서 지워 주시면 됩니다.',
+    box.appendChild(fold(`한 번 보아 주실 것 ${seen.warn.length}건`,
+      '이름이 딱 떨어지지 않았거나 모집인원이 어긋난 것입니다. 붙이긴 했으니 종이에는'
+      + ' 이미 실려 있습니다. 아닌 것만 카드에서 지워 주시면 됩니다.',
       seen.warn.map(({ app, student, got }) =>
         `${student.hak} ${student.name} · ${shortUniv(app.univ)} ${app.dept} · ${typeText(app)}`
-        + ` — ${Number(got.rate).toFixed(2)} (즐겨찾기 ${got.hit.warn.mine}명 · 경쟁률표 ${got.hit.warn.theirs}명)`),
+        + ` — ${Number(got.rate).toFixed(2)} · ${warnText(got.hit)}`),
       () => seen.warn.map(({ app, student, got }) =>
         [student.hak, student.name, app.univ, app.dept, typeText(app),
-          Number(got.rate).toFixed(2), got.hit.warn.mine, got.hit.warn.theirs])));
+          Number(got.rate).toFixed(2), warnText(got.hit)])));
   }
 
   if (seen.draft.length) {
