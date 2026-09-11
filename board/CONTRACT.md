@@ -1065,6 +1065,13 @@ store.setField(app, store.INTERVIEW_FIELD, '없음')   // 빈 값이면 자동�
 
 ### 5.8 `board/stats.js` · `board/export.js` — 내보내기 (P7)
 
+**대학 차례는 문서 셋이 같다 — 예년 문서의 명단 그대로.** 서울대 · 연세대 · 고려대 ·
+한양대 … 지원 결과 보고서와 최종 결과 보고서는 묶음마다 `univOrder` 로 그 차례를
+따르고, 합격자 발표 현황은 `rankOfUniv` 로 묶음을 가로질러 같은 차례를 만든다
+(`data/report_history.json` 의 `ranking`). 예년 명단에 없는 대학은 그 뒤에 묶음 차례로
+붙는다. 같은 학생들을 적은 문서가 서로 다른 차례로 나오면 종이를 나란히 놓고 대조할
+때마다 대학을 찾아 헤매게 된다.
+
 ```js
 // stats.js — 순수 함수. 화면을 모른다.
 verdict(app)        // → {decided, passed, extra, stage1Out, minFail, enrolled, raw}

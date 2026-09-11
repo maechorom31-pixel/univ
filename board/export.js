@@ -122,6 +122,7 @@ async function loadJson(path) {
 async function loadHistory() {
   history = await loadJson('data/report_history.json');
   _index = null;
+  _order = null;
 }
 
 export function start() {
@@ -992,6 +993,48 @@ function groupOf(app) {
   return exact.get(full) || loose.get(bare(app.univ)) || null;
 }
 
+/*
+ * **대학 차례는 예년 문서의 명단 그대로다** — 서울대 · 연세대 · 고려대 · 한양대 …
+ *
+ * 지원 결과 보고서와 최종 결과 보고서는 `univOrder` 로 묶음마다 예년 명단을 따라
+ * 세운다. 합격자 발표 현황만 묶음 차례 안에서 가나다순이었다. 같은 학년의 같은
+ * 학생들을 적은 문서 셋이 서로 다른 차례로 나오면, 종이를 나란히 놓고 대조할 때마다
+ * 대학을 찾아 헤매게 된다.
+ *
+ * 예년 명단에 없는 대학은 그 뒤에, 묶음 차례를 지켜서 붙인다.
+ */
+let _order = null;
+function univRank() {
+  if (_order) return _order;
+  const exact = new Map();
+  const loose = new Map();
+  let n = 0;
+  for (const [key] of FINAL_GROUPS) {
+    const sec = ((history || {}).ranking || {})[key];
+    for (const r of (sec ? sec.rows : [])) {
+      const full = stats.univKey(r.name);
+      if (!exact.has(full)) exact.set(full, n);
+      const b = bare(r.name);
+      if (!loose.has(b)) loose.set(b, n);
+      n += 1;
+    }
+  }
+  _order = { exact, loose, size: n };
+  return _order;
+}
+
+/** 이 대학이 몇 번째인가. 예년 명단에 없으면 명단 뒤, 묶음 차례로. */
+function rankOfUniv(name) {
+  const { exact, loose, size } = univRank();
+  const full = stats.univKey(name);
+  if (exact.has(full)) return exact.get(full);
+  const b = bare(name);
+  if (loose.has(b)) return loose.get(b);
+  const g = groupOf({ univ: name, region: '' });
+  const i = FINAL_GROUPS.map(([key]) => key).indexOf(g);
+  return size + (i < 0 ? FINAL_GROUPS.length : i);
+}
+
 function isCapital(app) {
   return CAPITAL.has(app.region) || groupOf(app) === '라';
 }
@@ -1397,21 +1440,15 @@ function status() {
     return box;
   }
 
-  // 대학 단위로 묶고, 다른 문서와 같은 차례(수도권 주요 → 거점국립 → …)로 늘어놓는다
-  const order = FINAL_GROUPS.map(([key]) => key);
+  // 대학 단위로 묶고, **다른 문서와 같은 차례**로 늘어놓는다 — 예년 명단 그대로
   const byUniv = new Map();
   for (const r of all) {
     const k = shortUniv(r.app.univ);
     if (!byUniv.has(k)) byUniv.set(k, []);
     byUniv.get(k).push(r);
   }
-  const rank = (name) => {
-    const g = groupOf({ univ: name, region: '' });
-    const i = order.indexOf(g);
-    return i < 0 ? order.length : i;
-  };
   const names = [...byUniv.keys()].sort((a, b) =>
-    rank(a) - rank(b) || a.localeCompare(b, 'ko'));
+    rankOfUniv(a) - rankOfUniv(b) || a.localeCompare(b, 'ko'));
 
   box.appendChild(tools('합격자발표현황', () => {
     const rows = [['대학', '학번', '이름', '모집단위', '전형 유형',
