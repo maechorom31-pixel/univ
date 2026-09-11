@@ -23,3 +23,14 @@ https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10100811.html   # 건양대
 https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11540991.html   # 항공대
 https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10950721.html   # 세종대
 https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10981501.html   # 숙명여대
+
+# ── 2026. 9. 11. 선생님이 구해 오신 주소 ──────────────────
+https://ratio.uwayapply.com/Sl5KOldCL0pmJSY6Jko3ZlRm              # 전북대
+https://ratio.uwayapply.com/Sl5KMDpXJkpmJSY6Jko3ZlRm              # 서울과기대
+https://ratio.uwayapply.com/Sl5KYDY6L3JXOE45SmYlJjomSjdmVGY=      # 광주교대
+https://ratio.uwayapply.com/Sl5KfEwmSmYlJjomSjdmVGY=              # 순천향대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11400471.html   # 충남대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10091341.html   # 건국대(글로컬)
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio12100661.html   # 부산대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10080381.html   # 건국대(서울)
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio30150631.html   # 한국교통대
