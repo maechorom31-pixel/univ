@@ -342,19 +342,11 @@ function render() {
     ));
   }
   /*
-   * **같은 줄이 겹쳤으면 말한다.** 반 명단을 두 번 붙이면 그 반이 통째로 겹치는데,
-   * 카드는 한 장으로 묶여 나가므로 화면만 봐서는 알 수 없다. 시트를 고치지 않으면
-   * 다음에 또 겹치고, 그때는 모집인원이 서로 다른 줄이 섞여 들어올 수도 있다.
+   * 겹친 줄은 **보드에 적지 않는다.** 카드는 이미 한 장으로 묶여 나가므로 상담에는
+   * 지장이 없고, 시트를 손보는 일은 상담하다 말고 할 일이 아니다. 매번 뜨는 줄은
+   * 읽히지 않고 자리만 차지한다 — 진짜 경고(못 읽은 줄·못 받은 자료)가 묻힌다.
+   * 어느 줄이 겹쳤는지는 「점검」 화면에 그대로 있다.
    */
-  const dupes = store.state.dupes || [];
-  if (dupes.length) {
-    const rows = dupes.reduce((n, d) => n + d.n - 1, 0);
-    const who = [...new Set(dupes.map((d) => String(d.hak)))];
-    main.appendChild(banner(
-      `즐겨찾기에 같은 지원이 두 번 넘게 적힌 줄이 ${dupes.length}건 있어 한 장으로 묶었습니다`
-      + ` (겹친 줄 ${rows}개 · 학생 ${who.length}명). 「점검」 화면에 어느 줄인지 있습니다.`,
-    ));
-  }
   if (store.state.unknownCols.length) {
     main.appendChild(banner(
       `엑셀에서 알아보지 못한 칸이 ${store.state.unknownCols.length}개 있습니다 — `
