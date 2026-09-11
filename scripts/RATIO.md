@@ -7,8 +7,18 @@
 
     ratio_final.py  →  data/ratio/board.json  →  board.html
 
-윈도우는 저장소 폴더의 **`최종경쟁률.bat`** 을 더블클릭하면 받기와 올리기를 이어서 합니다.
-명령으로 돌리려면
+저장소 폴더의 파일을 더블클릭하면 받기와 올리기를 이어서 합니다. **쓰시는 컴퓨터에
+따라 파일이 다릅니다** — 배치 파일(`.bat`)은 윈도우 전용이라 맥에서는 눌러도 텍스트
+편집기만 열립니다.
+
+    윈도우   최종경쟁률.bat
+    맥       최종경쟁률.command
+
+하는 일은 둘이 똑같습니다. 맥에서 「확인되지 않은 개발자」라며 안 열리면, 파일을
+**우클릭 → 열기**로 한 번만 열어 주시거나 터미널에서 `sh 최종경쟁률.command` 로
+돌리시면 됩니다.
+
+명령으로 돌리려면 (맥은 `python` 자리에 `python3`)
 
     python scripts/ratio_final.py     # 최종만 받아 data/ratio/board.json 에 쌓는다
     python scripts/ratio_upload.py    # 저장소에 올린다 (git 폴더면 git 으로 해도 됩니다)
