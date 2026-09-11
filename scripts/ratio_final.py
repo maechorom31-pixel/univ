@@ -107,6 +107,67 @@ def load_old():
     return [u for u in doc.get('univs', []) if u.get('final')]
 
 
+def norm_unit(s):
+    """모집단위를 견주기 좋은 꼴로. 가운뎃점이 글꼴마다 달라 그것부터 맞춘다."""
+    s = re.sub(r'[\u318d\u30fb\uff65\u2022\u2024\u2027\u2219\u22c5.]', '\u00b7', s or '')
+    return re.sub(r'\s+', '', s)
+
+
+def load_units():
+    """즐겨찾기에서 뽑아 둔 대학별 「모집단위 → 모집인원」. 없으면 빈 것."""
+    if not os.path.exists(WANTED):
+        return {}
+    want = json.load(open(WANTED, encoding='utf-8')).get('units', {})
+    out = {}
+    for u, d in want.items():
+        out.setdefault(univ_key(u), {}).update(
+            {norm_unit(k): set(v) for k, v in d.items()})
+    return out
+
+
+def year_check(name, rows, units):
+    """**작년 표를 받아 오지 않았는지** 모집인원으로 가린다.
+
+    진학어플라이는 작년 페이지도 그대로 열리고, 작년 것은 언제나 「최종」이라
+    적혀 있어 표기로는 가릴 수가 없다. 2027 조선대(11300581) 대신 2026
+    조선대(11300471)를 받아도 「최종」이라 그냥 담겼고, 실제로 그렇게 담겨
+    카드의 모집인원과 경쟁률 표의 모집인원이 어긋났다.
+
+    연도가 다르면 모집인원이 어긋난다. 잣대는 즐겨찾기다. 올해 제대로 받은
+    32곳을 견줘 보니 **어긋난 모집단위가 하나도 없었고**, 작년 표는 여럿
+    어긋났다. 그래서 이렇게 나눈다.
+
+        어긋남 0    그대로 담는다
+        어긋남 1    담되 한 줄 알린다 — 모집인원 변경이나 입력 실수일 수 있다
+        어긋남 2 이상 빼고 올해 주소를 다시 구해 달라고 말한다
+
+    돌려주는 것은 (괜찮은가, 할 말). 즐겨찾기에 없는 대학은 견줄 것이 없으니
+    잠자코 통과시킨다.
+    """
+    mine = units.get(univ_key(name))
+    if not mine:
+        return True, ''
+    theirs = {}
+    for r in rows:
+        theirs.setdefault(norm_unit(r['m']), set()).add(r['n'])
+    hit, off = 0, []
+    for unit, qs in sorted(mine.items()):
+        got = theirs.get(unit)
+        if not got:
+            continue
+        if qs & got:
+            hit += 1
+        else:
+            off.append('%s 즐겨찾기 %s \u2194 표 %s'
+                       % (unit, '·'.join(str(q) for q in sorted(qs)),
+                          '·'.join(str(int(q)) for q in sorted(got))))
+    if not off:
+        return True, ''
+    said = '모집인원이 즐겨찾기와 %d곳 어긋납니다 (맞은 곳 %d) — %s' % (
+        len(off), hit, ' / '.join(off[:3]))
+    return len(off) < 2, said
+
+
 def missing(univs):
     """지원한 대학 가운데 아직 최종이 없는 곳. 전문대는 뺀다(자료가 다르다)."""
     if not os.path.exists(WANTED):
@@ -140,7 +201,19 @@ def main(argv):
         jobs += [(u, False) for u in uway_urls()]
 
     stamp = rb.rb.kst_now().strftime('%Y-%m-%dT%H:%M')
-    fresh, failed, waiting = [], [], []
+    units = load_units()
+    fresh, failed, waiting, stale, odd = [], [], [], [], []
+
+    # 전에 받아 둔 것도 같은 잣대로 한 번 더 본다 — 잣대가 없던 때 담긴 것이 있다
+    for key, u in list(got.items()):
+        rows = [{'m': r[0], 'n': r[1]} for t in u['t'] for r in t['r']]
+        fine, why = year_check(u['u'], rows, units)
+        if not fine:
+            stale.append((u['u'], u.get('src', ''), why))
+            del got[key]
+            before -= 1
+        elif why:
+            odd.append((u['u'], why))
     for url, trust in jobs:
         try:
             name, rows, hidden, meta = fetch_one(url)
@@ -153,6 +226,13 @@ def main(argv):
         if not trust and not meta.get('final'):
             waiting.append((name, said))    # 아직 최종이 아니다 — 담지 않는다
             continue
+        fine, why = year_check(name, rows, units)
+        if not fine:
+            stale.append((name, url, why))
+            print('  [해] %-20s %s' % (name, why))
+            continue
+        if why:
+            odd.append((name, why))
         got[univ_key(name)] = pack(name, rows, stamp, url)
         fresh.append(name)
         mark = '' if (meta.get('final') or not trust) else '   ← 페이지는 아직 최종이라 안 적었습니다'
@@ -192,6 +272,15 @@ def main(argv):
               ' 다시 돌리면 됩니다.' % os.path.basename(URLS))
     else:
         print('\n지원한 대학은 모두 받았습니다.')
+    if odd:
+        print('\n모집인원이 한 곳 어긋난 대학 %d곳 — 담긴 했으니 눈으로 한 번 보세요.' % len(odd))
+        for name, why in odd:
+            print('   %-22s %s' % (name, why))
+    if stale:
+        print('\n작년 표로 보여 뺀 대학 %d곳 — 올해 주소를 다시 구해 주세요.' % len(stale))
+        for name, where, why in stale:
+            print('   %-22s %s' % (name, why))
+            print('   %s%s' % (' ' * 24, where))
     if failed:
         print('\n못 받은 주소 %d개 — 주소가 바뀌었거나 아직 안 열린 것입니다.' % len(failed))
     return 0
