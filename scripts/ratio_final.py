@@ -41,15 +41,39 @@ def read_urls(path):
     return out
 
 
-def univ_key(name):
-    """대학 이름을 견주기 좋은 꼴로. 「국립목포대학교(목포)」와 「목포대학교」가 같아진다."""
+def split_univ(name):
+    """대학 이름 → (본디 이름, 캠퍼스). `board/ratio.js` 의 `splitUniv` 와 같은 규칙이다.
+
+    「대학교」·「대학」에서 자르고 뒤에 남은 것을 캠퍼스로 본다. 한꺼번에 정규식
+    하나로 떼려 들면 「건국대학교서울캠퍼스」가 「건」이 된다 — 실제로 그랬다.
+    """
     s = re.sub(r'\s+', '', name or '')
-    s = re.sub(r'[（(][^()（）]*[)）]\s*$', '', s)
-    s = re.sub(r'([가-힣A-Za-z]{1,6})캠퍼스$', '', s)
-    s = s.replace('대학교', '대').replace('대학', '대')
-    s = re.sub(r'^국립', '', s)
-    s = s.replace('여자대', '여대').replace('한국외국어대', '한국외대')
-    return s
+    m = re.match(r'^(.*?(?:대학교|대학))(.*)$', s)
+    head, tail = (m.group(1), m.group(2)) if m else (s, '')
+    base = re.sub(r'(대학교|대학)$', '대', head)
+    base = re.sub(r'^국립', '', base)
+    base = base.replace('여자대', '여대').replace('한국외국어대', '한국외대')
+    base = re.sub(r'과학기술대$', '과기대', base)
+    campus = re.sub(r'[（()）]', '', tail).replace('캠퍼스', '').strip()
+    if campus.upper() == 'ERICA' or campus == '에리카':
+        campus = 'ERICA'
+    return base, campus
+
+
+def univ_key(name):
+    """견주기 좋은 열쇠. **캠퍼스까지 넣는다** — 건국대(서울)과 건국대(글로컬),
+    고려대(서울)과 고려대(세종)이 한 줄로 뭉치면 안 된다."""
+    base, campus = split_univ(name)
+    return base + ('|' + campus if campus else '')
+
+
+def covers(got_name, want_name):
+    """받아 둔 표가 이 지원을 덮는가. 캠퍼스가 적힌 표는 그 캠퍼스만 덮고,
+    캠퍼스가 안 적힌 표(「조선대학교」)는 그 대학 전부를 덮는다 —
+    `board/ratio.js` 가 카드에 붙일 때 쓰는 규칙과 같다."""
+    gb, gc = split_univ(got_name)
+    wb, wc = split_univ(want_name)
+    return gb == wb and (not gc or gc == wc)
 
 
 def uway_urls():
@@ -114,18 +138,18 @@ def norm_unit(s):
 
 
 def load_units():
-    """즐겨찾기에서 뽑아 둔 대학별 「모집단위 → 모집인원」. 없으면 빈 것."""
+    """즐겨찾기에서 뽑아 둔 대학별 「모집단위 → 모집인원」. 없으면 빈 것.
+
+    열쇠는 즐겨찾기에 적힌 대학 이름 그대로다. 받아 온 표와 견줄 때 `covers` 로
+    맞춰야 「조선대학교」 표가 즐겨찾기의 「조선대학교(광주)」를 찾아낸다.
+    """
     if not os.path.exists(WANTED):
         return {}
     want = json.load(open(WANTED, encoding='utf-8')).get('units', {})
-    out = {}
-    for u, d in want.items():
-        out.setdefault(univ_key(u), {}).update(
-            {norm_unit(k): set(v) for k, v in d.items()})
-    return out
+    return {u: {norm_unit(k): set(v) for k, v in d.items()} for u, d in want.items()}
 
 
-def year_check(name, rows, units):
+def year_check(name, rows, units, url=''):
     """**작년 표를 받아 오지 않았는지** 모집인원으로 가린다.
 
     진학어플라이는 작년 페이지도 그대로 열리고, 작년 것은 언제나 「최종」이라
@@ -141,10 +165,20 @@ def year_check(name, rows, units):
         어긋남 1    담되 한 줄 알린다 — 모집인원 변경이나 입력 실수일 수 있다
         어긋남 2 이상 빼고 올해 주소를 다시 구해 달라고 말한다
 
+    다만 **유웨이는 빼지 않고 알리기만 한다.** 유웨이 주소의 학년도는 우리가
+    `uway_url(token, 2027)` 로 직접 넣으므로 작년 표가 올 수가 없다. 실제로
+    전주대(2027, 최종)가 모집단위를 학부로 묶은 탓에 두 곳 어긋나 애먼 데서
+    걸린 적이 있다. 연도를 의심할 곳은 주소에 학년도가 박혀 있는 진학어플라이와
+    대학 자체 사이트다.
+
     돌려주는 것은 (괜찮은가, 할 말). 즐겨찾기에 없는 대학은 견줄 것이 없으니
     잠자코 통과시킨다.
     """
-    mine = units.get(univ_key(name))
+    mine = {}
+    for u, d in units.items():
+        if covers(name, u):
+            for k, v in d.items():
+                mine.setdefault(k, set()).update(v)
     if not mine:
         return True, ''
     theirs = {}
@@ -165,6 +199,8 @@ def year_check(name, rows, units):
         return True, ''
     said = '모집인원이 즐겨찾기와 %d곳 어긋납니다 (맞은 곳 %d) — %s' % (
         len(off), hit, ' / '.join(off[:3]))
+    if 'ratio.uwayapply.com' in (url or ''):
+        return True, said
     return len(off) < 2, said
 
 
@@ -173,12 +209,11 @@ def missing(univs):
     if not os.path.exists(WANTED):
         return []
     want = json.load(open(WANTED, encoding='utf-8')).get('univs', [])
-    have = set(univ_key(u['u']) for u in univs)
     out = []
     for w in want:
         if w.get('type') == '전문대':
             continue
-        if univ_key(w['u']) in have:
+        if any(covers(u['u'], w['u']) for u in univs):
             continue
         out.append(w)
     return out
@@ -207,7 +242,7 @@ def main(argv):
     # 전에 받아 둔 것도 같은 잣대로 한 번 더 본다 — 잣대가 없던 때 담긴 것이 있다
     for key, u in list(got.items()):
         rows = [{'m': r[0], 'n': r[1]} for t in u['t'] for r in t['r']]
-        fine, why = year_check(u['u'], rows, units)
+        fine, why = year_check(u['u'], rows, units, u.get('src', ''))
         if not fine:
             stale.append((u['u'], u.get('src', ''), why))
             del got[key]
@@ -226,7 +261,7 @@ def main(argv):
         if not trust and not meta.get('final'):
             waiting.append((name, said))    # 아직 최종이 아니다 — 담지 않는다
             continue
-        fine, why = year_check(name, rows, units)
+        fine, why = year_check(name, rows, units, url)
         if not fine:
             stale.append((name, url, why))
             print('  [해] %-20s %s' % (name, why))
@@ -273,7 +308,7 @@ def main(argv):
     else:
         print('\n지원한 대학은 모두 받았습니다.')
     if odd:
-        print('\n모집인원이 한 곳 어긋난 대학 %d곳 — 담긴 했으니 눈으로 한 번 보세요.' % len(odd))
+        print('\n모집인원이 어긋나는 대학 %d곳 — 담긴 했으니 눈으로 한 번 보세요.' % len(odd))
         for name, why in odd:
             print('   %-22s %s' % (name, why))
     if stale:
