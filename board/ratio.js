@@ -215,7 +215,9 @@ function pickUniv(index, app) {
   const mine = campusOf(app.univ);
   const same = cands.filter((c) => c.campus && c.campus === mine);
   if (same.length === 1) return { ok: true, univ: same[0] };
-  return fail('univ', `캠퍼스가 여럿입니다 — ${cands.map((c) => c.univ).join(' · ')}`);
+  // 캠퍼스로는 못 가렸다. 모집단위로 가려 볼 수 있게 후보를 함께 돌려준다.
+  return { ...fail('univ', `캠퍼스가 여럿입니다 — ${cands.map((c) => c.univ).join(' · ')}`),
+    cands };
 }
 
 /** 지원한 전형이 자료의 어느 전형인가. 이름이 똑같은 하나일 때만. */
@@ -298,7 +300,31 @@ export function rateOf(index, app) {
   if (!app || !app.univ || !app.dept) return fail('data', '');
 
   const u = pickUniv(index, app);
-  if (!u.ok) return u;
+  if (!u.ok) {
+    /*
+     * 캠퍼스로 못 가린 대학 — **모집단위로 한 번 더 가려 본다.**
+     *
+     * 홍익대는 서울(11720891)과 세종(11720892)이 주소가 다른데 페이지는 둘 다
+     * 「홍익대학교」라고만 적는다. 그래서 캠퍼스 표기로는 가릴 수가 없다.
+     * 그런데 두 장의 **모집단위는 하나도 겹치지 않는다** — 서울 43개, 세종 19개,
+     * 교집합 0(서울은 「전자·전기공학부」, 세종은 「전자전기융합공학과」다).
+     * 학과 이름이 한 장에만 있으면 어느 쪽 자료인지 의심할 것이 없다.
+     *
+     * 그러니 후보를 모두 뒤져 **딱 한 곳에서만 찾아지면** 잇는다. 두 곳 이상에서
+     * 찾아지면 그때는 정말 못 가리는 것이니 그대로 비운다.
+     */
+    if (!u.cands) return u;
+    const hits = [];
+    for (const c of u.cands) {
+      const t2 = pickTrack(c, app);
+      if (!t2.ok) continue;
+      const r2 = t2.track.rows.get(normUnit(app.dept));
+      // 전형 총계가 퍼진 줄은 여기서도 안 쓴다 — 셈이 맞는 줄만 후보다
+      if (r2 && !r2.spread) hits.push({ entry: c, t: t2, row: r2 });
+    }
+    if (hits.length !== 1) return fail('univ', u.note);
+    return settle(app, hits[0].entry, hits[0].t, hits[0].row, '모집단위가 한 장에만 있음');
+  }
   const t = pickTrack(u.univ, app);
   if (!t.ok) return t;
 
@@ -319,6 +345,11 @@ export function rateOf(index, app) {
    * 맞는 값을 손으로 옮겨 적게 된다. 대신 `warn` 을 달아 화면이 양쪽 인원을
    * 나란히 보이고 확인을 청한다.
    */
+  return settle(app, u.univ, t, row);
+}
+
+/** 고른 줄을 답의 꼴로. 모집인원이 어긋나면 표를 세운다. */
+function settle(app, entry, t, row, why) {
   const warn = [];
   if (t.warn) warn.push(t.warn);
   if (app.quota != null && row.quota != null && Number(app.quota) !== Number(row.quota)) {
@@ -329,13 +360,13 @@ export function rateOf(index, app) {
     rate: row.rate,
     quota: row.quota,
     applied: row.applied,
-    univ: u.univ.univ,
+    univ: entry.univ,
     track: t.track.name,
     campus: t.track.campus,
     unit: row.unit,
-    stamp: u.univ.stamp,
-    final: u.univ.final,
-    why: t.why,
+    stamp: entry.stamp,
+    final: entry.final,
+    why: why || t.why,
     warn: warn.length ? warn : null,
   };
 }
