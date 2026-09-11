@@ -1252,6 +1252,12 @@ table.gov tr.grp > td {
  * 안 읽힌다. 폭이 모자라면 글자를 줄이는 편이 갈리는 것보다 낫다.
  */
 table.gov td.verdict, table.gov td.type { white-space: nowrap; }
+/*
+ * 유형 칸 — 「교과」·「학종」·「논술」·「실기」 넉 자 안쪽이라 늘 한 줄이다.
+ * 세로로 죽 늘어서야 훑을 때 눈에 들어오므로 가운데로 모으고 살짝 흐리게 둔다.
+ * 옆 칸의 전형 이름이 본문이고 이쪽은 그 머리표다.
+ */
+table.gov td.kind { white-space: nowrap; text-align: center; color: #333; }
 @media print {
   /* 대학 머리줄만 남기고 쪽이 넘어가면 그 대학이 통째로 사라진 것처럼 보인다 */
   table.gov tr.grp { break-after: avoid; page-break-after: avoid; }

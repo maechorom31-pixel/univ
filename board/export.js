@@ -767,6 +767,27 @@ function typeText(app) {
   return tail && tail !== sub ? `${head}${tail}` : `${head} ${sub}`;
 }
 
+/**
+ * 명단의 전형 칸은 **둘로 나눈다** — 「교과 | 지역인재전형 1유형」.
+ *
+ * 한 칸에 이어 붙이면 「교과(지역인재전형 1유형)」처럼 길어져 두 줄로 갈리고,
+ * 세로로 훑을 때 유형이 눈에 안 들어온다. 유형은 네 가지뿐이라 좁은 칸에
+ * 딱 맞고, 세로로 죽 늘어서면 교과가 몇이고 학종이 몇인지 세지 않아도 보인다.
+ */
+function typeKind(app) {
+  return typeLabel(app);
+}
+
+/** 세부 전형 이름만. 앞머리의 유형과 그것을 감싼 괄호를 뗀다. */
+function typeName(app) {
+  const sub = String((app && (app.typeSub || app.typeName)) || '').trim();
+  if (!sub) return '';
+  let t = sub.replace(/^\s*(학생부)?\s*(교과|종합|논술|실기\/?실적|실기)\s*/, '');
+  if (!t) return '';
+  t = t.replace(/^[（(]\s*/, '').replace(/\s*[)）]$/, '');
+  return t.trim();
+}
+
 /** 계열 세 줄. 보드의 계열 값이 예년 문서의 세 줄과 이름이 다르다. */
 function lineOf(app) {
   const t = `${(app && app.track) || ''}`;
@@ -1208,7 +1229,7 @@ function report() {
  * 늘어놓으면 한 학생의 여섯 장이 여섯 대학에 흩어져 「이 대학에 누가 넣었나」를
  * 종이에서 훑을 수 없다. 대학 이름은 묶음 머리줄이 지고 칸에서는 뺀다.
  */
-const DETAIL_COLS = ['연번', '학번', '이름', '모집단위', '전형 유형',
+const DETAIL_COLS = ['연번', '학번', '이름', '모집단위', '유형', '전형',
   '모집', '경쟁률', '환산', '모집', '경쟁률', '70%컷'];
 
 function detailTable(key, rows) {
@@ -1216,11 +1237,11 @@ function detailTable(key, rows) {
   const tw = el('div', 'tw');
   const table = document.createElement('table');
   table.className = 'gov';
-  widths(table, ['4%', '6%', '7%', '20%', '20%', '5%', '7%', '7%', '6%', '7%', '7%']);
+  widths(table, ['4%', '6%', '7%', '20%', '5%', '15%', '5%', '7%', '7%', '6%', '7%', '7%']);
 
   const thead = document.createElement('thead');
   const r1 = document.createElement('tr');
-  DETAIL_COLS.slice(0, 8).forEach((c) => {
+  DETAIL_COLS.slice(0, 9).forEach((c) => {
     const th = el('th', null, c);
     th.rowSpan = 2;
     r1.appendChild(th);
@@ -1229,7 +1250,7 @@ function detailTable(key, rows) {
   prev.colSpan = 3;
   r1.appendChild(prev);
   const r2 = document.createElement('tr');
-  DETAIL_COLS.slice(8).forEach((c) => r2.appendChild(el('th', 'sub', c)));
+  DETAIL_COLS.slice(9).forEach((c) => r2.appendChild(el('th', 'sub', c)));
   thead.appendChild(r1);
   thead.appendChild(r2);
   table.appendChild(thead);
@@ -1259,7 +1280,8 @@ function detailTable(key, rows) {
         ['num', student.hak],
         ['nm', tidy(student.name)],
         [null, brk(app.dept || '')],
-        ['type', brk(typeText(app))],
+        ['kind', typeKind(app)],
+        ['type', brk(typeName(app))],
         ['num', app.quota ?? ''],
         ['num', rateText(app, sm)],
         ['num', myGrade(app)],
@@ -1404,7 +1426,7 @@ function statusText(app) {
   return nextStep(app);
 }
 
-const STATUS_COLS = ['연번', '학번', '이름', '모집단위', '전형 유형', '모집', '경쟁률',
+const STATUS_COLS = ['연번', '학번', '이름', '모집단위', '유형', '전형', '모집', '경쟁률',
   '환산', '1단계', '최초 결과'];
 
 /**
@@ -1422,7 +1444,7 @@ function statusTable(names, byUniv) {
   const tw = el('div', 'tw');
   const table = document.createElement('table');
   table.className = 'gov';
-  widths(table, ['3.5%', '5.5%', '6.5%', '16%', '17%', '4.5%', '6%', '5.5%',
+  widths(table, ['3.5%', '5.5%', '6.5%', '16%', '4%', '13%', '4.5%', '6%', '5.5%',
     '7%', '13.5%', '4.5%', '5.5%', '5%']);
 
   const thead = document.createElement('thead');
@@ -1466,7 +1488,8 @@ function statusTable(names, byUniv) {
         ['num', student.hak],
         ['nm', tidy(student.name)],
         [null, brk(app.dept || '')],
-        ['type', brk(typeText(app))],
+        ['kind', typeKind(app)],
+        ['type', brk(typeName(app))],
         ['num', app.quota ?? ''],
         ['num', rateText(app, sm)],
         ['num', myGrade(app)],
@@ -1516,13 +1539,13 @@ function status() {
     rankOfUniv(a) - rankOfUniv(b) || a.localeCompare(b, 'ko'));
 
   box.appendChild(tools('합격자발표현황', () => {
-    const rows = [['대학', '학번', '이름', '모집단위', '전형 유형',
+    const rows = [['대학', '학번', '이름', '모집단위', '유형', '전형',
       '1단계 결과', '최초 결과']];
     for (const name of names) {
       for (const { app, student } of byUniv.get(name)) {
         const r = store.resultOf(app) || {};
         rows.push([name, student.hak, student.name, app.dept || '',
-          typeText(app), r.stage1 || '', statusText(app)]);
+          typeKind(app), typeName(app), r.stage1 || '', statusText(app)]);
       }
     }
     return rows;
@@ -1764,7 +1787,7 @@ function outcomeTable(key, rows) {
  * 대학 이름은 묶음 머리줄이 지고 있으므로 칸에서는 뺀다. 그 폭이 모집단위와
  * 전형 이름으로 가서, 열이 하나 줄고 칸은 더 넉넉해진다.
  */
-const FINAL_COLS = ['연번', '학번', '이름', '모집단위', '전형 유형', '모집', '경쟁률',
+const FINAL_COLS = ['연번', '학번', '이름', '모집단위', '유형', '전형', '모집', '경쟁률',
   '환산', '최종 결과'];
 
 function finalDetail(key, rows) {
@@ -1772,7 +1795,7 @@ function finalDetail(key, rows) {
   const tw = el('div', 'tw');
   const table = document.createElement('table');
   table.className = 'gov';
-  widths(table, ['5%', '7%', '8%', '21%', '21%', '6%', '7%', '7%', '18%']);
+  widths(table, ['5%', '7%', '8%', '21%', '5%', '16%', '6%', '7%', '7%', '18%']);
 
   const thead = document.createElement('thead');
   const r1 = document.createElement('tr');
@@ -1807,7 +1830,8 @@ function finalDetail(key, rows) {
         ['num', student.hak],
         ['nm', tidy(student.name)],
         [null, brk(app.dept || '')],
-        ['type', brk(typeText(app))],
+        ['kind', typeKind(app)],
+        ['type', brk(typeName(app))],
         ['num', app.quota ?? ''],
         ['num', rateText(app, sm)],
         ['num', myGrade(app)],
@@ -1971,14 +1995,14 @@ function finalTable(rows) {
    * 대학을 지고 있지만, 엑셀로 가는 것은 평평한 표라 줄마다 제 대학이 있어야
    * 거르고 정렬할 수 있다.
    */
-  out.push(['학번', '이름', '대학', '모집단위', '전형 유형', '모집 인원', '경쟁률',
+  out.push(['학번', '이름', '대학', '모집단위', '유형', '전형', '모집 인원', '경쟁률',
     '환산 성적', '1단계 결과', '최종 결과']);
   for (const { app, student } of rows) {
     const r = store.resultOf(app);
     // 경쟁률은 화면·종이 표와 같은 값 — 적어 둔 최종 경쟁률이 먼저, 없으면 작년 실질
     const rate = rateText(app, store.summary(app));
     out.push([student.hak, student.name, shortUniv(app.univ), app.dept || '',
-      typeText(app),
+      typeKind(app), typeName(app),
       app.quota ?? '', rate, myGradeCsv(app),
       (r && r.stage1) || '', resultText(r)]);
   }
