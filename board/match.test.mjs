@@ -388,7 +388,9 @@ console.log('지원한 전형의 입결 줄 고르기');
   ];
   const sw = pickIpgyeol(songwon,
     { typeSub: '학생부교과(면접우수자면접전형)', typeCat: '학생부위주(교과)' });
-  eq(sw.fit, 'alive', '마지막 해까지 이어진 전형이 하나뿐이면 그것');
+  /* 「지역인재」는 특별전형 갈래가 달라 후보에서 먼저 빠진다(special). 그래서
+     남는 것이 하나뿐이라 `cat` 으로 끝난다 — 고른 전형은 `alive` 때와 같다. */
+  eq(sw.fit, 'cat', '갈래가 다른 지역인재가 빠지고 하나만 남는다');
   eq(sw.type, '교과(인성우수)', '2024에 끝난 지역인재가 아니라 이어진 쪽');
   eq(sw.rows.map((x) => x.year), [2022, 2023, 2024, 2025, 2026], '이름이 바뀐 다섯 해가 한 묶음');
 
@@ -620,6 +622,56 @@ console.log('쪼개진 전형은 세기에는 넣고 잇지는 않는다');
   eq(names.includes('교과(학생부교과)'), true, '2022 이름이 지역인재에 흡수되지 않는다');
 }
 
+/* ── 기회균형에 일반전형 컷을 붙이지 않는다 ─────────────────────── */
+
+console.log('특별전형 갈래가 어긋나면 후보가 아니다');
+{
+  const r = (year, type, g70) => ({ year, type, g70,
+    cat: type.includes('종합') ? '종합' : '교과' });
+  /*
+   * 서울대 인문계열이 이 자리다. 사회통합(기회균형)으로 넣었는데 그 학과 입결에는
+   * 지역균형만 이어져 있어, 여태 지역균형의 1.39 가 붙었다.
+   */
+  const snu = [
+    r(2023, '종합(기회균형)', 2.8), r(2024, '종합(지역균형)', 1.31),
+    r(2025, '종합(지역균형)', 1.40), r(2026, '종합(지역균형)', 1.39),
+  ];
+  const got = pickIpgyeol(snu,
+    { typeSub: '학생부종합전형(수시모집 기회균형특별전형_사회통합)', typeCat: '학생부위주(종합)' });
+  eq(got.fit, 'none', '기회균형 지원에 지역균형을 붙이지 않는다');
+  eq(got.type, null, '숫자를 비운다');
+  eq(got.among.includes('종합(지역균형)'), true, '무엇들 사이에서 못 골랐는지는 적어 준다');
+}
+{
+  const r = (year, type, g70) => ({ year, type, g70, cat: '종합' });
+  const one = [r(2026, '종합(일반전형)', 3.15)];
+  const got = pickIpgyeol(one,
+    { typeSub: '학생부종합(사회통합전형)', typeCat: '학생부위주(종합)' });
+  eq(got.fit, 'none', '전형이 하나뿐이어도 갈래가 다르면 그것이 아니다');
+}
+{
+  const r = (year, type, g70) => ({ year, type, g70, cat: '교과' });
+  const one = [r(2026, '교과(지역1호남)', 3.9)];
+  const got = pickIpgyeol(one,
+    { typeSub: '학생부교과(일반학생전형)', typeCat: '학생부위주(교과)' });
+  eq(got.fit, 'none', '거꾸로도 막는다 — 일반 지원에 지역인재 컷을 붙이지 않는다');
+}
+{
+  // 이름으로 맞은 것에는 걸지 않는다. 입결이 줄여 적는 일이 있어서다.
+  const r = (year, type, g70) => ({ year, type, g70, cat: '교과' });
+  const jb = [r(2026, '교과(지역1호남)', 3.75), r(2026, '교과(일반학생)', 3.1)];
+  const got = pickIpgyeol(jb,
+    { typeSub: '학생부교과(지역인재전형 1유형)', typeCat: '학생부위주(교과)' });
+  eq(got.type, '교과(지역1호남)', '「지역인재1유형」과 「지역1호남」은 이름이 이어 준다');
+}
+{
+  const r = (year, type, g70) => ({ year, type, g70, cat: '종합' });
+  const gj = [r(2026, '종합(전남교육감)', 3.54), r(2026, '종합(교직적성)', 2.9)];
+  const got = pickIpgyeol(gj,
+    { typeSub: '학생부종합(전남교육감다문화전형)', typeCat: '학생부위주(종합)' });
+  eq(got.type, '종합(전남교육감)', '다문화 표시가 한쪽에만 있어도 이름이 맞으면 잇는다');
+}
+
 if (!files.length) {
   console.log('\n시트 픽스처를 넘기지 않아 규칙 확인만 했습니다.');
   process.exit(fails ? 1 : 0);
@@ -683,6 +735,7 @@ for (const file of files) {
     }
   }
 }
+
 
 
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');

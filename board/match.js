@@ -952,6 +952,45 @@ const mark = (t) => {
   return m && !r ? '면접' : (r && !m ? '서류' : null);
 };
 
+/*
+ * **기회균형에 일반전형 컷을 붙이지 않는다.**
+ * =====================================================================
+ * 기회균형·고른기회·사회통합은 대학이 70%컷을 안 내는 일이 많다. 그러면 이름으로
+ * 못 맞추고 `cat`·`alive` 갈래로 내려가는데, 거기서 **그 학과의 일반 종합전형**이
+ * 뽑힌다. 실제로 그랬다.
+ *
+ *     서울대 인문계열   기회균형특별전형_사회통합  →  종합(지역균형) 1.39   (alive)
+ *     고려대 자유전공   고른기회전형              →  종합(학업우수) 2.56   (alive)
+ *     연세대 영어영문   기회균형                  →  종합(활동우수) 2.14   (cat)
+ *     순천향대 경찰행정 사회통합전형              →  종합(일반전형) 3.15   (alive)
+ *
+ * 1.39 를 사회통합 지원자에게 보이면 상담에서 틀린 말을 하게 된다. 기회균형의 컷은
+ * 그보다 한참 아래인데, 화면 어디에도 「이건 일반전형 컷입니다」라고 안 적힌다.
+ *
+ * `mark`(면접·서류)와 같은 모양의 규칙이다 — **골라 주는 게 아니라 아닌 것을
+ * 지운다.** 그리고 이름으로 맞은 것(`exact`·`near`·`sim`)에는 걸지 않는다.
+ * 입결 자료가 줄여 적는 일이 있어서다 — 전북대 「지역인재1유형」이 입결에는
+ * 「교과(지역1호남)」, 광주교대 「전남교육감다문화전형」이 「종합(전남교육감)」이다.
+ * 그건 이름이 이미 이어 준 것이라 갈래를 따질 일이 아니다.
+ */
+const SPECIAL = [
+  ['특성화고', /특성화고|마이스터/],
+  ['재직자', /재직자|만학|성인학습|평생학습/],
+  ['농어촌', /농어촌/],
+  ['특수교육', /특수교육|장애/],
+  ['서해5도', /서해5도/],
+  ['다문화', /다문화|북한이탈|탈북/],
+  ['고른기회', /고른기회|기회균형|사회통합|배려|사회기여|기초생활|기초수급|수급자|차상위|한부모|저소득|취약|자립|다자녀|조손|국가보훈|보훈/],
+  ['지역', /지역/],
+];
+
+/** 이 전형 이름이 어느 특별전형 갈래인가. 아무 표시도 없으면 `null`(일반). */
+const special = (t) => {
+  const s = String(t || '').replace(/\s/g, '');
+  for (const [name, re] of SPECIAL) if (re.test(s)) return name;
+  return null;
+};
+
 /**
  * **면접이냐 서류냐는 가릴 수 있다.** 전형단계가 말해 준다.
  * =====================================================================
@@ -1227,11 +1266,21 @@ export function pickIpgyeol(rows, app, mojip) {
     const hitExact = keys.filter((k) => groups.get(k).keys.includes(want));
     if (hitExact.length === 1) return take(hitExact[0], 'exact');
 
-    // 겹치는 글자가 가장 긴 묶음. 비기면 고르지 않는다.
+    /*
+     * 겹치는 글자가 가장 긴 묶음. 비기면 고르지 않는다.
+     *
+     * **유형 이름만 남은 열쇠는 안 센다.** 서울시립대 전자전기컴퓨터에서 이 구멍이
+     * 드러났다 — 2022 입결의 전형 이름이 그냥 「종합」이라 열쇠가 `종합` 두 글자인데,
+     * 「기회균형전형I」(`종합기회균형I`)이 그 두 글자를 품는다는 이유로 `near` 가
+     * 되어 **종합I 의 2.25 가 기회균형 지원자에게 붙었다.** 두 글자가 말해 주는 것은
+     * 「둘 다 종합이다」뿐이고, 그건 이미 유형으로 아는 사실이다.
+     */
+    const bare = (t) => String(t || '').replace(/^(학생부)?(종합|교과|논술|실기)/, '');
     let best = 0;
     let hit = [];
     for (const k of keys) {
       for (const alt of groups.get(k).keys) {
+        if (bare(alt).length < 2) continue;
         if (alt.length < 2 || !(alt.includes(want) || want.includes(alt))) continue;
         const len = Math.min(alt.length, want.length);
         if (len > best) { best = len; hit = [k]; } else if (len === best && !hit.includes(k)) hit.push(k);
@@ -1290,9 +1339,16 @@ export function pickIpgyeol(rows, app, mojip) {
    * 종합 하나가 유형만 같다는 이유로 뽑힌다 — 명지대 자율전공 「명지인재면접」이
    * 「종합(크리스천리더)」에 붙었다. 지운 자리를 옆 전형으로 메우면 안 된다.
    */
+  /*
+   * 여기부터는 이름으로 못 맞춘 자리다. **특별전형 갈래가 어긋나면 후보가 아니다** —
+   * 기회균형 지원에 일반 종합전형 컷을, 일반 지원에 지역인재 컷을 붙이지 않는다.
+   */
+  const mySpec = special(app.typeSub || app.typeName || '');
+  const specFits = (k) => special(groups.get(k).name) === mySpec;
+
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
   if (cat && !markCut) {
-    const hit = keys.filter((k) => groups.get(k).rows
+    const hit = keys.filter((k) => specFits(k) && groups.get(k).rows
       .some((r) => r.cat === cat || String(r.type).includes(cat)));
     if (hit.length === 1) return take(hit[0], 'cat');
 
@@ -1358,7 +1414,8 @@ export function pickIpgyeol(rows, app, mojip) {
    */
   if (keys.length === 1 && !markCut) {
     const one = groups.get(keys[0]);
-    if (!cat || one.rows.some((r) => r.cat === cat || String(r.type).includes(cat))) {
+    if (specFits(keys[0])
+        && (!cat || one.rows.some((r) => r.cat === cat || String(r.type).includes(cat)))) {
       return take(keys[0], 'only');
     }
     return { rows: [], fit: 'none', type: null, among: [one.name] };
