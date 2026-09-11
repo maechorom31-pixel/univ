@@ -702,6 +702,9 @@ function parseFavorites_(values, opts) {
     };
   }
 
+  var seenId = {};              // 안정키 -> 처음 본 줄. 같은 줄이 또 오면 세기만 한다
+  var dupes = {};               // 두 번 이상 온 것만
+
   for (var r = H.dataFrom; r < values.length; r++) {
     var row = values[r] || [];
     /*
@@ -821,6 +824,27 @@ function parseFavorites_(values, opts) {
       dropped[hak].n += 1;
       continue;
     }
+    /*
+     * **같은 줄이 두 번 들어 있으면 카드도 두 장이 됐다.**
+     *
+     * 즐겨찾기는 사람이 붙여 넣어 만드는 시트라 같은 지원이 여러 줄 들어가는 일이
+     * 잦다 — 반 명단을 두 번 붙이면 그 반이 통째로 겹친다. 안정키는 (학번·대학·
+     * 세부유형·모집단위)로 만드니 그런 줄은 **같은 id** 가 되고, 여태 그 id 를
+     * 학생의 지원 목록에 두 번 담았다. 그러면 화면에 카드가 두 장 서는데 id 는
+     * 하나라, 한 장을 순위로 올리면 두 장이 같이 따라 올라간다. 6칸 세기도,
+     * 「이 칸에 이미 둘이 있다」는 판정도 다 어긋난다.
+     *
+     * **한 장만 담되, 몇 줄이 겹쳤는지는 남긴다.** 조용히 지우면 선생님은 시트가
+     * 겹친 줄 모르고, 다음에 또 겹친다.
+     */
+    if (seenId[app.id]) {
+      var d = seenId[app.id];
+      d.n += 1;
+      dupes[app.id] = d;
+      continue;
+    }
+    seenId[app.id] = { hak: hak, univ: app.univ, dept: app.dept,
+                       type: app.typeSub || app.typeName || '', n: 1, row: r + 1 };
     apps.push(app);
     students[hak].apps.push(app.id);
   }
@@ -831,9 +855,12 @@ function parseFavorites_(values, opts) {
   for (var u in unknownCols) cols.push(u);
   var lost = [];
   for (var h in dropped) lost.push(dropped[h]);
+  var twice = [];
+  for (var k in dupes) twice.push(dupes[k]);
   return {
     students: list, apps: apps, unknownCols: cols, skipped: skipped,
-    dropped: lost                 // 어느 학생의 줄이 몇 개 왜 빠졌나
+    dropped: lost,                // 어느 학생의 줄이 몇 개 왜 빠졌나
+    dupes: twice                  // 같은 지원이 여러 줄 — 한 장으로 묶은 것
   };
 }
 

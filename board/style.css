@@ -1388,3 +1388,8 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
 @media print {
   .ratio-panel { display: none !important; }
 }
+
+/* 겹친 줄 목록 — 학생 아래에 그 학생의 줄을 물린다 */
+.dupe-list > li { margin-bottom: var(--s2); }
+.dupe-list ul { margin: var(--s1) 0 0; padding-left: var(--s4); list-style: disc; }
+.dupe-list ul li { margin: 2px 0; }

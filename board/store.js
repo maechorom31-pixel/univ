@@ -47,6 +47,7 @@ export const state = {
   unknownCols: [],
   skipped: 0,
   dropped: [],
+  dupes: [],             // 같은 지원이 여러 줄이라 한 장으로 묶은 것
   parseProblem: '',
   openToAll: false,
   error: '',
@@ -133,7 +134,37 @@ function apply(data) {
   state.parseProblem = data.parseProblem || '';
   // 교사 열쇠를 안 걸어 뒀나 — 지금 주소를 아는 사람은 누구나 볼 수 있다
   state.openToAll = Boolean(data.openToAll);
-  state.students = new Map((data.students || []).map((s) => [s.hak, s]));
+  /*
+   * **같은 지원이 두 번 담기지 않게 여기서도 막는다.**
+   *
+   * 파서(`Code.gs`)가 이미 한 장으로 묶어 주지만, 시트의 스크립트는 선생님이 손으로
+   * 갈아 끼우는 것이라 옛 판이 한동안 돌아간다. 그 사이에도 카드가 두 장 서면 안 된다
+   * — 한 장을 순위로 올리면 두 장이 같이 따라 올라가고, 6칸 세기가 어긋난다.
+   *
+   * 서버가 겹친 줄을 안 세어 주면(옛 판) 여기서 세어 화면이 말할 수 있게 한다.
+   */
+  const found = [];
+  state.students = new Map((data.students || []).map((s) => {
+    const ids = s.apps || [];
+    const once = [...new Set(ids)];
+    if (once.length !== ids.length) {
+      const count = new Map();
+      for (const id of ids) count.set(id, (count.get(id) || 0) + 1);
+      for (const [id, n] of count) {
+        if (n < 2) continue;
+        const app = (data.apps || []).find((a) => a.id === id);
+        found.push({ hak: s.hak, univ: (app && app.univ) || '', dept: (app && app.dept) || '',
+          type: (app && (app.typeSub || app.typeName)) || '', n, row: 0 });
+      }
+    }
+    return [s.hak, once.length === ids.length ? s : { ...s, apps: once }];
+  }));
+  /*
+   * 같은 지원이 즐겨찾기에 여러 줄 들어 있어 **한 장으로 묶은 것.** 파서가 세어 주면
+   * 그것을 쓰고(어느 행인지까지 안다), 옛 파서면 위에서 센 것을 쓴다.
+   * 조용히 지우면 시트가 겹친 줄 모르고 다음에 또 겹친다.
+   */
+  state.dupes = (data.dupes && data.dupes.length) ? data.dupes : found;
   state.apps = new Map((data.apps || []).map((a) => [a.id, a]));
   /*
    * 「성적」 탭 — 학년 전체의 전교과 일반등급 명단 (Code.gs gradeRows_).

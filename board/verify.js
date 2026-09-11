@@ -60,6 +60,7 @@ function render() {
   main.appendChild(head);
 
   if (notice) main.appendChild(el('p', 'note', notice));
+  main.appendChild(dupePanel());
 
   if (!groups.length) {
     main.appendChild(el('p', 'empty-state',
@@ -134,6 +135,74 @@ function render() {
  * 위치를 재는 것이라, 붙이지 않고 여기서 학번을 보여 준다. 시트에서 학번이나
  * 이름을 고치면 다음 불러오기에 붙는다. 아무 문제 없으면 아무것도 안 그린다.
  */
+/*
+ * 같은 지원이 즐겨찾기에 여러 줄 — **어느 줄인지 짚어 준다.**
+ *
+ * 카드는 한 장으로 묶여 나가므로 보드만 봐서는 겹친 줄 모른다. 고치지 않으면 다음
+ * 원본에도 그대로 있고, 그때는 모집인원이 서로 다른 줄이 섞여 들어올 수도 있다.
+ * 지우는 것은 시트에서 할 일이라 여기서는 **찾아 주기만 한다** — 못 붙인 학과를
+ * 찾아만 주고 잇지는 않는 것과 같은 규칙이다.
+ */
+function dupePanel() {
+  const box = el('div');
+  const dupes = store.state.dupes || [];
+  if (!dupes.length) return box;
+
+  const rows = dupes.reduce((n, d) => n + d.n - 1, 0);
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '즐겨찾기에 겹친 줄'));
+  head.appendChild(el('span', 'count num', `${dupes.length}건`));
+  box.appendChild(head);
+  box.appendChild(el('p', 'section-html section-label',
+    `같은 지원이 두 번 넘게 적혀 있어 카드는 한 장으로 묶었습니다 (겹친 줄 ${rows}개).`
+    + ' 보드는 이대로 써도 되지만, 시트에서 지우지 않으면 다음 원본에도 그대로 있습니다.'
+    + ' 반 명단을 두 번 붙였을 때 생깁니다.'));
+
+  const list = el('ul', 'roster dupe-list');
+  const seen = new Map();
+  for (const d of dupes) {
+    const key = String(d.hak);
+    if (!seen.has(key)) seen.set(key, []);
+    seen.get(key).push(d);
+  }
+  for (const [hak, mine] of [...seen].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const st = store.state.students.get(hak);
+    const li = el('li');
+    li.appendChild(el('b', '', `${hak}${st ? ` ${tidy(st.name)}` : ''} — ${mine.length}건`));
+    const ul = el('ul');
+    for (const d of mine.sort((a, b) => b.n - a.n)) {
+      ul.appendChild(el('li', 'hint',
+        `${shortUniv(d.univ)} ${d.dept}${d.type ? ` · ${d.type}` : ''}`
+        + ` — ${d.n}줄 (처음 나온 곳 ${d.row}행)`));
+    }
+    li.appendChild(ul);
+    list.appendChild(li);
+  }
+  box.appendChild(list);
+  box.appendChild(copyDupes(dupes));
+  return box;
+}
+
+/** 겹친 줄을 글로 복사 — 시트에서 찾아 지울 때 쓴다. */
+function copyDupes(dupes) {
+  const btn = el('button', 'btn', '겹친 줄 목록 복사');
+  btn.type = 'button';
+  btn.onclick = async () => {
+    const text = dupes.slice()
+      .sort((a, b) => String(a.hak).localeCompare(String(b.hak)) || a.row - b.row)
+      .map((d) => [d.hak, d.univ, d.dept, d.type, `${d.n}줄`, `${d.row}행`].join('\t'))
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      notice = '복사했습니다. 시트에 붙여 놓고 찾아 지우시면 됩니다.';
+    } catch (err) {
+      notice = '복사가 막혀 있습니다.';
+    }
+    render();
+  };
+  return btn;
+}
+
 function gradePanel() {
   const frag = document.createDocumentFragment();
   if (store.state.gradeProblem) {

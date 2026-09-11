@@ -143,8 +143,24 @@ console.log('\n시나리오');
   // 예전에는 「d 로 시작하면 일정」이라 dept(모집단위)가 날짜로 읽혔다
   eq(d.apps[0].unknown, {}, '학과가 일정으로 새지 않는다 (dept ↔ d접두사)');
 
+  /*
+   * **같은 줄이 두 번 들어 있으면 카드 한 장이다.**
+   * 즐겨찾기는 사람이 붙여 넣어 만들어서 반 명단이 통째로 겹치는 일이 있다.
+   * 여태 학생의 지원 목록에 같은 id 가 두 번 담겨 카드가 두 장 섰고, 한 장을
+   * 옮기면 두 장이 같이 따라 올라갔다.
+   */
+  const twice = G.parseFavorites_(SHEET(ROW(), ROW(), ROW({ 9: '영어교육과' })), {});
+  eq(twice.apps.length, 3 - 1, '같은 지원은 한 장만 담는다');
+  eq(twice.students[0].apps.length, 2, '학생의 지원 목록에도 한 번만 들어간다');
+  eq(new Set(twice.students[0].apps).size, 2, '같은 id 가 두 번 담기지 않는다');
+  eq([twice.dupes.length, twice.dupes[0].n, twice.dupes[0].dept],
+    [1, 2, '영어영문학과'], '몇 줄이 겹쳤는지는 남긴다');
+  eq(twice.skipped, 0, '겹친 줄은 「버린 줄」이 아니다 — 따로 센다');
+
   // 첫 칸은 줄 번호라 비거나 글자일 수 있다. 학년 칸을 봐야 한다.
-  const n = G.parseFavorites_(SHEET(ROW({ 0: '' }), ROW({ 0: 'A-1' })), {});
+  // 학과를 달리 둔다 — 같은 줄이면 한 장으로 묶이므로(위) 수가 안 맞는다
+  const n = G.parseFavorites_(
+    SHEET(ROW({ 0: '' }), ROW({ 0: 'A-1', 9: '국어국문학과' })), {});
   eq([n.apps.length, n.skipped], [2, 0], '첫 칸이 비어도 학년 칸으로 자료 줄을 가린다');
 
   // 시트가 수로 주는 칸
