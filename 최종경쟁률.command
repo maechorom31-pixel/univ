@@ -41,25 +41,26 @@ python3 scripts/ratio_final.py || {
 echo
 echo "  [2/2] 저장소에 올립니다. 보드는 1~2분 뒤 갱신됩니다."
 #
-# git 으로 먼저 해 보고, 안 되면 토큰으로 올린다.
+# **git 으로 올리지 않는다.** git push 는 아이디와 토큰을 따로 물어야 하는데,
+# 그 물음이 안 뜨거나 감춰진 채로 흘러가 자꾸 실패했다. 토큰 하나로 GitHub 에
+# 바로 올리는 길(`ratio_upload.py`)만 쓴다 — 처음 한 번 물어본 뒤 홈 폴더의
+# .univ_token 에 두고 다시 묻지 않는다. 「토큰넣기」로 미리 넣어 두셨으면
+# 여기서는 아무것도 안 묻는다.
 #
-# git push 는 사람에게 아이디와 토큰을 물어야 하는데, 그 물음이 안 뜨는 자리가
-# 있다(자격 증명 도우미가 비어 있거나 창을 띄우지 못할 때). 그때 -q 로 조용히
-# 실패하면 받아 놓고도 안 올라간 채 끝난다. 그래서 실패하면 곧바로
-# `ratio_upload.py` 로 넘긴다 — 토큰 하나만 있으면 되고, 처음 한 번 물어본 뒤
-# 홈 폴더의 .univ_token 에 둔다.
-#
+python3 scripts/ratio_upload.py || {
+  echo
+  echo "  올리지 못했습니다. 받아 둔 것은 그대로 있으니,"
+  echo "  「토큰넣기」를 한 번 돌려 토큰을 넣으신 뒤 다시 돌려 주세요."
+  exit 1
+}
+
+# 이 폴더가 git 이면 방금 올린 것을 도로 내려받아 맞춰 둔다. 안 맞춰 두면
+# 다음에 돌릴 때 이 폴더의 낡은 board.json 을 바탕으로 삼게 된다.
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  git add data/ratio/board.json scripts/ratio_final_urls.txt scripts/ratio_sources.json >/dev/null 2>&1
-  git commit -q -m "최종 경쟁률 $(date '+%m/%d %H:%M')" >/dev/null 2>&1
-  if ! git push; then
-    echo
-    echo "  git 으로 올리지 못했습니다. 토큰으로 올려 봅니다."
-    echo
-    python3 scripts/ratio_upload.py
-  fi
-else
-  python3 scripts/ratio_upload.py
+  git checkout -q -- data/ratio/board.json scripts/ratio_final_urls.txt \
+    scripts/ratio_sources.json 2>/dev/null
+  git pull -q --ff-only 2>/dev/null \
+    || echo "  (이 폴더를 최신으로 맞추려면 나중에 git pull 을 한 번 쳐 주세요.)"
 fi
 
 echo

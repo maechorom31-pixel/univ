@@ -23,23 +23,27 @@ if errorlevel 1 goto fail
 
 echo.
 echo   [2/2] 저장소에 올립니다. 보드는 1~2분 뒤 갱신됩니다.
+rem git 으로 올리지 않는다. git push 는 아이디와 토큰을 따로 물어야 하는데
+rem 그 물음이 안 뜨거나 감춰진 채 흘러가 자꾸 실패했다. 토큰 하나로 바로
+rem 올리는 길만 쓴다. 「토큰넣기」로 미리 넣어 두셨으면 아무것도 안 묻는다.
+%PY% scripts\ratio_upload.py
+if errorlevel 1 goto nopush
+
 git rev-parse --is-inside-work-tree > nul 2>&1
-if errorlevel 1 goto upload
-git add data\ratio\board.json scripts\ratio_final_urls.txt scripts\ratio_sources.json > nul 2>&1
-git commit -q -m "최종 경쟁률 %date% %time:~0,5%" > nul 2>&1
-rem git push 가 아이디·토큰을 못 물어보고 조용히 실패하는 자리가 있다.
-rem 그러면 받아 놓고도 안 올라간 채 끝나므로, 실패하면 토큰으로 넘긴다.
-git push
-if errorlevel 1 (
-  echo.
-  echo   git 으로 올리지 못했습니다. 토큰으로 올려 봅니다.
-  echo.
-  goto upload
-)
+if errorlevel 1 goto done
+rem 이 폴더가 git 이면 방금 올린 것을 도로 내려받아 맞춰 둔다
+git checkout -q -- data\ratio\board.json scripts\ratio_final_urls.txt scripts\ratio_sources.json > nul 2>&1
+git pull -q --ff-only > nul 2>&1
+if errorlevel 1 echo   (이 폴더를 최신으로 맞추려면 나중에 git pull 을 한 번 쳐 주세요.)
 goto done
 
-:upload
-%PY% scripts\ratio_upload.py
+:nopush
+echo.
+echo   올리지 못했습니다. 받아 둔 것은 그대로 있으니,
+echo   「토큰넣기」를 한 번 돌려 토큰을 넣으신 뒤 다시 돌려 주세요.
+echo.
+pause
+exit /b 1
 
 :done
 echo.

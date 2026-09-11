@@ -134,7 +134,52 @@ def push_one_commit(tok, files, msg):
     return True, c['sha'][:7]
 
 
+def save_token():
+    """토큰만 받아 두고 정말 되는지 확인한다.
+
+      python scripts/ratio_upload.py --토큰
+
+    올리기와 갈라 둔 까닭. 받는 데 몇 분이 걸리고 나서야 토큰을 묻고 거기서
+    틀리면, 무엇이 잘못됐는지 알기까지 또 몇 분이 든다. 토큰만 먼저 넣어 보고
+    「됐습니다」를 확인한 뒤 받는 편이 낫다.
+    """
+    print()
+    print('  GitHub 토큰을 넣습니다. 붙여 넣고 엔터를 치세요.')
+    print('  (만드는 법은 scripts/RATIO.md 에 있습니다. 채팅에는 올리지 마세요.)')
+    print()
+    try:
+        t = input('  토큰: ').strip()
+    except EOFError:
+        t = ''
+    if not t:
+        raise SystemExit('  아무것도 안 넣으셨습니다.')
+    st, d = call(t, 'GET', '')
+    if st == 401:
+        raise SystemExit('\n  토큰이 맞지 않습니다. 복사할 때 앞뒤가 잘리지 않았는지 봐 주세요.')
+    if st == 404:
+        raise SystemExit('\n  이 토큰으로는 %s/%s 저장소가 안 보입니다.\n'
+                         '  Repository access 에서 이 저장소를 골랐는지 봐 주세요.'
+                         % (REPO['owner'], REPO['name']))
+    if st != 200:
+        raise SystemExit('\n  확인하지 못했습니다 (HTTP %s %s).' % (st, d.get('message', '')))
+    st, d = call(t, 'GET', '/contents/data/ratio/board.json?ref=' + REPO['branch'])
+    if st == 403:
+        raise SystemExit('\n  저장소는 보이는데 권한이 모자랍니다.\n'
+                         '  Permissions → Contents 를 Read and write 로 해 주세요.')
+    open(TOKEN_FILE, 'w', encoding='utf-8').write(t)
+    try:
+        os.chmod(TOKEN_FILE, 0o600)
+    except Exception:
+        pass
+    print()
+    print('  됐습니다. %s 에 두었습니다.' % TOKEN_FILE)
+    print('  다음부터는 묻지 않습니다. 이제 최종경쟁률을 돌리시면 됩니다.')
+    return 0
+
+
 def main():
+    if any(a in ('--토큰', '--token') for a in sys.argv[1:]):
+        return save_token()
     tok = token()
     st, _ = call(tok, 'GET', '')
     if st == 401:
@@ -162,6 +207,16 @@ def main():
         data = open(board_path, 'rb').read()
         if snaps.get('board.json') != blob_sha(data):
             files.append(('data/ratio/board.json', data))
+    # 선생님이 주소를 더하면 바뀌는 파일들. 빠뜨리면 board.json 만 올라가고
+    # 「어느 주소로 받은 것인지」가 저장소에 안 남는다.
+    for rel in ('scripts/ratio_final_urls.txt', 'scripts/ratio_sources.json'):
+        path = os.path.join(ROOT, *rel.split('/'))
+        if not os.path.exists(path):
+            continue
+        data = open(path, 'rb').read()
+        cur = remote_listing(tok, rel).get(os.path.basename(rel))
+        if cur != blob_sha(data):
+            files.append((rel, data))
     if not files:
         print('  올릴 것이 없습니다(저장소와 같습니다).')
         return
@@ -181,4 +236,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main() or 0)
