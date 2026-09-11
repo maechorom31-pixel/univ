@@ -1361,3 +1361,30 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
   .rowhead, .longtext, .memo-foot { color: #000; }
   .longtext { background: none; }
 }
+
+/* ── 올해 최종 경쟁률 안내판 (내보내기 화면) ──────────────────────
+ *
+ * 종이에 실을 것이 아니라 종이를 뽑기 전에 보는 판이다. 「무엇이 안 붙었나」를
+ * 세어 두는 자리라 접힌 목록이 길어질 수 있다 — 높이를 막고 안에서 굴린다.
+ */
+.ratio-panel { margin-bottom: var(--s4); }
+.ratio-fold { margin-top: var(--s3); }
+.ratio-fold > summary {
+  cursor: pointer; font-size: var(--t-xs); font-weight: 600; color: var(--text);
+  padding: var(--s1) 0;
+}
+.ratio-fold > .hint {
+  font-size: var(--t-xs); color: var(--muted); line-height: 1.6;
+  margin: var(--s1) 0 var(--s2);
+}
+.ratio-fold > .btn { margin-top: var(--s2); }
+.ratio-list {
+  margin: 0; padding: 0 0 0 var(--s4); list-style: disc;
+  font-size: var(--t-xs); color: var(--muted);
+  max-height: 22em; overflow-y: auto;
+}
+.ratio-list li { margin: var(--s1) 0; line-height: 1.5; }
+
+@media print {
+  .ratio-panel { display: none !important; }
+}

@@ -868,6 +868,11 @@ def main():
         if u['dlNote']:
             print('  마감 주의 %s: %s' % (u['univ'], u['dlNote']))
 
+    # 상담 보드가 읽는 파일도 같은 스냅샷에서 함께 만든다 — 따로 돌릴 것을
+    # 하나 더 두면 화면만 새로 뽑고 보드는 옛 경쟁률을 보는 날이 온다.
+    import ratio_board
+    ratio_board.build()
+
 
 if __name__ == '__main__':
     main()

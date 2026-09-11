@@ -21,6 +21,7 @@ import {
   splitDepts, referenceLine, resolveUniv, catOf, predecessor,
 } from './match.js';
 import { isoDay, hasInterview, forcedInterview } from './text.js';
+import { indexRatio, rateOf } from './ratio.js';
 
 const listeners = new Map();
 
@@ -55,6 +56,7 @@ let ipgyeol = null;
 let mojip = null;
 let college = null;
 let sched = null;         // 전형일정표(PDF에서 뽑은 것)
+let ratio = null;         // 올해 대학이 발표한 경쟁률(ratio.html 이 긁어 둔 것)
 let offline = false;      // 보기용 자료로 열었는가. 그때는 서버를 부르지 않는다
 const linkCache = new Map();
 
@@ -218,6 +220,9 @@ const SOURCES = [
   ['mojip', 'data/mojip2027.json', indexMojip, '모집요강'],
   ['college', '../College/data/departments.json', indexCollege, '전문대 자료'],
   ['sched', 'data/schedule2027.json', indexSchedule, '전형일정표'],
+  /* 접수 기간 전에는 아직 없는 파일이다. 없다고 알릴 것이 아니라 조용히 넘긴다
+     — 「불러오지 못한 자료」에 늘 적혀 있으면 진짜 빠진 것을 못 알아본다. */
+  ['ratio', 'data/ratio/board.json', indexRatio, ''],
 ];
 
 export async function enrich() {
@@ -229,11 +234,12 @@ export async function enrich() {
       if (!res.ok) throw new Error(String(res.status));
       return build(await res.json());
     } catch (err) {
-      missing.push(label);
+      if (label) missing.push(label);
       return null;
     }
   }));
-  [ipgyeol, mojip, college, sched] = got;
+  [ipgyeol, mojip, college, sched, ratio] = got;
+  rateCache.clear();
 
   state.enriched = true;
   linkCache.clear();
@@ -483,6 +489,27 @@ export async function removeAlias(univ, dept) {
 export function summary(app) {
   return summarize(link(app), app);
 }
+
+/*
+ * 올해 최종 경쟁률 — 대학이 발표한 값을 지원에 붙인다.
+ *
+ * 붙이는 규칙은 `board/ratio.js` 가 정한다. **정확히 맞을 때만** 붙고, 아니면
+ * 사유를 돌려준다. 담임·학생이 카드에 적어 둔 값이 있으면 그것이 언제나 먼저다
+ * — 여기서는 적어 둔 값을 보지 않는다. 어느 쪽을 쓸지는 부르는 쪽이 정한다.
+ */
+const rateCache = new Map();
+
+export function finalRate(app) {
+  if (!app || !app.id) return rateOf(ratio, app);
+  if (!rateCache.has(app.id)) rateCache.set(app.id, rateOf(ratio, app));
+  return rateCache.get(app.id);
+}
+
+/** 경쟁률 자료를 받았나. 못 받았으면 화면이 안내를 다르게 적는다. */
+export const hasRatio = () => !!ratio;
+
+/** 경쟁률 자료를 만든 때 — 「9/11 17:40 수집」처럼 적는다. */
+export const ratioBuilt = () => (ratio && ratio.built) || '';
 
 /* ── 쓰기 ───────────────────────────────────────────────────────── */
 

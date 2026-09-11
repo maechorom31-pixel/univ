@@ -142,6 +142,8 @@ function render() {
 
   main.appendChild(chooser());
   if (notice) main.appendChild(el('p', 'note', notice));
+  // 「경쟁률」 칸이 있는 문서에서만 — 진학 대장에는 그 칸이 없다
+  if (['report', 'status', 'final'].includes(view)) main.appendChild(ratioPanel());
   const VIEW = { ledger, report, status, final: finalReport };
   main.appendChild((VIEW[view] || ledger)());
   // 그려 놓고 나서 대장의 지원 칸이 실제로 들어갔는지 재고, 넘치면 줄인다
@@ -219,6 +221,117 @@ function download(name, text) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ── 올해 최종 경쟁률 안내판 ──────────────────────────────────────
+ *
+ * 종이에는 숫자만 실린다. 그 숫자가 어디서 왔는지, 무엇이 안 붙었는지는 여기서
+ * 본다. **안 붙은 것을 세어 보여 주는 것이 이 판의 일이다** — 자동으로 붙은
+ * 건수만 적으면 빈 칸이 몇인지 모르고, 그러면 종이를 넘기며 세게 된다.
+ *
+ * 화면에만 둔다(`@media print` 에서 숨긴다). 결재 문서에 들어갈 내용이 아니다.
+ */
+
+/** 이 지원의 경쟁률이 어디서 왔나. 종이의 「경쟁률」 칸과 같은 차례로 본다. */
+function rateSource(app) {
+  const f = store.fieldOf(app, '최종경쟁률');
+  if (f && f.value && typedRate(f.value) != null) {
+    return { kind: 'typed', rate: typedRate(f.value), by: f.status === 'confirmed' ? '담임 확인' : '학생이 적음' };
+  }
+  const auto = store.finalRate(app);
+  if (auto.ok && auto.final && auto.rate != null) return { kind: 'auto', rate: auto.rate, hit: auto };
+  if (auto.ok && auto.rate != null) return { kind: 'draft', rate: auto.rate, hit: auto };
+  return { kind: 'miss', why: auto.note || '', reason: auto.reason || '' };
+}
+
+const REASON_KO = {
+  data: '자료 없음', univ: '대학', track: '전형', unit: '모집단위', quota: '모집인원',
+};
+
+function ratioPanel() {
+  const rows = rowsForReport();
+  const seen = { typed: [], auto: [], draft: [], miss: [] };
+  for (const { app, student } of rows) {
+    const got = rateSource(app);
+    seen[got.kind].push({ app, student, got });
+  }
+
+  const box = el('section', 'panel ratio-panel');
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '올해 최종 경쟁률'));
+  head.appendChild(el('span', 'count num', `${seen.auto.length + seen.typed.length} / ${rows.length}건`));
+  box.appendChild(head);
+
+  if (!store.hasRatio()) {
+    box.appendChild(el('p', 'empty-state',
+      '대학이 발표한 경쟁률 자료가 아직 없습니다.'
+      + ' 경쟁률 수집을 한 번 돌리면(ratio.html) 이 화면이 저절로 채웁니다.'
+      + ' 그때까지는 카드에 적어 둔 값만 실립니다.'));
+    return box;
+  }
+
+  const stamp = store.ratioBuilt().replace('T', ' ');
+  box.appendChild(el('p', 'section-label',
+    `대학 발표 최종 경쟁률에서 ${seen.auto.length}건이 저절로 붙었습니다.`
+    + ` 카드에 적어 둔 값 ${seen.typed.length}건은 그대로 먼저 쓰입니다.`
+    + ` 나머지 ${seen.draft.length + seen.miss.length}건은 비어 있습니다`
+    + `(자료를 접은 때 ${stamp}).`));
+
+  if (seen.draft.length) {
+    box.appendChild(fold(`아직 최종이 아닌 곳 ${seen.draft.length}건`,
+      '대학 페이지가 「최종」이라 적기 전의 잠정 경쟁률입니다. 종이에는 싣지 않습니다.'
+      + ' 발표 뒤에 경쟁률 수집을 한 번 더 돌리면 저절로 찹니다.',
+      seen.draft.map(({ app, student, got }) =>
+        `${student.hak} ${student.name} · ${shortUniv(app.univ)} ${app.dept}`
+        + ` — 지금 ${Number(got.rate).toFixed(2)} (${got.hit.stamp.replace('T', ' ')} 기준)`)));
+  }
+
+  if (seen.miss.length) {
+    const byReason = new Map();
+    for (const r of seen.miss) {
+      const k = REASON_KO[r.got.reason] || '그 밖';
+      if (!byReason.has(k)) byReason.set(k, []);
+      byReason.get(k).push(r);
+    }
+    const tally = [...byReason].map(([k, v]) => `${k} ${v.length}`).join(' · ');
+    box.appendChild(fold(`못 붙인 것 ${seen.miss.length}건`,
+      `이름이 정확히 맞을 때만 붙입니다 — 닮은 이름을 고르면 옆 전형의 숫자가 붙기 때문입니다.`
+      + ` 아래는 카드에서 손으로 적어 주셔야 하는 것들입니다 (${tally}).`,
+      seen.miss.map(({ app, student, got }) =>
+        `${student.hak} ${student.name} · ${shortUniv(app.univ)} ${app.dept} · ${typeText(app)}`
+        + `${got.why ? ` — ${got.why}` : ''}`),
+      () => seen.miss.map(({ app, student, got }) =>
+        [student.hak, student.name, app.univ, app.dept, typeText(app), got.why])));
+  }
+
+  return box;
+}
+
+/** 접힌 목록 한 덩이. 펴면 줄이 나오고, 원하면 글로 복사한다. */
+function fold(title, hint, lines, table) {
+  const d = document.createElement('details');
+  d.className = 'ratio-fold';
+  d.appendChild(el('summary', '', title));
+  if (hint) d.appendChild(el('p', 'hint', hint));
+  const ul = el('ul', 'ratio-list');
+  for (const line of lines) ul.appendChild(el('li', '', line));
+  d.appendChild(ul);
+  if (table) {
+    const copy = el('button', 'btn', '목록 복사');
+    copy.type = 'button';
+    copy.onclick = async () => {
+      const text = table().map((r) => r.join('\t')).join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        notice = '복사했습니다.';
+      } catch (err) {
+        notice = '복사가 막혀 있습니다.';
+      }
+      render();
+    };
+    d.appendChild(copy);
+  }
+  return d;
 }
 
 /* ── 진학 대장 ──────────────────────────────────────────────────── */
@@ -1320,6 +1433,11 @@ const vOf = (app) => stats.verdict({ ...app, result: store.resultOf(app) });
  *
  * 어느 쪽을 썼는지 헷갈릴 일은 없다 — 최종 경쟁률은 올해 것이고 실질경쟁률은
  * 작년 것인데, 표에 둘이 같이 나오는 자리가 없다.
+ *
+ * 적어 둔 값이 없으면 **대학이 발표한 최종 경쟁률**을 쓴다(`board/ratio.js`).
+ * 학과·전형이 정확히 맞을 때만 붙고, 대학 페이지가 「최종」이라 적은 것만 쓴다 —
+ * 접수 중의 잠정 경쟁률이 종이에 최종인 척 실리면 안 된다. 무엇이 붙고 무엇이
+ * 안 붙었는지는 화면 위 안내판(`ratioPanel`)이 건마다 보여 준다.
  */
 function rateText(app, sm) {
   const f = store.fieldOf(app, '최종경쟁률');
@@ -1327,6 +1445,8 @@ function rateText(app, sm) {
     const n = typedRate(f.value);
     if (n != null) return n.toFixed(2);
   }
+  const auto = store.finalRate(app);
+  if (auto.ok && auto.final && auto.rate != null) return Number(auto.rate).toFixed(2);
   return rt(sm && sm.real ? sm.real.rate : null);
 }
 

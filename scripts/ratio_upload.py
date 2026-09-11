@@ -11,7 +11,8 @@ ZIP으로 내려받은 폴더에서도 된다. GitHub 토큰 하나만 있으면
 Personal access tokens → Fine-grained tokens → Generate new token.
 Repository access 에서 이 저장소만 고르고, Permissions → Contents 를 Read and write 로.
 
-올리는 것: data/ratio/snap-*.json 중 저장소에 없는 것 전부, 그리고 ratio.html.
+올리는 것: data/ratio/snap-*.json 중 저장소에 없는 것 전부, 그리고 ratio.html 과
+data/ratio/board.json(상담 보드가 읽는 파일).
 한 커밋으로 묶어 올린다 — 페이지 배포가 커밋마다 새로 시작되어 앞 것을 취소하기 때문.
 """
 import base64, hashlib, json, os, sys, urllib.request, urllib.error
@@ -155,6 +156,12 @@ def main():
         cur = remote_listing(tok, 'ratio.html').get('ratio.html')
         if cur != blob_sha(data):
             files.append(('ratio.html', data))
+    # 상담 보드가 읽는 파일. 스냅샷과 달리 같은 이름을 덮어쓰므로 내용으로 견준다.
+    board_path = os.path.join(ROOT, 'data', 'ratio', 'board.json')
+    if os.path.exists(board_path):
+        data = open(board_path, 'rb').read()
+        if snaps.get('board.json') != blob_sha(data):
+            files.append(('data/ratio/board.json', data))
     if not files:
         print('  올릴 것이 없습니다(저장소와 같습니다).')
         return
@@ -166,7 +173,9 @@ def main():
         print('  실패: %s' % info)
         # 한 커밋이 안 되면 파일마다 따로라도 올린다
         for path, data in files:
-            sha = remote_listing(tok, path).get(os.path.basename(path)) if path == 'ratio.html' else None
+            # 덮어쓰는 파일은 지금 저장소에 있는 것의 sha 가 있어야 올라간다
+            overwrite = path in ('ratio.html', 'data/ratio/board.json')
+            sha = remote_listing(tok, path).get(os.path.basename(path)) if overwrite else None
             if put(tok, path, data, sha, msg):
                 print('  올림 %s' % path)
 
