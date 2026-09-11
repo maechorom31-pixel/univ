@@ -96,7 +96,14 @@ def page_deadline(notice, fallback):
 def is_final(meta, collected=None, deadline=None):
     """페이지가 「최종」이라 적은 것만. 공지문의 「최종 경쟁률은 … 이후 공지」나
     진학어플라이의 탭 이름 「최종 마감 현황」에 속지 않는다 — 날짜가 함께 있거나,
-    수집 시각이 마감을 지났을 때만 최종이다."""
+    수집 시각이 마감을 지났을 때만 최종이다.
+
+    다만 **최종 발표 주소에서 받아 온 페이지는 그대로 최종이다**(`finalSrc`).
+    진학어플라이는 마감 뒤 최종을 다른 주소에 올리는데, 그 페이지는 기준시각 표기를
+    우리가 못 읽는다. 사람이 최종 자리에 주소를 적어 둔 것이 곧 근거다.
+    """
+    if meta.get('finalSrc'):
+        return True
     stamp = meta.get('stamp') or ''
     if not (bool(meta.get('final')) and '최종' in stamp):
         return False

@@ -86,8 +86,16 @@ def latest_pages(snaps):
             here.setdefault(name, []).append(page)
         for name, pages in here.items():
             if len(pages) > 1:
-                ambiguous[name] = '한 번 수집한 것에 같은 이름이 %d장이라 캠퍼스를 가릴 수 없습니다' % len(pages)
-                continue
+                # 실시간 주소와 최종 발표 주소를 함께 받으면 같은 대학이 두 장이 된다.
+                # 한쪽만 최종이면 가릴 수 있다 — 최종이 이긴다. 둘 다 아니면(홍익대
+                # 서울·세종) 정말 가릴 수 없으니 통째로 뺀다.
+                fin = [p for p in pages if p['meta'].get('final')]
+                if len(fin) == 1:
+                    pages = fin
+                else:
+                    ambiguous[name] = ('한 번 수집한 것에 같은 이름이 %d장이라 캠퍼스를 가릴 수 없습니다'
+                                       % len(pages))
+                    continue
             page = pages[0]
             dl, _ = rb.page_deadline(page['meta'].get('notice', ''), deadline)
             final = rb.is_final(page['meta'], collected, dl)

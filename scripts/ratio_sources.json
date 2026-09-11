@@ -68,13 +68,17 @@
     "10690211",
     "10720321"
   ],
+  "other": [
+    "https://ipsi.cs.ac.kr/ratio/2027/1.do"
+  ],
+  "note_other": "세한대(apply.sehan.ac.kr)는 로그인 화면이라 표가 없어 뺐다. 창신대(ipsi.cs.ac.kr)는 PC에서 받힌다.",
+  "note_final": "최종 경쟁률은 주소가 따로인 대학이 있습니다(진학어플라이). 마감 뒤 최종 발표 페이지의 코드나 주소를 아래에 넣으면 실시간 주소와 함께 받고, 여기서 온 것은 최종으로 칩니다. 진학어플라이는 코드 8자리만 적어도 되고 주소를 통째로 붙여도 됩니다.",
+  "uway_final": [],
+  "jinhak_final": [],
+  "other_final": [],
   "repo": {
     "owner": "maechorom31-pixel",
     "name": "univ",
     "branch": "claude/university-counseling-program-hkf8qg"
-  },
-  "other": [
-    "https://ipsi.cs.ac.kr/ratio/2027/1.do"
-  ],
-  "note_other": "세한대(apply.sehan.ac.kr)는 로그인 화면이라 표가 없어 뺐다. 창신대(ipsi.cs.ac.kr)는 PC에서 받힌다."
+  }
 }

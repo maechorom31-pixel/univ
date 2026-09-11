@@ -279,6 +279,14 @@ def stamp_iso(stamp):
         return ''
 
 
+def jinhak_url(code):
+    """진학어플라이 경쟁률 페이지. 코드는 해마다, 때로는 최종 발표 때 또 바뀐다."""
+    code = str(code).strip()
+    if code.startswith('http'):
+        return code                       # 주소를 통째로 적어 둔 경우
+    return 'https://addon.jinhakapply.com/RatioV1/RatioH/Ratio%s.html' % code
+
+
 def page_meta(html):
     t = re.search(r'<title>([^<]*)</title>', html)
     univ = clean_univ(t.group(1)) if t else ''
@@ -316,13 +324,26 @@ def main(argv):
     if keep_raw:
         os.makedirs(raw_dir, exist_ok=True)
 
-    jobs = [('uway', uway_url(t, 2027), t) for t in src['uway']]
-    jobs += [('jinhak', 'https://addon.jinhakapply.com/RatioV1/RatioH/Ratio%s.html' % c, c)
-             for c in src['jinhak']]
-    jobs += [('other', u, u.split('//')[-1].split('/')[0]) for u in src.get('other', [])]
+    jobs = [('uway', uway_url(t, 2027), t, False) for t in src['uway']]
+    jobs += [('jinhak', jinhak_url(c), c, False) for c in src['jinhak']]
+    jobs += [('other', u, u.split('//')[-1].split('/')[0], False)
+             for u in src.get('other', [])]
+    # 최종 경쟁률은 주소가 따로다.
+    #
+    # 진학어플라이는 접수 중 실시간 페이지와 마감 뒤 최종 발표 페이지의 주소가 다르다.
+    # 실시간 주소는 마감이 지나면 더 갱신되지 않고, 최종은 새 주소에 올라온다.
+    # 그 주소를 jinhak_final / uway_final / other_final 에 넣으면 함께 받는다.
+    #
+    # 여기서 온 페이지는 글자를 보지 않고 최종으로 친다. 페이지가 「최종」이라 적었는지
+    # 읽어 내는 것이 진학어플라이에서는 되지 않았다 - 기준시각 표기 자체가 안 잡힌다.
+    # 주소를 최종 자리에 적어 둔 것 자체가 사람이 확인한 근거다.
+    jobs += [('uway', uway_url(t, 2027), t, True) for t in src.get('uway_final', [])]
+    jobs += [('jinhak', jinhak_url(c), c, True) for c in src.get('jinhak_final', [])]
+    jobs += [('other', u, u.split('//')[-1].split('/')[0], True)
+             for u in src.get('other_final', [])]
 
     pages, log = [], []
-    for kind, url, key in jobs:
+    for kind, url, key, is_final_src in jobs:
         try:
             try:
                 html = get(url)
@@ -340,6 +361,12 @@ def main(argv):
             print('  [건너뜀] %s %s %s' % (kind, key, str(e)[:60]))
             continue
         meta = page_meta(html)
+        if is_final_src:
+            # 사람이 최종 자리에 적어 둔 주소다. 글자로 다시 묻지 않는다.
+            meta['final'] = True
+            meta['finalSrc'] = True
+            if '최종' not in (meta.get('stamp') or ''):
+                meta['stamp'] = ('%s 최종' % meta['stamp']).strip()
         if '안전한 접속 확인' in html or not meta['univ']:
             log.append({'key': key, 'kind': kind, 'error': '차단 또는 인식 불가'})
             print('  [건너뜀] %s %s 차단' % (kind, key))
