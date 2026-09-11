@@ -155,18 +155,25 @@ def save_token():
         raise SystemExit('  아무것도 안 넣으셨습니다.')
     # 붙여 넣다 엉뚱한 것이 들어오면 파이썬이 헤더를 만들다 그대로 터진다.
     # 오류 덩어리 대신 무엇이 잘못됐는지 한 줄로 말해 준다.
-    bad = [c for c in t if not (32 < ord(c) < 127)]
-    if bad:
-        raise SystemExit('\n  토큰에 영문·숫자가 아닌 글자가 섞여 있습니다(%s).\n'
-                         '  다른 것을 붙여 넣으셨거나 복사할 때 딸려 온 것 같습니다.'
-                         % ''.join(sorted(set(bad))[:5]))
-    if len(t) < 20:
-        raise SystemExit('\n  토큰이 너무 짧습니다(%d글자). 앞뒤가 잘리지 않았는지 봐 주세요.'
-                         % len(t))
-    # GitHub 토큰은 github_pat_ · ghp_ 처럼 gh 로 시작한다(아주 옛 것은 16진수 40자).
-    if not (t.startswith('gh') or re.fullmatch(r'[0-9a-f]{40}', t)):
-        raise SystemExit('\n  GitHub 토큰으로 보이지 않습니다(토큰은 github_pat_ 나 ghp_ 로'
-                         ' 시작합니다).\n  비밀번호나 다른 것을 붙여 넣으신 것 같습니다.')
+    # 다만 영문·숫자 밖의 글자는 그냥 두면 파이썬이 헤더를 만들다 그대로 터진다.
+    # 눈에 안 보이는 것(따옴표·줄바꿈·폭 없는 공백)이 복사에 딸려 오기 쉬우니
+    # 떼어 내고, 떼어 낸 것이 있으면 알린다.
+    clean = ''.join(c for c in t if 32 < ord(c) < 127)
+    if clean != t:
+        print()
+        print('  (붙여 넣은 것에서 눈에 안 보이는 글자 %d개를 떼어 냈습니다.)'
+              % (len(t) - len(clean)))
+        t = clean
+    if not t:
+        raise SystemExit('  남는 글자가 없습니다. 다시 복사해 주세요.')
+    # 모양이 낯설어도 **막지 않는다.** 맞는 토큰을 넣으셨는데 제 잣대에 걸려
+    # 되돌아간 적이 있다. 토큰이 맞는지 아닌지는 GitHub 이 401 로 말해 준다 —
+    # 내가 앞질러 판정할 일이 아니다. 한 줄 일러 두고 그대로 물어본다.
+    if len(t) < 20 or not (t.startswith('gh') or re.fullmatch(r'[0-9a-f]{40}', t)):
+        print()
+        print('  (여느 토큰과 모양이 다릅니다 — %d글자, 「%s…」로 시작.'
+              % (len(t), t[:4]))
+        print('   그래도 GitHub 에 물어보겠습니다.)')
     st, d = call(t, 'GET', '')
     if st == 401:
         raise SystemExit('\n  토큰이 맞지 않습니다. 복사할 때 앞뒤가 잘리지 않았는지 봐 주세요.')
