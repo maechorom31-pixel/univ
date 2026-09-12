@@ -784,14 +784,21 @@ function typeKind(app) {
 }
 
 /**
- * 명단 한 대학 안의 줄 차례 — **모집단위 → 유형 → 전형 이름 → 학번.**
+ * 명단 한 대학 안의 줄 차례. **묶음에 따라 앞자리가 다르다.**
  *
- * 학번순으로만 세우면 같은 학과에 지원한 학생들이 표 곳곳에 흩어진다. 상담에서
- * 보는 단위는 학과다 — 「이 학과에 우리 애들이 몇이나 썼고 어떻게 됐나」를
- * 보려면 학과가 붙어 있어야 한다. 같은 학과 안에서는 종합을 먼저 두는데,
- * 1단계·면접이 있어 일정이 먼저 도는 쪽이라 눈이 먼저 가야 한다.
+ *   수도권    모집단위 → 유형 → 전형 이름 → 학번
+ *   그 밖     유형 → 전형 이름 → 모집단위 → 학번
  *
- * 학번은 맨 마지막 자다 — 앞이 모두 같을 때만 차례를 가른다.
+ * 수도권은 한 대학에 한둘씩 흩어져 지원한다. 거기서 보는 단위는 학과다 —
+ * 「이 학과에 우리 애들이 몇이나 썼고 어떻게 됐나」를 보려면 학과가 붙어
+ * 있어야 한다.
+ *
+ * 전남대 아래로는 한 대학에 수십 건이 몰린다. 거기서는 학과보다 전형이 먼저다
+ * — 교과끼리 모아 놓고 그 안에서 지역인재끼리 묶어야 「지역인재에 몇을 써서
+ * 어떻게 됐나」가 한눈에 들어온다. 학과는 그 안에서 가나다순이다.
+ *
+ * 유형은 어느 쪽이든 종합이 먼저다 — 1단계·면접이 있어 일정이 먼저 도는
+ * 쪽이라 눈이 먼저 가야 한다. 학번은 늘 맨 마지막 자다.
  */
 const KIND_ORDER = ['종합', '교과', '논술', '실기'];
 function rowOrder(a, b) {
@@ -799,11 +806,14 @@ function rowOrder(a, b) {
     const i = KIND_ORDER.indexOf(typeKind(x.app));
     return i < 0 ? KIND_ORDER.length : i;
   };
-  return String((a.app && a.app.dept) || '').localeCompare(
-    String((b.app && b.app.dept) || ''), 'ko')
-    || rank(a) - rank(b)
-    || typeName(a.app).localeCompare(typeName(b.app), 'ko')
-    || String(a.student.hak).localeCompare(String(b.student.hak));
+  const dept = (x) => String((x.app && x.app.dept) || '');
+  const kind = rank(a) - rank(b);
+  const track = typeName(a.app).localeCompare(typeName(b.app), 'ko');
+  const unit = dept(a).localeCompare(dept(b), 'ko');
+  const hak = String(a.student.hak).localeCompare(String(b.student.hak));
+  return isCapital(a.app)
+    ? (unit || kind || track || hak)
+    : (kind || track || unit || hak);
 }
 
 /** 세부 전형 이름만. 앞머리의 유형과 그것을 감싼 괄호를 뗀다. */
