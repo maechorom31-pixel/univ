@@ -72,3 +72,7 @@ https://ratio.uwayapply.com/Sl5KZjpNJkpmJSY6Jko3ZlRm              # 상명대(�
 https://ratio.uwayapply.com/Sl5KOlc6L2AvSmYlJjomSjdmVGY=          # 제주대
 https://ratio.uwayapply.com/Sl5KOkxNSmYlJjomSjdmVGY=              # 목포가톨릭대
 https://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KVyUmYTlKZiUmOiZKN2ZUZg%3D%3D&applyURL=http%3A%2F%2Fipsi1.uwayapply.com%2F2027%2Fsusi2%2Fkosin%2F%3FCHA%3D1&ratioNM=%B0%ED%BD%C5%B4%EB%C7%D0%B1%B3&univURL=http://www.kosin.ac.kr   # 고신대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11040711.html   # 아주대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10930201.html   # 성신여대
+https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10030381.html   # 가톨릭대
+https://ratio.uwayapply.com/Sl5KOk0mSmYlJjomSjdmVGY=              # 상명대(서울)

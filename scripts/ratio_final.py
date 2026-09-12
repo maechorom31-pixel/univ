@@ -253,19 +253,29 @@ def put(got, name, entry):
     return True
 
 
+# 최종 경쟁률을 구하러 다닐 까닭이 없는 학교유형.
+#
+#   전문대   유웨이·진학어플라이를 쓰지 않고 자료의 모양도 다르다
+#   특수대   과기원 넷과 한국에너지공대다. 4년제지만 경쟁률을 제 입학처에만
+#           올려서 여기로는 들어오지 않는다 — 목록에 남겨 두면 끝까지
+#           「아직 못 받은 곳」으로 보여 헷갈린다.
+#
+# 즐겨찾기의 「학교유형」 칸이 가른다. 이름에 괄호가 없는 학교가 마침 이
+# 둘뿐이라 눈으로는 그렇게 보이지만, 이름 모양이 아니라 칸을 본다.
+SKIP_TYPES = ('전문대', '특수대')
+
+
 def missing(univs):
-    """지원한 대학 가운데 아직 최종이 없는 곳. 전문대는 뺀다(자료가 다르다)."""
+    """지원한 대학 가운데 아직 최종이 없는 곳. 전문대·특수대는 뺀다."""
     if not os.path.exists(WANTED):
-        return []
+        return [], []
     want = json.load(open(WANTED, encoding='utf-8')).get('univs', [])
-    out = []
+    out, skipped = [], []
     for w in want:
-        if w.get('type') == '전문대':
-            continue
         if any(covers(u['u'], w['u']) for u in univs):
             continue
-        out.append(w)
-    return out
+        (skipped if w.get('type') in SKIP_TYPES else out).append(w)
+    return out, skipped
 
 
 def main(argv):
@@ -346,7 +356,7 @@ def main(argv):
         if len(waiting) > 8:
             print('   … 외 %d곳' % (len(waiting) - 8))
 
-    left = missing(univs)
+    left, skipped = missing(univs)
     if left:
         print('\n아직 최종이 없는 대학 %d곳 — 지원이 많은 쪽부터' % len(left))
         for w in left[:20]:
@@ -357,6 +367,13 @@ def main(argv):
               ' 다시 돌리면 됩니다.' % os.path.basename(URLS))
     else:
         print('\n지원한 대학은 모두 받았습니다.')
+    if skipped:
+        n = sum(w['n'] for w in skipped)
+        print('\n전문대·특수대 %d곳(지원 %d건)은 세지 않았습니다 — 경쟁률을 제 입학처에만'
+              ' 올려 여기로는 안 들어옵니다.' % (len(skipped), n))
+        sp = [w['u'] for w in skipped if w.get('type') == '특수대']
+        if sp:
+            print('   그 가운데 4년제: %s' % ' · '.join(sp))
     if twins:
         print('\n같은 이름으로 두 장이 들어온 대학 %d곳 — 둘 다 담았습니다.'
               % len(set(twins)))
