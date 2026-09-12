@@ -778,6 +778,29 @@ function typeKind(app) {
   return typeLabel(app);
 }
 
+/**
+ * 명단 한 대학 안의 줄 차례 — **모집단위 → 유형 → 전형 이름 → 학번.**
+ *
+ * 학번순으로만 세우면 같은 학과에 지원한 학생들이 표 곳곳에 흩어진다. 상담에서
+ * 보는 단위는 학과다 — 「이 학과에 우리 애들이 몇이나 썼고 어떻게 됐나」를
+ * 보려면 학과가 붙어 있어야 한다. 같은 학과 안에서는 종합을 먼저 두는데,
+ * 1단계·면접이 있어 일정이 먼저 도는 쪽이라 눈이 먼저 가야 한다.
+ *
+ * 학번은 맨 마지막 자다 — 앞이 모두 같을 때만 차례를 가른다.
+ */
+const KIND_ORDER = ['학종', '교과', '논술', '실기'];
+function rowOrder(a, b) {
+  const rank = (x) => {
+    const i = KIND_ORDER.indexOf(typeKind(x.app));
+    return i < 0 ? KIND_ORDER.length : i;
+  };
+  return String((a.app && a.app.dept) || '').localeCompare(
+    String((b.app && b.app.dept) || ''), 'ko')
+    || rank(a) - rank(b)
+    || typeName(a.app).localeCompare(typeName(b.app), 'ko')
+    || String(a.student.hak).localeCompare(String(b.student.hak));
+}
+
 /** 세부 전형 이름만. 앞머리의 유형과 그것을 감싼 괄호를 뗀다. */
 function typeName(app) {
   const sub = String((app && (app.typeSub || app.typeName)) || '').trim();
@@ -1269,8 +1292,7 @@ function detailTable(key, rows) {
     grp.appendChild(head);
     tbody.appendChild(grp);
 
-    const sorted = mine.slice().sort((a, b) =>
-      String(a.student.hak).localeCompare(String(b.student.hak)));
+    const sorted = mine.slice().sort(rowOrder);
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
       n += 1;
@@ -1474,8 +1496,7 @@ function statusTable(names, byUniv) {
     grp.appendChild(head);
     tbody.appendChild(grp);
 
-    const sorted = byUniv.get(name).slice().sort((a, b) =>
-      String(a.student.hak).localeCompare(String(b.student.hak)));
+    const sorted = byUniv.get(name).slice().sort(rowOrder);
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
       const r = store.resultOf(app) || {};
@@ -1542,7 +1563,8 @@ function status() {
     const rows = [['대학', '학번', '이름', '모집단위', '유형', '전형',
       '1단계 결과', '최초 결과']];
     for (const name of names) {
-      for (const { app, student } of byUniv.get(name)) {
+      // 붙여 넣는 표도 종이와 같은 차례로 — 나란히 놓고 대조할 수 있게
+      for (const { app, student } of byUniv.get(name).slice().sort(rowOrder)) {
         const r = store.resultOf(app) || {};
         rows.push([name, student.hak, student.name, app.dept || '',
           typeKind(app), typeName(app), r.stage1 || '', statusText(app)]);
@@ -1817,8 +1839,7 @@ function finalDetail(key, rows) {
     grp.appendChild(head);
     tbody.appendChild(grp);
 
-    const sorted = mine.slice().sort((a, b) =>
-      String(a.student.hak).localeCompare(String(b.student.hak)));
+    const sorted = mine.slice().sort(rowOrder);
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
       const r = store.resultOf(app);
@@ -1997,7 +2018,12 @@ function finalTable(rows) {
    */
   out.push(['학번', '이름', '대학', '모집단위', '유형', '전형', '모집 인원', '경쟁률',
     '환산 성적', '1단계 결과', '최종 결과']);
-  for (const { app, student } of rows) {
+  // 대학 차례는 종이와 같게, 그 안은 모집단위 → 유형 → 전형 → 학번
+  const flat = rows.slice().sort((a, b) =>
+    rankOfUniv(shortUniv(a.app.univ)) - rankOfUniv(shortUniv(b.app.univ))
+    || shortUniv(a.app.univ).localeCompare(shortUniv(b.app.univ), 'ko')
+    || rowOrder(a, b));
+  for (const { app, student } of flat) {
     const r = store.resultOf(app);
     // 경쟁률은 화면·종이 표와 같은 값 — 적어 둔 최종 경쟁률이 먼저, 없으면 작년 실질
     const rate = rateText(app, store.summary(app));
