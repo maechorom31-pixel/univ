@@ -1293,6 +1293,7 @@ function detailTable(key, rows) {
     tbody.appendChild(grp);
 
     const sorted = mine.slice().sort(rowOrder);
+    n = 0;                                   // 연번은 대학마다 1부터
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
       n += 1;
@@ -1460,7 +1461,9 @@ const STATUS_COLS = ['연번', '학번', '이름', '모집단위', '유형', '�
  * 종이도 두꺼워지지만 무엇보다 **눈이 표를 건너뛰느라 내용을 못 따라간다.**
  *
  * 표는 하나로 두고 대학은 **칸을 가로지르는 머리줄**로 끊는다. 머리글은 한 번만
- * 나오고, 연번이 문서 전체에서 이어져 몇 건인지 바로 읽힌다.
+ * 나오고, 연번은 **대학마다 1부터** 다시 센다 — 상담에서는 「충남대 3번」처럼
+ * 대학 안의 자리로 부르게 되므로, 문서를 통틀어 센 번호는 세어 봐야 뜻이 생긴다.
+ * 전체 건수는 표 위에 따로 적혀 있다.
  */
 function statusTable(names, byUniv) {
   const tw = el('div', 'tw');
@@ -1497,6 +1500,7 @@ function statusTable(names, byUniv) {
     tbody.appendChild(grp);
 
     const sorted = byUniv.get(name).slice().sort(rowOrder);
+    n = 0;                                   // 연번은 대학마다 1부터
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
       const r = store.resultOf(app) || {};
@@ -1840,6 +1844,7 @@ function finalDetail(key, rows) {
     tbody.appendChild(grp);
 
     const sorted = mine.slice().sort(rowOrder);
+    n = 0;                                   // 연번은 대학마다 1부터
     for (const { app, student } of sorted) {
       const sm = store.summary(app);
       const r = store.resultOf(app);
