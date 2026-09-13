@@ -137,7 +137,10 @@ const D = {
     return { lab, ...blk(s), ad: med(s.filter((x) => x.a26).map((x) => (x.a27 - x.a26) / x.a26)) };
   }),
   mine: blk(P.filter((x) => W.unit.has(`${x.base}|${m.normUnit(x.dept)}`))),
+  applied26: P.reduce((a, x) => a + (x.a26 || 0), 0),
+  applied27: P.reduce((a, x) => a + x.a27, 0),
 };
+const MINE = P.filter((x) => W.unit.has(`${x.base}|${m.normUnit(x.dept)}`));
 D.byuniv = [...W.univ].sort((a, b) => b[1] - a[1])
   .map(([b, apps]) => ({ b, apps, s: P.filter((x) => x.base === b) }))
   .filter((x) => x.s.length >= 20)
@@ -154,6 +157,123 @@ D.byuniv = [...W.univ].sort((a, b) => b[1] - a[1])
 }
 fs.writeFileSync(path.join(ROOT, 'scripts/.ratio_data.json'), JSON.stringify(D));
 console.log(`우리 학생이 쓴 학과 ${D.mine.n}쌍 · 대학 표 ${D.byuniv.length}곳`);
+
+/* ── 그림 ───────────────────────────────────────────────────────── */
+
+/**
+ * 2027 수능 응시원서 접수 결과 (한국교육과정평가원 발표, 2026-09-08 보도).
+ * 이 판의 크기가 어떻게 바뀌었는지는 우리 자료로는 알 수 없어 바깥 숫자를 들여온다.
+ */
+const SUNEUNG = {
+  total: 551864,
+  rows: [
+    { k: '재학생 (고3)', now: 355391, was: 371897 },
+    { k: '졸업생 (N수생)', now: 173706, was: 159922 },
+  ],
+  src: 'https://www.eduplusnews.com/news/articleView.html?idxno=20096',
+};
+
+/** 변화율 분포. -60%부터 +60%까지 10%p 칸으로 나눈다. */
+function hist(rows) {
+  const bins = [];
+  for (let lo = -0.6; lo < 0.6; lo += 0.1) bins.push({ lo, hi: lo + 0.1, n: 0 });
+  const under = { n: 0 }; const over = { n: 0 };
+  for (const v of ch(rows)) {
+    if (v < -0.6) { under.n += 1; continue; }
+    if (v >= 0.6) { over.n += 1; continue; }
+    bins[Math.min(bins.length - 1, Math.floor((v + 0.6) / 0.1))].n += 1;
+  }
+  return { bins, under, over, total: rows.length };
+}
+
+/**
+ * 변화율 분포 그림 — 전체와 우리 학생이 쓴 학과를 나란히.
+ *
+ * 세로는 **비율**이다. 5,027쌍과 556쌍을 같은 자로 재려면 건수로는 안 된다.
+ * 두 계열이라 범례를 두고, 중앙값 자리에 선을 그어 이름을 적는다 —
+ * 색만으로 가리지 않게.
+ */
+function histSvg(a, b, medA, medB) {
+  const W = 760; const H = 260; const L = 44; const R = 16; const T = 16; const B = 44;
+  const ha = hist(a); const hb = hist(b);
+  const n = ha.bins.length;
+  const bw = (W - L - R) / n;
+  const top = Math.max(...ha.bins.map((x) => x.n / ha.total), ...hb.bins.map((x) => x.n / hb.total));
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  const x = (i) => L + i * bw;
+  let g = '';
+  for (const v of [0, top / 2, top]) {
+    g += `<line x1="${L}" y1="${y(v).toFixed(1)}" x2="${W - R}" y2="${y(v).toFixed(1)}" stroke="#E8E6E2"/>`
+      + `<text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" class="ax">${(v * 100).toFixed(0)}%</text>`;
+  }
+  ha.bins.forEach((bin, i) => {
+    const pa = bin.n / ha.total; const pb = hb.bins[i].n / hb.total;
+    const w = bw / 2 - 2;
+    g += `<rect x="${(x(i) + 1).toFixed(1)}" y="${y(pa).toFixed(1)}" width="${w.toFixed(1)}" height="${(y(0) - y(pa)).toFixed(1)}" fill="#F59E0B" rx="2">`
+      + `<title>${(bin.lo * 100).toFixed(0)}~${(bin.hi * 100).toFixed(0)}% · 전체 ${(pa * 100).toFixed(1)}% (${bin.n}쌍)</title></rect>`
+      + `<rect x="${(x(i) + bw / 2 + 1).toFixed(1)}" y="${y(pb).toFixed(1)}" width="${w.toFixed(1)}" height="${(y(0) - y(pb)).toFixed(1)}" fill="#B45309" rx="2">`
+      + `<title>${(bin.lo * 100).toFixed(0)}~${(bin.hi * 100).toFixed(0)}% · 우리 ${(pb * 100).toFixed(1)}% (${hb.bins[i].n}쌍)</title></rect>`;
+    if (i % 2 === 0) {
+      // 「-0」이 되지 않게 0은 부호 없이 적는다
+      const t = Math.round(bin.lo * 100);
+      g += `<text x="${x(i).toFixed(1)}" y="${H - B + 18}" text-anchor="middle" class="ax">${t === 0 ? '0' : t}</text>`;
+    }
+  });
+  /*
+   * 중앙값 점선은 뺐다. 둘이 4%p 밖에 안 떨어져 있어 겹쳐 보이고, 겹친 선 하나가
+   * 어느 쪽인지 알 수 없으면 없느니만 못하다. 두 중앙값은 그림 아래 글로 적는다.
+   */
+  g += `<line x1="${L}" y1="${y(0)}" x2="${W - R}" y2="${y(0)}" stroke="#A8A29A"/>`;
+  g += `<text x="${W - R}" y="${H - 6}" text-anchor="end" class="ax">경쟁률 변화율(%)</text>`;
+  return `<figure class="fig"><svg viewBox="0 0 ${W} ${H}" role="img" width="100%" height="auto" aria-label="경쟁률 변화율 분포. 전체와 우리 학교가 쓴 학과를 비교한 막대그림.">${g}</svg>`
+    + `<figcaption><span class="key"><span class="sw" style="background:#F59E0B"></span>전체 ${n0(ha.total)}쌍</span>`
+    + `<span class="key"><span class="sw" style="background:#B45309"></span>우리 학생이 쓴 학과 ${n0(hb.total)}쌍</span>`
+    + ` · 세로축은 비율입니다. 점선은 각각의 중앙값(전체 ${pct(medA)} · 우리 ${pct(medB)}).</figcaption></figure>`;
+}
+
+/**
+ * 모집인원 변화 구간별 경쟁률 변화 중앙값.
+ *
+ * 처음에는 산점도로 그렸다. 그런데 모집인원이 그대로인 3,653쌍이 0 자리에 세로로
+ * 쌓여 흐름을 통째로 가렸고, 축 밖으로 나간 점을 가장자리에 붙이니 그쪽에도
+ * 기둥이 섰다. 점을 5천 개 뿌린다고 관계가 보이는 것이 아니었다.
+ *
+ * 구간마다 중앙값 하나씩만 찍으면 기울기가 그대로 드러난다. 점 아래 쌍의 수를
+ * 적어 어느 구간이 얇은지 함께 보이게 한다.
+ */
+function slopeSvg(rows) {
+  // 위쪽 여백은 첫 점 위의 값 이름이 잘리지 않을 만큼 둔다
+  const W = 760; const H = 296; const L = 52; const R = 20; const T = 32; const B = 54;
+  const CUT = [[-1, -0.3, '−30%↓'], [-0.3, -0.15, '−30~15'], [-0.15, -0.05, '−15~5'],
+    [-0.05, 0.05, '±5% 안'], [0.05, 0.15, '+5~15'], [0.15, 0.3, '+15~30'], [0.3, 9, '+30%↑']];
+  const bins = CUT.map(([lo, hi, lab]) => {
+    const s = rows.filter((x) => x.q26 && (x.q27 - x.q26) / x.q26 > lo && (x.q27 - x.q26) / x.q26 <= hi);
+    return { lab, n: s.length, d: s.length ? med(ch(s)) : null };
+  });
+  const vals = bins.filter((b2) => b2.d != null).map((b2) => b2.d);
+  const hi = Math.max(0.2, ...vals.map(Math.abs));
+  const y = (v) => T + (1 - (v + hi) / (2 * hi)) * (H - T - B);
+  const x = (i) => L + (i + 0.5) * ((W - L - R) / bins.length);
+  let g = '';
+  for (const v of [-hi, -hi / 2, 0, hi / 2, hi]) {
+    g += `<line x1="${L}" y1="${y(v).toFixed(1)}" x2="${W - R}" y2="${y(v).toFixed(1)}" stroke="${Math.abs(v) < 1e-9 ? '#A8A29A' : '#EFEDE9'}"/>`
+      + `<text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" class="ax">${(v * 100).toFixed(0)}%</text>`;
+  }
+  const pts = bins.map((b2, i) => (b2.d == null ? null : [x(i), y(b2.d)])).filter(Boolean);
+  g += `<polyline fill="none" stroke="#F59E0B" stroke-width="2" points="${pts.map((p2) => `${p2[0].toFixed(1)},${p2[1].toFixed(1)}`).join(' ')}"/>`;
+  bins.forEach((b2, i) => {
+    if (b2.d != null) {
+      g += `<circle cx="${x(i).toFixed(1)}" cy="${y(b2.d).toFixed(1)}" r="5" fill="#B45309" stroke="#fff" stroke-width="2">`
+        + `<title>${b2.lab} · 경쟁률 ${pct(b2.d)} · ${n0(b2.n)}쌍</title></circle>`
+        + `<text x="${x(i).toFixed(1)}" y="${(y(b2.d) - 12).toFixed(1)}" text-anchor="middle" class="val">${pct(b2.d)}</text>`;
+    }
+    g += `<text x="${x(i).toFixed(1)}" y="${H - B + 18}" text-anchor="middle" class="ax">${b2.lab}</text>`
+      + `<text x="${x(i).toFixed(1)}" y="${H - B + 33}" text-anchor="middle" class="ax">${n0(b2.n)}쌍</text>`;
+  });
+  // 가로축 이름은 그림 안에 두지 않는다 — 오른쪽 끝 칸 이름과 겹친다. 아래 글이 말한다.
+  return `<figure class="fig"><svg viewBox="0 0 ${W} ${H}" role="img" width="100%" height="auto" aria-label="모집인원을 줄인 구간일수록 경쟁률 변화 중앙값이 높고, 늘린 구간일수록 낮은 내리막 선.">${g}</svg>`
+    + `<figcaption>가로는 모집인원 변화, 세로는 경쟁률 변화율의 중앙값입니다. 왼쪽이 모집을 줄인 자리, 오른쪽이 늘린 자리입니다.</figcaption></figure>`;
+}
 
 /* ── 쓰기 ───────────────────────────────────────────────────────── */
 
@@ -252,6 +372,13 @@ td.bar { width:46%; min-width:220px; }
 .track { position:relative; display:block; height:14px; background:#F2F0EC; }
 .zero { position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:#A8A29A; }
 .fill { position:absolute; top:0; bottom:0; background:var(--amber); border-radius:2px; }
+.fig { margin:20px 0 0; padding:16px 16px 12px; background:var(--surface); border:1px solid var(--line); }
+.fig svg { display:block; }
+.fig figcaption { margin-top:10px; font-size:13px; color:var(--sub); line-height:1.55; }
+.key { display:inline-flex; align-items:center; margin-right:14px; white-space:nowrap; }
+.sw { display:inline-block; width:10px; height:10px; margin-right:6px; border-radius:2px; }
+.ax { font-size:11px; fill:#6B6B6B; font-family:inherit; }
+.val { font-size:12px; font-weight:700; fill:#1A1A1A; font-family:inherit; }
 .note { background:var(--surface); border:1px solid var(--line); padding:16px 18px; margin:24px 0 0; }
 .note p { margin:0 0 10px; max-width:40em; }
 .note p:last-child { margin-bottom:0; }
@@ -290,7 +417,18 @@ footer p { max-width:40em; margin:0 0 8px; }
 </div>
 <p>총계만 보면 작년과 다를 바 없어 보입니다. 그런데 안을 들여다보면 방향이 크게 갈립니다. <strong>전형 유형</strong>이 가장 크게 가르고, 그다음이 <strong>권역</strong>입니다.</p>
 
-<h2>1. 전형 유형 — 교과는 빠지고 논술은 몰렸다</h2>
+<h2>1. 판의 크기 — 고3은 줄고 N수생은 늘었다</h2>
+<div class="tw"><table>
+  <caption>2027학년도 수능 응시원서 접수 결과입니다. 경쟁률 자료로는 알 수 없는 숫자라 바깥에서 들여왔습니다.</caption>
+  <thead><tr><th scope="col">구분</th><th scope="col" class="num">2027</th><th scope="col" class="num">2026</th><th scope="col" class="num">증감</th></tr></thead>
+  <tbody>
+${SUNEUNG.rows.map((r) => `<tr><th scope="row">${r.k}</th><td class="num">${n0(r.now)}</td><td class="num">${n0(r.was)}</td><td class="num strong">${(r.now - r.was > 0 ? '+' : '') + n0(r.now - r.was)}</td></tr>`).join('\n')}
+  </tbody>
+</table></div>
+<p>수능 지원자는 모두 ${n0(SUNEUNG.total)}명입니다. <strong>고3은 1만 6천 명 줄었는데 N수생이 1만 4천 명 늘어, 전체 머릿수는 거의 그대로입니다.</strong> 바뀐 것은 크기가 아니라 구성입니다.</p>
+<p>우리가 이은 ${n0(A.n)}쌍에서도 같은 그림이 나옵니다 — 모집인원 ${pct((A.q27 - A.q26) / A.q26)}, 지원 연인원 ${pct((D.applied27 - D.applied26) / D.applied26)}. 뽑는 자리도 쓰는 사람도 작년과 비슷합니다. 그러니 아래에서 보는 변화는 <strong>판이 커지거나 작아져서가 아니라, 사람들이 쓰는 자리가 옮겨 가서</strong> 생긴 것입니다.</p>
+
+<h2>2. 전형 유형 — 교과는 빠지고 논술은 몰렸다</h2>
 <div class="tw"><table>
   <caption>2026 대비 2027 최종 경쟁률 변화율의 중앙값. 막대는 0을 가운데 두고 왼쪽이 하락, 오른쪽이 상승입니다.</caption>
   <thead><tr><th scope="col">전형 유형</th><th scope="col">변화</th><th scope="col">중앙 변화율</th><th scope="col">쌍</th></tr></thead>
@@ -300,7 +438,7 @@ ${dbar(kindRows)}
 </table></div>
 <p>교과가 8% 남짓 빠지는 동안 논술은 15% 올랐습니다. 종합은 그 사이에서 소폭 올랐고요. 수시에서 <strong>교과의 문턱이 낮아지고 논술 쏠림이 심해졌다</strong>는 이야기인데, 이것이 전국에서 고르게 일어난 일은 아닙니다.</p>
 
-<h2>2. 권역 — 수도권과 호남이 반대로 움직였다</h2>
+<h2>3. 권역 — 수도권과 호남이 반대로 움직였다</h2>
 <div class="tw"><table>
   <caption>「서울 상위」는 입결 자료가 서울 주요 대학으로 따로 묶어 둔 분류를 그대로 쓴 것입니다.</caption>
   <thead><tr><th scope="col">권역</th><th scope="col">변화</th><th scope="col">중앙 변화율</th><th scope="col">쌍</th></tr></thead>
@@ -320,7 +458,7 @@ ${matrix}
 <p>여기가 이 자료에서 가장 뚜렷한 자리입니다. <strong>수도권 교과는 어디서나 18~24% 빠졌는데, 호남 교과는 오히려 올랐습니다.</strong> 종합도 마찬가지로 수도권은 내리고 호남·영남은 올랐습니다. 수도권 학생들이 교과를 덜 쓰고 논술로 옮겨 가는 동안, 지역 학생들은 지역 대학의 교과·종합에 더 몰린 모양입니다.</p>
 <p>우리 학생들이 호남권에 많이 쓴다는 점을 생각하면, <strong>작년 경쟁률을 그대로 기준 삼기 어려운 해</strong>입니다. 호남권 종합은 작년보다 한 단계 빡빡하게 잡고 보는 편이 안전하겠습니다.</p>
 
-<h2>3. 모집인원 — 경쟁률을 움직인 것은 지원자보다 모집인원이었다</h2>
+<h2>4. 모집인원 — 경쟁률을 움직인 것은 지원자보다 모집인원이었다</h2>
 <div class="tw"><table>
   <caption>모집인원을 10% 넘게 줄인 곳 · 비슷한 곳 · 10% 넘게 늘린 곳으로 나눠 봤습니다.</caption>
   <thead><tr><th scope="col">2027 모집인원</th><th scope="col" class="num">쌍</th><th scope="col" class="num">모집인원</th><th scope="col" class="num">지원자</th><th scope="col" class="num">경쟁률</th></tr></thead>
@@ -328,6 +466,8 @@ ${matrix}
 ${quotaRows}
   </tbody>
 </table></div>
+${slopeSvg(P)}
+<p><strong>왼쪽에서 오른쪽으로 곧게 내려갑니다.</strong> 모집을 30% 넘게 줄인 자리는 경쟁률이 크게 올랐고, 30% 넘게 늘린 자리는 크게 내렸습니다. 중간 구간들도 순서가 어긋나지 않습니다 — 우연히 그렇게 보이는 모양이 아니라는 뜻입니다.</p>
 <p>모집을 줄인 곳은 <strong>지원자도 16% 줄었는데 경쟁률은 11% 올랐습니다.</strong> 학생들이 모집인원 감소를 보고 피했는데도, 줄어든 자리 수가 더 커서 결국 더 빡빡해진 것입니다. 늘린 곳은 그 반대고요.</p>
 <p>상담에서 쓸 수 있는 말은 이렇습니다 — <strong>작년 경쟁률보다 올해 모집인원 증감을 먼저 보십시오.</strong> 경쟁률 변화의 방향은 모집인원이 거의 정해 줍니다.</p>
 
@@ -341,7 +481,12 @@ ${dbar(sizeRows)}
 </table></div>
 <p>소수 모집(1~3명)은 경쟁률 자체가 높은 데다 해마다 크게 출렁입니다. 한두 명 더 쓰고 덜 쓰는 것으로 경쟁률이 배로 움직이니, <strong>소수 모집 학과의 작년 경쟁률은 참고치 이상으로 쓰기 어렵습니다.</strong></p>
 
-<h2>4. 우리 학생이 쓴 대학</h2>
+<h2>5. 우리 학교는 그 안에서 어디쯤인가</h2>
+${histSvg(P, MINE, A.d, D.mine.d)}
+<p>전체와 우리 학생이 쓴 학과의 변화율 분포를 겹쳐 본 것입니다. 모양은 닮았지만 <strong>우리 쪽이 오른쪽으로 조금 밀려 있습니다.</strong> 중앙값이 전체 ${pct(A.d)}인데 우리는 ${pct(D.mine.d)}이고, 경쟁률이 오른 자리의 비율도 전체 ${(A.up * 100).toFixed(0)}%에 견줘 우리는 ${(D.mine.up * 100).toFixed(0)}%입니다.</p>
+<p>크지는 않지만 방향이 분명한 차이입니다. 앞에서 본 대로 <strong>호남권과 지역 국립대의 교과·종합이 오른 해</strong>인데, 우리 학생 지원이 바로 그쪽에 몰려 있기 때문입니다. 전국 평균이 제자리라는 말을 우리 교실에 그대로 옮기기 어려운 까닭이 여기 있습니다.</p>
+
+<h2>6. 우리 학생이 쓴 대학</h2>
 <div class="tw"><table>
   <caption>우리 학생 지원이 있는 대학 가운데, 견줄 쌍이 20개 이상인 곳입니다. 「지원」은 우리 학교 지원 건수입니다.<br>「경쟁률」 칸은 학과마다의 변화율을 모아 중앙값을 낸 것이라, 왼쪽 두 칸의 중앙값 차이와 방향이 다를 수 있습니다 — 많이 오른 학과가 적게 내린 학과보다 많으면 그렇게 됩니다.</caption>
   <thead><tr><th scope="col">대학</th><th scope="col" class="num">지원</th><th scope="col" class="num">쌍</th><th scope="col" class="num">2026</th><th scope="col" class="num">2027</th><th scope="col" class="num">경쟁률</th><th scope="col" class="num">모집인원</th></tr></thead>
@@ -383,6 +528,7 @@ ${cases(D.down)}
 
 <footer>
   <p>자료 — 2027 수시 최종 경쟁률(대학 발표) · 2026 대입 입시 결과. 학생 개인 정보는 들어 있지 않고, 「지원」 칸은 우리 학교 지원 건수를 대학 단위로 센 것입니다.</p>
+  <p>수능 지원자 수는 2027학년도 대학수학능력시험 응시원서 접수 결과입니다 — <a href="${SUNEUNG.src}">에듀플러스 보도</a>.</p>
   <p>나주고등학교 3학년 · <code>node scripts/ratio_report.mjs</code> 로 다시 만듭니다</p>
 </footer>
 </div>
