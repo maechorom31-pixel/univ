@@ -1022,8 +1022,8 @@ function rankTable(key, rows) {
   const bump = (k) => mine.set(k, (mine.get(k) || 0) + 1);
   const known = new Map(names.map((n) => [stats.univKey(n), stats.univKey(n)]));
   for (const { app } of rows) {
-    const full = stats.univKey(app.univ);
-    bump(known.has(full) ? full : (known.has(bare(app.univ)) ? bare(app.univ) : full));
+    // 명단에 있는 줄이면 그 줄로, 없으면 제 이름으로 뒤에 붙는다
+    bump(histKey(known, app.univ) || stats.univKey(app.univ));
   }
   const extra = [...mine.keys()].filter((k) => !known.has(k)).sort((a, b) => a.localeCompare(b, 'ko'));
 
@@ -1168,6 +1168,22 @@ function fallbackGroup(app) {
   return HONAM.has(app.region) ? '아' : '자';
 }
 
+/**
+ * 예년 명단에서 이 대학의 줄 이름. 명단에 없으면 빈 글자.
+ *
+ * 세 단으로 찾는다 — 괄호까지 그대로 · 괄호를 뗀 이름 · 거기서 「국립」까지 뗀 이름.
+ * 마지막 단이 있어야 「국립순천대학교(순천)」이 명단의 「순천대학교」를 찾는다.
+ * 이 단이 없어서 순천대 줄은 0으로 남고 지원은 표 맨 아래 딴 줄로 밀려 있었다.
+ */
+function histKey(map, univ) {
+  const full = stats.univKey(univ);
+  if (map.has(full)) return full;
+  const b = bare(univ);
+  if (map.has(b)) return b;
+  const g = b.replace(/^국립/, '');
+  return map.has(g) ? g : '';
+}
+
 /** 이 지원이 속한 묶음. */
 function groupOf(app) {
   const { exact, loose } = groupIndex();
@@ -1176,10 +1192,8 @@ function groupOf(app) {
   if (hit) return hit;
   // 거점국립대의 분캠은 괄호를 떼면 본교 줄에 붙는다 — 아래로 보낸다
   if (offFlagship(app.univ)) return fallbackGroup(app);
-  return loose.get(bare(app.univ))
-    // 「국립순천대학교」와 명단의 「순천대학교」 — 대학이 이름을 바꾼 자리다
-    || loose.get(bare(app.univ).replace(/^국립/, ''))
-    || fallbackGroup(app);
+  const k = histKey(loose, app.univ);
+  return (k && loose.get(k)) || fallbackGroup(app);
 }
 
 
@@ -1218,8 +1232,8 @@ function rankOfUniv(name) {
   const { exact, loose, size } = univRank();
   const full = stats.univKey(name);
   if (exact.has(full)) return exact.get(full);
-  const b = bare(name);
-  if (loose.has(b)) return loose.get(b);
+  const b = histKey(loose, name);
+  if (b) return loose.get(b);
   const g = groupOf({ univ: name, region: '' });
   const i = FINAL_GROUPS.map(([key]) => key).indexOf(g);
   return size + (i < 0 ? FINAL_GROUPS.length : i);
