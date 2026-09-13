@@ -717,11 +717,20 @@ function rowsForReport() {
      * 뺀다 — 그건 올해 안 넣기로 한 것이다.
      */
     const others = store.appsOf(student.hak).filter((a) => {
+      /*
+       * **전문대는 세지 않는다.** 이 보고서는 4년제 수시 지원 결과다. 전문대는
+       * 예년 문서의 어느 묶음에도 없고, 전형유형 칸도 「학생부위주」·「면접위주」
+       * 로만 적혀 있어 교과·종합·논술·실기 어디에도 못 들어간다. 그래서 계열
+       * 줄의 「계」에는 들어가는데 유형 칸에는 안 들어가, 합계가 총계와 어긋났다.
+       * 전문대 합격·등록은 보드 카드에 그대로 남는다.
+       */
+      if (a.univType === '전문대') return false;
       const outside = outsideLimit(a);
       // 후보는 아직 원서가 아니다 — 「지원」으로 올린 것만 보고서에 센다.
       return outside && store.placementOf(a.id).slot === 'tray';
     });
-    for (const app of [...ordered(student.hak), ...others]) {
+    const mine = ordered(student.hak).filter((a) => a.univType !== '전문대');
+    for (const app of [...mine, ...others]) {
       // 선생님이 시트에 적은 결과를 얹어서 넘긴다. 통계는 그걸 봐야 한다 —
       // 예비번호와 등록 여부는 즐겨찾기에 없거나 늦다.
       out.push({
@@ -905,11 +914,18 @@ function crossOf(rows) {
     g[line]['계'] += 1;
   }
   g['_무전공'] = guessed;
+  /*
+   * 합계 줄의 「계」는 **줄들의 계를 더한다** — 유형 칸을 더하면 안 된다.
+   * 전형유형을 가릴 수 없는 지원(「학생부위주」라고만 적힌 것)은 계열 줄의
+   * 계에는 들어가지만 교과·종합·논술·실기 어느 칸에도 안 들어간다. 유형 칸만
+   * 더하면 그만큼이 조용히 빠져 총계와 어긋난다.
+   */
   const total = { 계: 0 };
   for (const t of TYPE_ORDER) {
     total[t] = [...LINE_ORDER, '기타'].reduce((a, k) => a + g[k][t], 0);
-    total['계'] += total[t];
   }
+  total['계'] = [...LINE_ORDER, '기타'].reduce((a, k) => a + g[k]['계'], 0);
+  g['_유형모름'] = total['계'] - TYPE_ORDER.reduce((a, t) => a + total[t], 0);
   g['합계'] = total;
   return g;
 }
@@ -1007,6 +1023,12 @@ function crossTable(key, thisYear, subsetLabel, subsetRows) {
     tw.appendChild(el('p', 'note',
       `자유전공·자율전공 등 계열이 하나로 정해지지 않은 지원 ${grid['_무전공']}건은,`
       + ' 모집단위 이름과 그 학생의 다른 지원을 따라 세 계열에 넣어 세었습니다.'));
+  }
+  // 유형을 가릴 수 없는 지원이 있으면 왜 유형 칸의 합과 계가 다른지 적어 둔다
+  if (grid['_유형모름']) {
+    tw.appendChild(el('p', 'note error',
+      `전형 유형을 가릴 수 없는 지원 ${grid['_유형모름']}건이 있어, 교과·종합·논술·실기`
+      + ' 칸의 합이 「계」보다 그만큼 적습니다. 즐겨찾기의 전형유형 칸을 봐 주세요.'));
   }
   return tw;
 }
