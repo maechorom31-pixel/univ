@@ -1110,12 +1110,78 @@ function groupIndex() {
   return _index;
 }
 
-/** 이 지원이 속한 묶음. 어디에도 없으면 null. */
+/*
+ * 예년 명단에 없는 대학을 어느 묶음에 놓을 것인가.
+ *
+ * 명단은 지난해 보고서를 받아 적은 것이라, **올해 새로 지원한 대학은 거기 없다.**
+ * 없다고 흘려보내면 문서 어느 묶음에도 안 들어가 통째로 사라진다 — 실제로
+ * 국립목포대 45건, 국립순천대 21건, 전주대 17건을 비롯해 지방 대학 199건이
+ * 그렇게 빠져 있었다. 묶음 이름이 가리키는 대로 다시 넣는다.
+ *
+ *   라 수도권      지역이 서울·경기·인천
+ *   바 과학기술특성화 과학기술원과 한국에너지공과대학교
+ *   사 교육대학교    이름이 「…교육대학교」
+ *   마 지역 거점 국립대  아홉 곳. 분캠은 빼고 본교만(묶음 제목이 그렇다)
+ *   아 호남권      지역이 광주·전남·전북
+ *   자 호남권 이외   나머지 — 마지막으로 받는 자리다
+ */
+/*
+ * 지역 거점 국립대 아홉 곳과 **본교 소재지**. 서울대는 수도권으로 간다.
+ *
+ * 도시까지 적어 두는 까닭은 묶음 제목이 「분캠 미포함」이기 때문이다. 이름만
+ * 보면 「경북대학교(상주)」와 「전북대학교(익산)」이 본교 줄에 붙는다. 그렇다고
+ * 괄호가 있으면 분캠이라 할 수도 없다 — 즐겨찾기는 본교에도 도시를 적는다
+ * (「강원대학교(춘천)」). 본교 도시를 알고 있으면 둘을 가릴 수 있다.
+ */
+const FLAGSHIP = new Map([['강원대학교', '춘천'], ['경북대학교', '대구'],
+  ['경상국립대학교', '진주'], ['부산대학교', '부산'], ['전남대학교', '광주'],
+  ['전북대학교', '전주'], ['제주대학교', '제주'], ['충남대학교', '대전'],
+  ['충북대학교', '청주']]);
+const HONAM = new Set(['광주', '전남', '전북']);
+
+/** 대학 이름 끝 괄호 안의 말. 본교면 소재지, 분캠이면 캠퍼스 이름이다. */
+function parenOf(name) {
+  const m = stats.univKey(name).match(/[（(]([^)）]*)[)）]\s*$/);
+  return m ? m[1].trim() : '';
+}
+
+/** 거점국립대의 분캠인가 — 이름은 거점국립대인데 괄호가 본교 도시가 아니다. */
+function offFlagship(univ) {
+  const city = FLAGSHIP.get(bare(univ).replace(/^국립/, ''));
+  if (!city) return false;
+  const p = parenOf(univ);
+  return Boolean(p) && p !== city;
+}
+
+function fallbackGroup(app) {
+  const name = bare(app.univ).replace(/^국립/, '');
+  if (CAPITAL.has(app.region)) return '라';
+  if (/과학기술원$|에너지공과대학교$/.test(name)) return '바';
+  if (/교육대학교$/.test(name)) return '사';
+  /*
+   * 분캠을 여기서 따로 막지 않는다. 묶음 제목이 「분캠 미포함」이긴 하지만,
+   * 즐겨찾기는 본교에도 괄호로 도시를 붙인다(「강원대학교(춘천)」). 괄호가
+   * 있으면 분캠으로 치는 잣대를 두면 정작 본교가 걸러진다. 분캠은 예년 명단에
+   * 제 이름으로 올라 있어(「전남대학교(여수)」는 아 묶음) 위에서 이미 걸린다.
+   */
+  if (FLAGSHIP.has(name) && !offFlagship(app.univ)) return '마';
+  return HONAM.has(app.region) ? '아' : '자';
+}
+
+/** 이 지원이 속한 묶음. */
 function groupOf(app) {
   const { exact, loose } = groupIndex();
   const full = stats.univKey(app.univ);
-  return exact.get(full) || loose.get(bare(app.univ)) || null;
+  const hit = exact.get(full);
+  if (hit) return hit;
+  // 거점국립대의 분캠은 괄호를 떼면 본교 줄에 붙는다 — 아래로 보낸다
+  if (offFlagship(app.univ)) return fallbackGroup(app);
+  return loose.get(bare(app.univ))
+    // 「국립순천대학교」와 명단의 「순천대학교」 — 대학이 이름을 바꾼 자리다
+    || loose.get(bare(app.univ).replace(/^국립/, ''))
+    || fallbackGroup(app);
 }
+
 
 /*
  * **대학 차례는 예년 문서의 명단 그대로다** — 서울대 · 연세대 · 고려대 · 한양대 …
