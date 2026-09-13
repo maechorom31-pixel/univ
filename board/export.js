@@ -1372,6 +1372,20 @@ function report() {
 const DETAIL_COLS = ['연번', '학번', '이름', '모집단위', '유형', '전형',
   '모집', '경쟁률', '환산', '모집', '경쟁률', '70%컷'];
 
+/**
+ * 예년 입시 결과의 **모집 인원.** 경쟁률·70%컷과 **같은 줄**에서 가져온다.
+ *
+ * 예전에는 모집요강의 「모집2026」만 썼다. 그런데 그 값은 모집요강 학과를
+ * 이름으로 맞혔을 때만 쓰고, 아니면 옆 전형의 숫자라 비운다. 그래서 바로 옆
+ * 칸의 경쟁률과 70%컷은 나오는데 모집만 비는 줄이 생겼다 — 이상하게 보이는 게
+ * 당연하다. 경쟁률과 컷은 **입결**에서 오고, 그 입결 줄에 모집 인원이 같이
+ * 들어 있다. 같은 줄에서 가져오면 연도도 반드시 맞는다.
+ *
+ * 모집요강 쪽을 먼저 쓰는 것은 그쪽이 올해 기준으로 손질된 값이기 때문이고,
+ * 실제로 둘이 있을 때는 값이 같았다.
+ */
+const quotaPrevOf = (sm) => (sm && sm.linked ? (sm.quotaPrev ?? sm.quota ?? null) : null);
+
 function detailTable(key, rows) {
   const { names, byName } = univOrder(key, rows);
   const tw = el('div', 'tw');
@@ -1425,7 +1439,7 @@ function detailTable(key, rows) {
         ['num', app.quota ?? ''],
         ['num', rateText(app, sm)],
         ['num', myGrade(app)],
-        ['num', sm.quotaPrev ?? ''],
+        ['num', quotaPrevOf(sm) ?? ''],
         ['num', rt(sm.linked ? sm.rate : null)],
         ['num', sm.linked && sm.cut != null ? Number(sm.cut).toFixed(2) : ''],
       ].forEach(([cl, v]) => tr.appendChild(
@@ -1637,7 +1651,7 @@ function statusTable(names, byUniv) {
         ['num', myGrade(app)],
         ['nm', r.stage1 || ''],
         [won ? 'won verdict' : 'verdict', txt],
-        ['num', sm.quotaPrev ?? ''],
+        ['num', quotaPrevOf(sm) ?? ''],
         // 머리글이 이미 「경쟁률」이라 「:1」은 겹치는 말이고, 그 세 글자 때문에
         // 「14.13:1」이 칸을 넘쳐 테두리를 덮었다.
         ['num', rt(sm.linked ? sm.rate : null)],
