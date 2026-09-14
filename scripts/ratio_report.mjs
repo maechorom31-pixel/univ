@@ -51,7 +51,8 @@ function pairs() {
     const kind = m.kindOf(`${r[C['카테고리']]} ${track}`);
     const unit = m.normUnit(r[C['학과']]);
     const row = { region: r[C['지역']], track, norm: m.normTrack(track),
-      quota: r[C['모집']], rate: r[C['경쟁률']], applied: r[C['지원']] };
+      quota: r[C['모집']], rate: r[C['경쟁률']], applied: r[C['지원']],
+      cut: r[C['등급70']], gye: r[C['계열']] };
     const k = [base, kind, row.norm, unit].join('|');
     if (exact.has(k)) dup.add(k); else exact.set(k, row);
     const ku = [base, kind, unit].join('|');
@@ -83,7 +84,7 @@ function pairs() {
         if (!p || !p.quota || !p.rate) continue;
         out.push({ univ: u.u, base, region: p.region, zone: ZONE[p.region] || p.region,
           kind, track: t.n, dept, q27: q, a27: a, r27: rate,
-          q26: p.quota, a26: p.applied, r26: p.rate });
+          q26: p.quota, a26: p.applied, r26: p.rate, k26: p.cut, gye: p.gye });
       }
     }
   }
@@ -155,6 +156,156 @@ D.byuniv = [...W.univ].sort((a, b) => b[1] - a[1])
   D.down = big.slice(0, 8).map(pick);
   D.up = big.slice(-8).reverse().map(pick);
 }
+/* ── 경쟁률과 합격선 ─────────────────────────────────────────────
+ *
+ * 앞 절까지는 경쟁률이 어떻게 움직였는지만 보았다. 정작 궁금한 것은 그
+ * 움직임이 합격에 닿느냐다. 그래서 2022~2026 다섯 해 입결을 같은
+ * (대학·전형유형·전형·학과)끼리 해마다 이어 붙여, 「경쟁률이 얼마나
+ * 변했을 때 이듬해 합격선이 얼마나 움직였는가」를 센다.
+ *
+ * 합격선은 등급70(지원자 상위 70% 지점의 내신)을 쓴다. 등급은 숫자가
+ * 작을수록 우수하므로, 이동값이 **음수면 합격선이 올라간(빡세진) 것**이다.
+ * 이 부호는 읽는 사람이 뒤집어 생각하기 쉬워 표마다 다시 적어 둔다.
+ */
+function panel() {
+  const ip = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/ipgyeol.json'), 'utf8'));
+  const C = Object.fromEntries(ip.columns.map((c, i) => [c, i]));
+  const by = new Map();
+  for (const r of ip.rows) {
+    const track = r[C['전형']];
+    if (isSpecial(track) || isSpecial(r[C['카테고리']])) continue;
+    const k = [r[C['대학']], r[C['카테고리']], track, r[C['학과']]].join('|');
+    if (!by.has(k)) by.set(k, new Map());
+    by.get(k).set(r[C['연도']], r);
+  }
+  const out = [];
+  for (const yy of by.values()) {
+    for (const y of [2023, 2024, 2025, 2026]) {
+      const a = yy.get(y - 1); const b = yy.get(y);
+      if (!a || !b) continue;
+      const c0 = a[C['경쟁률']]; const c1 = b[C['경쟁률']];
+      const k0 = a[C['등급70']]; const k1 = b[C['등급70']];
+      if (c0 == null || c1 == null || k0 == null || k1 == null || !c0) continue;
+      const q0 = a[C['모집']]; const q1 = b[C['모집']];
+      out.push({ y, cat: b[C['카테고리']], gye: b[C['계열']], q: q1,
+        c0, c1, k0, k1, dc: (c1 - c0) / c0, dk: k1 - k0,
+        dq: q0 && q1 != null ? (q1 - q0) / q0 : null });
+    }
+  }
+  return out;
+}
+
+const PAN = panel();
+
+/** 사분위. 표에 산포를 함께 적기 위해 쓴다. */
+const qt = (v, p) => {
+  if (!v.length) return null;
+  const s = v.slice().sort((a, b) => a - b);
+  const i = (s.length - 1) * p; const lo = Math.floor(i);
+  return lo + 1 >= s.length ? s[lo] : s[lo] + (s[lo + 1] - s[lo]) * (i - lo);
+};
+/** 스피어만 — 등급 이동이 고르지 않아 순위로 잰다. */
+function spearman(rows, fx, fy) {
+  const rk = (vals) => {
+    const idx = vals.map((v, i) => i).sort((a, b) => vals[a] - vals[b]);
+    const r = new Array(vals.length); let i = 0;
+    while (i < idx.length) {
+      let j = i;
+      while (j + 1 < idx.length && vals[idx[j + 1]] === vals[idx[i]]) j += 1;
+      const avg = (i + j) / 2 + 1;
+      for (let t = i; t <= j; t += 1) r[idx[t]] = avg;
+      i = j + 1;
+    }
+    return r;
+  };
+  const x = rk(rows.map(fx)); const y = rk(rows.map(fy));
+  const n = x.length; const mx = x.reduce((a, b) => a + b, 0) / n;
+  const my = y.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0; let sx = 0; let sy = 0;
+  for (let i = 0; i < n; i += 1) {
+    sxy += (x[i] - mx) * (y[i] - my); sx += (x[i] - mx) ** 2; sy += (y[i] - my) ** 2;
+  }
+  return sxy / Math.sqrt(sx * sy);
+}
+
+const CBIN = [[-1, -0.3, '−30% 아래'], [-0.3, -0.15, '−30~−15%'], [-0.15, -0.05, '−15~−5%'],
+  [-0.05, 0.05, '±5% 안'], [0.05, 0.15, '+5~15%'], [0.15, 0.3, '+15~30%'], [0.3, 9e9, '+30% 위']];
+
+/** 한 묶음을 요약한다. up = 합격선이 올라간(등급 숫자가 내려간) 비율. */
+const hblk = (s) => ({ n: s.length, dk: med(s.map((x) => x.dk)),
+  lo: qt(s.map((x) => x.dk), 0.25), hi: qt(s.map((x) => x.dk), 0.75),
+  up: s.length ? s.filter((x) => x.dk < 0).length / s.length : null,
+  dc: med(s.map((x) => x.dc)) });
+
+const H = {
+  n: PAN.length,
+  rho: spearman(PAN, (x) => x.dc, (x) => x.dk),
+  bins: CBIN.map(([lo, hi, lab]) => ({ lab, ...hblk(PAN.filter((x) => x.dc >= lo && x.dc < hi)) })),
+  // 작년 합격선 수준별로 같은 자를 댄다 — 상위권과 중하위권은 다르게 움직인다
+  level: [[0, 2, '1~2등급대'], [2, 3, '2~3등급대'], [3, 4, '3~4등급대'],
+    [4, 5, '4~5등급대'], [5, 9.1, '5등급 아래']].map(([lo, hi, lab]) => {
+    const s = PAN.filter((x) => x.k0 >= lo && x.k0 < hi);
+    return { lab, n: s.length,
+      up: hblk(s.filter((x) => x.dc >= 0.3)), down: hblk(s.filter((x) => x.dc < -0.3)) };
+  }),
+  size: [[1, 4, '1~4명'], [5, 9, '5~9명'], [10, 19, '10~19명'], [20, 49, '20~49명'],
+    [50, 9e9, '50명 위']].map(([lo, hi, lab]) => {
+    const s = PAN.filter((x) => x.q != null && x.q >= lo && x.q <= hi);
+    return { lab, ...hblk(s), big: hblk(s.filter((x) => x.dc >= 0.3)) };
+  }),
+  // 모집인원을 거의 건드리지 않은 학과만 따로 — 「모집을 줄여 경쟁률도 컷도
+  // 같이 올랐을 뿐」이라는 딴 설명을 걷어내기 위한 대조군이다.
+  same: (() => {
+    const s = PAN.filter((x) => x.dq != null && Math.abs(x.dq) < 0.05);
+    return { n: s.length, lo: hblk(s.filter((x) => x.dc < -0.3)),
+      hi: hblk(s.filter((x) => x.dc >= 0.3)) };
+  })(),
+  kind: ['교과', '종합', '논술'].map((k) => {
+    const s = PAN.filter((x) => x.cat === k);
+    return { lab: k, ...hblk(s), big: hblk(s.filter((x) => x.dc >= 0.3)) };
+  }),
+};
+
+/* 2027에 대보기 — 올해 경쟁률 변화를 위 구간표에 넣어 합격선이 어느 쪽으로
+ * 기울지 센다. 낱낱의 학과를 맞히는 것이 아니라 판이 어느 쪽으로 쏠렸는지만
+ * 말할 수 있다. 기울기는 작년 합격선 수준에 따라 다르므로 구간 하나로
+ * 뭉뚱그리지 않고 그 학과가 앉아 있는 등급대의 값을 쓴다. */
+{
+  const LV = [[0, 2], [2, 3], [3, 4], [4, 5], [5, 9.1]];
+  /** 작년 컷이 lv 등급대인 학과에서, 경쟁률이 dc만큼 변했을 때의 합격선 이동 중앙값. */
+  const shiftOf = (dc, k26) => {
+    const li = LV.findIndex(([lo, hi]) => k26 >= lo && k26 < hi);
+    if (li < 0) return null;
+    const s2 = PAN.filter((x) => x.k0 >= LV[li][0] && x.k0 < LV[li][1]
+      && Math.abs(x.dc - dc) <= Math.max(0.08, Math.abs(dc) * 0.25));
+    return s2.length >= 30 ? med(s2.map((x) => x.dk)) : null;
+  };
+  const dist = (s) => CBIN.map(([lo, hi, lab]) => {
+    const v = s.filter((x) => (x.r27 - x.r26) / x.r26 >= lo && (x.r27 - x.r26) / x.r26 < hi);
+    return { lab, n: v.length, share: s.length ? v.length / s.length : 0 };
+  });
+  const shifts = (s) => s.map((x) => (x.k26 == null ? null : shiftOf((x.r27 - x.r26) / x.r26, x.k26)))
+    .filter((v) => v != null);
+  const sa = shifts(P); const sm = shifts(MINE);
+  H.p27 = { n: P.length, mineN: MINE.length,
+    dist: dist(P), mineDist: dist(MINE),
+    shift: med(sa), shiftN: sa.length, up: sa.filter((v) => v < 0).length / sa.length,
+    mineShift: med(sm), mineShiftN: sm.length,
+    mineUp: sm.length ? sm.filter((v) => v < 0).length / sm.length : null };
+  // 우리 학생이 쓴 곳 가운데 경쟁률이 크게 오르고 작년 합격선을 아는 학과
+  H.watch = MINE.filter((x) => x.k26 != null && x.q27 >= 5
+      && (x.r27 - x.r26) / x.r26 >= 0.3)
+    .map((x) => ({ u: x.univ, d: x.dept, t: String(x.track).replace(/\s*[[【][^\]】]*[\]】]?/g, '').trim(),
+      k26: x.k26, c: (x.r27 - x.r26) / x.r26, r26: x.r26, r27: x.r27,
+      shift: shiftOf((x.r27 - x.r26) / x.r26, x.k26) }))
+    .filter((x) => x.shift != null)
+    .sort((a, b) => a.shift - b.shift || b.c - a.c)
+    .slice(0, 12);
+}
+
+fs.writeFileSync(path.join(ROOT, 'scripts/.hap.json'), JSON.stringify(H, null, 1));
+console.log(`합격선 패널 ${H.n.toLocaleString()}쌍 · 스피어만 ${H.rho.toFixed(3)} · 지켜볼 학과 ${H.watch.length}`);
+
 fs.writeFileSync(path.join(ROOT, 'scripts/.ratio_data.json'), JSON.stringify(D));
 console.log(`우리 학생이 쓴 학과 ${D.mine.n}쌍 · 대학 표 ${D.byuniv.length}곳`);
 
@@ -273,6 +424,76 @@ function slopeSvg(rows) {
   // 가로축 이름은 그림 안에 두지 않는다 — 오른쪽 끝 칸 이름과 겹친다. 아래 글이 말한다.
   return `<figure class="fig"><svg viewBox="0 0 ${W} ${H}" role="img" width="100%" height="auto" aria-label="모집인원을 줄인 구간일수록 경쟁률 변화 중앙값이 높고, 늘린 구간일수록 낮은 내리막 선.">${g}</svg>`
     + `<figcaption>가로는 모집인원 변화, 세로는 경쟁률 변화율의 중앙값입니다. 왼쪽이 모집을 줄인 자리, 오른쪽이 늘린 자리입니다.</figcaption></figure>`;
+}
+
+
+/** 합격선을 「올라간 폭」으로 적는다. 등급 숫자의 부호를 그대로 두면 읽는
+ *  사람이 매번 뒤집어 생각해야 한다. 여기 들어오는 값은 이미 뒤집힌 값이다. */
+const up2 = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(2);
+
+/**
+ * 경쟁률 변화 → 합격선 이동. 가운데 굵은 선이 중앙값, 옅은 띠가 가운데 절반
+ * (25~75%)이다. 띠를 함께 그리는 것은 방향만 보고 폭을 오해하지 않도록
+ * 하기 위함이다 — 어느 구간에서나 띠가 0을 걸치거나 스친다.
+ *
+ * 세로축은 **뒤집어** 그린다. 등급은 숫자가 작을수록 우수하므로 그대로
+ * 그리면 「합격선이 올라간」 쪽이 아래로 내려가 읽는 사람이 반대로 본다.
+ */
+function bandSvg(bins) {
+  const W = 760; const H = 300; const L = 56; const R = 18; const T = 26; const B = 56;
+  const hi = 0.7;
+  const y = (v) => T + (1 - (-v + hi) / (2 * hi)) * (H - T - B); // v는 등급 이동(음수=상승)
+  const x = (i) => L + (i + 0.5) * ((W - L - R) / bins.length);
+  let g = '';
+  for (const v of [-0.6, -0.3, 0, 0.3, 0.6]) {
+    g += `<line x1="${L}" y1="${y(v).toFixed(1)}" x2="${W - R}" y2="${y(v).toFixed(1)}" stroke="${v === 0 ? '#A8A29A' : '#EFEDE9'}"/>`
+      + `<text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" class="ax">${v === 0 ? '0' : (-v).toFixed(1)}</text>`;
+  }
+  g += `<text x="${L - 8}" y="${(T - 8).toFixed(1)}" text-anchor="end" class="ax">등급</text>`;
+  const band = bins.map((b2, i) => `${x(i).toFixed(1)},${y(b2.lo).toFixed(1)}`).join(' ')
+    + ' ' + bins.map((b2, i) => `${x(i).toFixed(1)},${y(b2.hi).toFixed(1)}`).reverse().join(' ');
+  g += `<polygon points="${band}" fill="#F59E0B" fill-opacity="0.16"/>`;
+  g += `<polyline fill="none" stroke="#F59E0B" stroke-width="2.5" points="${bins.map((b2, i) => `${x(i).toFixed(1)},${y(b2.dk).toFixed(1)}`).join(' ')}"/>`;
+  bins.forEach((b2, i) => {
+    g += `<circle cx="${x(i).toFixed(1)}" cy="${y(b2.dk).toFixed(1)}" r="4.5" fill="#B45309" stroke="#fff" stroke-width="2">`
+      + `<title>${b2.lab} · 합격선 ${b2.dk < 0 ? '상승' : '완화'} ${Math.abs(b2.dk).toFixed(2)}등급 · ${n0(b2.n)}쌍</title></circle>`
+      + `<text x="${x(i).toFixed(1)}" y="${(y(b2.dk) - 11).toFixed(1)}" text-anchor="middle" class="val">${up2(-b2.dk)}</text>`
+      + `<text x="${x(i).toFixed(1)}" y="${H - B + 18}" text-anchor="middle" class="ax">${b2.lab}</text>`
+      + `<text x="${x(i).toFixed(1)}" y="${H - B + 33}" text-anchor="middle" class="ax">${(b2.up * 100).toFixed(0)}%</text>`;
+  });
+  g += `<text x="${W - R}" y="${(T + 10).toFixed(1)}" text-anchor="end" class="ax">위로 갈수록 합격선이 올라감</text>`;
+  return `<figure class="fig"><svg viewBox="0 0 ${W} ${H}" role="img" width="100%" height="auto" aria-label="경쟁률이 많이 오른 구간일수록 이듬해 합격선이 높아지는 오르막 선. 가운데 절반의 범위는 어느 구간에서나 0을 걸친다.">${g}</svg>`
+    + '<figcaption>가로는 그해 경쟁률 변화, 세로는 이듬해 합격선(등급70)이 움직인 폭입니다. 굵은 선이 중앙값, 옅은 띠가 가운데 절반(25~75%)이고, 칸 밑 백분율은 그 구간에서 합격선이 실제로 올라간 학과의 비율입니다. 2022~2026학년도 입결.</figcaption></figure>';
+}
+
+/** 작년 합격선 수준별로, 경쟁률이 크게 오른 해와 크게 내린 해의 이동폭. */
+function levelSvg(rows) {
+  const W = 760; const H = 250; const L = 78; const R = 18; const T = 20; const B = 52;
+  const hi = 0.6;
+  const y = (v) => T + (1 - (-v + hi) / (2 * hi)) * (H - T - B);
+  const bw = (W - L - R) / rows.length;
+  let g = '';
+  for (const v of [-0.5, -0.25, 0, 0.25, 0.5]) {
+    g += `<line x1="${L}" y1="${y(v).toFixed(1)}" x2="${W - R}" y2="${y(v).toFixed(1)}" stroke="${v === 0 ? '#A8A29A' : '#EFEDE9'}"/>`
+      + `<text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" class="ax">${v === 0 ? '0' : (-v).toFixed(2)}</text>`;
+  }
+  rows.forEach((r, i) => {
+    const x0 = L + i * bw; const w = bw * 0.30;
+    [[r.up.dk, '#F59E0B', '경쟁률 +30% 위'], [r.down.dk, '#B45309', '경쟁률 −30% 아래']]
+      .forEach(([v, c, nm], j) => {
+        const bx = x0 + bw * 0.16 + j * (w + bw * 0.08);
+        const top = Math.min(y(v), y(0)); const h = Math.abs(y(v) - y(0));
+        g += `<rect x="${bx.toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(h, 1).toFixed(1)}" fill="${c}" rx="2">`
+          + `<title>${r.lab} · ${nm} · 합격선 ${v < 0 ? '상승' : '완화'} ${Math.abs(v).toFixed(2)}등급</title></rect>`
+          + `<text x="${(bx + w / 2).toFixed(1)}" y="${(v < 0 ? top - 5 : top + h + 13).toFixed(1)}" text-anchor="middle" class="val">${Math.abs(v).toFixed(2)}</text>`;
+      });
+    g += `<text x="${(x0 + bw / 2).toFixed(1)}" y="${H - B + 20}" text-anchor="middle" class="ax">${r.lab}</text>`
+      + `<text x="${(x0 + bw / 2).toFixed(1)}" y="${H - B + 35}" text-anchor="middle" class="ax">${n0(r.n)}쌍</text>`;
+  });
+  return `<figure class="fig"><svg viewBox="0 0 ${W} ${H}" role="img" width="100%" height="auto" aria-label="작년 합격선이 낮은 등급대일수록 경쟁률 변화에 합격선이 크게 흔들리는 막대그림.">${g}</svg>`
+    + '<figcaption><span class="key"><span class="sw" style="background:#F59E0B"></span>경쟁률이 30% 넘게 오른 해</span>'
+    + '<span class="key"><span class="sw" style="background:#B45309"></span>30% 넘게 내린 해</span><br>'
+    + '위로 솟은 막대가 합격선이 올라간 폭, 아래로 뻗은 막대가 내려간 폭입니다(등급). 가로는 그 학과의 <em>작년</em> 합격선 수준입니다.</figcaption></figure>';
 }
 
 /* ── 쓰기 ───────────────────────────────────────────────────────── */
@@ -405,7 +626,7 @@ footer p { max-width:40em; margin:0 0 8px; }
 <div class="wrap">
 <header>
   <h1>2027 수시 최종 경쟁률, 무엇이 달라졌나</h1>
-  <p class="lede">2026 입시 결과와 2027 최종 경쟁률을 같은 대학·전형·모집단위끼리 맞대어 본 결과입니다. 견줄 수 있었던 것은 ${n0(A.n)}쌍, ${D.univs}개&nbsp;대학입니다. 기회균형·농어촌 같은 정원외 전형은 빼고&nbsp;봤습니다.</p>
+  <p class="lede">2026 입시 결과와 2027 최종 경쟁률을 같은 대학·전형·모집단위끼리 맞대어 본 결과입니다. 견줄 수 있었던 것은 ${n0(A.n)}쌍, ${D.univs}개&nbsp;대학입니다. 기회균형·농어촌 같은 정원외 전형은 빼고&nbsp;봤습니다. 5절에서는 다섯 해 입결을 이어 붙여 <strong>경쟁률이 정말 합격선을 움직이는지</strong>도 함께&nbsp;쟀습니다.</p>
 </header>
 
 <h2>한눈에</h2>
@@ -414,6 +635,7 @@ footer p { max-width:40em; margin:0 0 8px; }
   <div class="card"><p class="k">오른 줄</p><p class="v">${(A.up * 100).toFixed(0)}%</p><p class="n">${n0(A.n)}쌍 가운데 절반 남짓</p></div>
   <div class="card"><p class="k">교과 ↔ 논술</p><p class="v">${pct(K[0].d)} / ${pct(K[2].d)}</p><p class="n">방향이 정반대</p></div>
   <div class="card"><p class="k">우리 학생이 쓴 학과</p><p class="v">${pct(D.mine.d)}</p><p class="n">${D.mine.n}쌍 · 전체보다 빡빡</p></div>
+  <div class="card"><p class="k">경쟁률 30%↑일 때 합격선</p><p class="v">${Math.abs(H.bins[6].dk).toFixed(2)}</p><p class="n">등급 상승 · 다섯 해 ${n0(H.n)}쌍</p></div>
 </div>
 <p>총계만 보면 작년과 다를 바 없어 보입니다. 그런데 안을 들여다보면 방향이 크게 갈립니다. <strong>전형 유형</strong>이 가장 크게 가르고, 그다음이 <strong>권역</strong>입니다.</p>
 
@@ -481,12 +703,51 @@ ${dbar(sizeRows)}
 </table></div>
 <p>소수 모집(1~3명)은 경쟁률 자체가 높은 데다 해마다 크게 출렁입니다. 한두 명 더 쓰고 덜 쓰는 것으로 경쟁률이 배로 움직이니, <strong>소수 모집 학과의 작년 경쟁률은 참고치 이상으로 쓰기 어렵습니다.</strong></p>
 
-<h2>5. 우리 학교는 그 안에서 어디쯤인가</h2>
+<h2>5. 경쟁률이 오르면 합격선도 오르나 — 방향은 맞지만 폭은 작다</h2>
+<p>여기까지는 경쟁률이 어떻게 움직였는지만 보았습니다. 정작 궁금한 것은 그 움직임이 합격에 닿느냐입니다. 2022~2026학년도 다섯 해 입결을 같은 대학·전형·모집단위끼리 해마다 이어 붙여 <strong>${n0(H.n)}쌍</strong>을 얻었고, 「경쟁률이 얼마나 변했을 때 이듬해 합격선이 얼마나 움직였는가」를 세었습니다. 합격선은 등급70을 씁니다.</p>
+${bandSvg(H.bins)}
+<p>선은 한 번도 꺾이지 않고 오른쪽으로 올라갑니다. 경쟁률이 30% 넘게 빠진 자리는 이듬해 합격선이 중앙값 <strong>${Math.abs(H.bins[0].dk).toFixed(2)}등급 내려갔고</strong>, 30% 넘게 오른 자리는 <strong>${Math.abs(H.bins[6].dk).toFixed(2)}등급 올라갔습니다.</strong> 합격선이 실제로 올라간 학과의 비율도 ${(H.bins[0].up * 100).toFixed(0)}%에서 ${(H.bins[6].up * 100).toFixed(0)}%까지 한 계단씩 늡니다. 순위끼리 견준 상관계수는 ${Math.abs(H.rho).toFixed(2)}(등급 숫자 그대로는 ${H.rho.toFixed(2)})로, 사회 자료에서는 뚜렷한 축에 듭니다. <strong>경쟁률은 합격선의 신호가 맞습니다.</strong></p>
+<p>다만 폭을 보아야 합니다. 경쟁률이 중앙값 ${pct(H.bins[6].dc)} 오른 자리에서도 합격선은 ${Math.abs(H.bins[6].dk).toFixed(2)}등급 남짓 움직였습니다. 내신 0.3등급은 상담에서 진로를 바꿀 만한 크기가 아닙니다. 게다가 옅은 띠가 말해 주듯 <strong>같은 구간 안에서도 학과마다 제각각입니다</strong> — 경쟁률이 30% 넘게 오른 자리 가운데 ${(100 - H.bins[6].up * 100).toFixed(0)}%는 오히려 합격선이 내려갔습니다. 경쟁률만 보고 「이 학과는 올해 힘들겠다」고 말하면 넷에 하나는 틀리는 셈입니다.</p>
+
+<p>「모집인원을 줄여서 경쟁률도 컷도 같이 올랐을 뿐 아니냐」는 반문이 자연스럽습니다. 그래서 <strong>모집인원을 5% 안쪽으로밖에 건드리지 않은 ${n0(H.same.n)}쌍</strong>만 따로 세어 보았습니다. 경쟁률이 30% 넘게 오른 자리의 합격선이 ${Math.abs(H.same.hi.dk).toFixed(2)}등급 올라갔고, 30% 넘게 내린 자리는 ${Math.abs(H.same.lo.dk).toFixed(2)}등급 내려가 <strong>전체와 거의 같았습니다.</strong> 모집인원이 뒤에서 둘 다 끌어당긴 것만은 아니라는 뜻입니다.</p>
+
+<h3>누구의 합격선이 흔들리는가</h3>
+${levelSvg(H.level)}
+<p>같은 자를 작년 합격선 수준별로 나눠 대면 그림이 갈립니다. <strong>${H.level[0].lab} 학과는 경쟁률이 30% 넘게 올라도 합격선이 ${Math.abs(H.level[0].up.dk).toFixed(2)}등급밖에 움직이지 않습니다.</strong> 반대로 ${H.level[4].lab} 학과는 ${Math.abs(H.level[4].up.dk).toFixed(2)}등급, 열 배입니다. 상위권은 어차피 지원자 윗머리가 두꺼워 몇 명 더 온다고 컷이 밀리지 않고, 중하위권은 지원자층이 얇아 조금만 몰려도 컷이 따라 올라가기 때문으로 보입니다.</p>
+<p>상담에 그대로 옮기면 이렇습니다. <strong>1~3등급대 학과를 쓰는 학생에게 경쟁률 변화는 거의 소식이 아니고, 4등급 아래 학과를 쓰는 학생에게는 실제로 영향이 있습니다.</strong> 정작 경쟁률 표를 들여다보며 불안해하는 쪽은 앞의 학생들인 경우가 많습니다.</p>
+<div class="tw"><table>
+<caption>전형 유형과 모집 규모별로 본, 경쟁률이 30% 넘게 오른 해의 합격선 이동입니다. 「상승 폭」은 등급이고, 클수록 빡빡해진 것입니다.</caption>
+<thead><tr><th scope="col">묶음</th><th scope="col" class="num">쌍</th><th scope="col" class="num">상승 폭</th><th scope="col" class="num">올라간 비율</th></tr></thead>
+<tbody>
+${H.kind.map((k) => `<tr><th scope="row">${k.lab}</th><td class="num">${n0(k.big.n)}</td><td class="num strong">${up2(-k.big.dk)}</td><td class="num">${(k.big.up * 100).toFixed(0)}%</td></tr>`).join('\n')}
+${H.size.map((s) => `<tr><th scope="row">${s.lab} 뽑는 곳</th><td class="num">${n0(s.big.n)}</td><td class="num strong">${up2(-s.big.dk)}</td><td class="num">${(s.big.up * 100).toFixed(0)}%</td></tr>`).join('\n')}
+</tbody></table></div>
+<p>교과가 종합보다 크게 흔들립니다(${Math.abs(H.kind[0].big.dk).toFixed(2)} 대 ${Math.abs(H.kind[1].big.dk).toFixed(2)}등급). 교과는 내신 줄 세우기가 곧 합격선이라 지원자가 늘면 바로 컷에 닿지만, 종합은 서류와 면접이 사이에 끼어 있어 한 겹 걸러집니다. <strong>종합 지원자에게 경쟁률은 교과 지원자보다 더 먼 이야기입니다.</strong> 모집 규모는 생각만큼 크게 가르지 않았습니다.</p>
+
+<h3>그래서 2027은</h3>
+<p>올해 경쟁률 변화를 위 표에 대 보았습니다. 낱낱의 학과를 맞히려는 것이 아니라 판이 어느 쪽으로 기울었는지만 보는 것이고, 그 학과가 앉은 등급대의 값을 씁니다.</p>
+<div class="cards">
+  <div class="card"><p class="k">경쟁률이 30% 넘게 오른 학과</p><p class="v">${(H.p27.dist[6].share * 100).toFixed(0)}%</p><p class="n">이어진 ${n0(H.p27.n)}곳 가운데 ${n0(H.p27.dist[6].n)}곳</p></div>
+  <div class="card"><p class="k">우리 학생이 쓴 곳 가운데</p><p class="v">${(H.p27.mineDist[6].share * 100).toFixed(0)}%</p><p class="n">${n0(H.p27.mineN)}곳 가운데 ${n0(H.p27.mineDist[6].n)}곳</p></div>
+  <div class="card"><p class="k">예상 합격선 상승 · 전체</p><p class="v">${up2(-H.p27.shift)}</p><p class="n">등급, 중앙값 · ${(H.p27.up * 100).toFixed(0)}%가 올라가는 쪽</p></div>
+  <div class="card"><p class="k">예상 합격선 상승 · 우리</p><p class="v">${up2(-H.p27.mineShift)}</p><p class="n">등급, 중앙값 · ${(H.p27.mineUp * 100).toFixed(0)}%가 올라가는 쪽</p></div>
+</div>
+<p>중앙값으로는 ${Math.abs(H.p27.shift).toFixed(2)}등급, 우리 학생이 쓴 곳은 ${Math.abs(H.p27.mineShift).toFixed(2)}등급입니다. <strong>판 전체로는 지난해와 크게 다르지 않은 해입니다.</strong> 우리 쪽이 조금 더 빡빡한 것은 4절에서 본 대로 지원이 호남권 국립대에 몰려 있고, 그쪽이 마침 경쟁률이 오른 자리이기 때문입니다.</p>
+<p>다만 중앙값이 조용하다고 모두가 조용한 것은 아닙니다. 우리 학생이 쓴 곳 가운데 경쟁률이 크게 오르고, 작년 합격선으로 보아 흔들릴 만한 자리를 골라 두었습니다.</p>
+<div class="tw"><table>
+<caption>우리 학생이 지원한 학과 가운데 경쟁률이 30% 넘게 오른 곳입니다. 「예상」은 지난 다섯 해에 같은 등급대에서 같은 정도로 경쟁률이 올랐을 때의 합격선 이동 중앙값으로, <strong>예측이 아니라 과거의 평균적 반응</strong>입니다. 값이 클수록 합격선이 올라가는 쪽입니다. 실제로는 이 값의 양쪽으로 크게 흩어집니다.</caption>
+<thead><tr><th scope="col">대학 · 모집단위</th><th scope="col" class="num">작년 컷</th><th scope="col" class="num">경쟁률</th><th scope="col" class="num">변화</th><th scope="col" class="num">예상 상승</th></tr></thead>
+<tbody>
+${H.watch.map((w) => `<tr><th scope="row">${w.u}<small>${w.d} · ${w.t}</small></th><td class="num">${w.k26.toFixed(2)}</td><td class="num">${r2(w.r26)}<small>→ ${r2(w.r27)}</small></td><td class="num">${pct(w.c)}</td><td class="num strong">${up2(-w.shift)}</td></tr>`).join('\n')}
+</tbody></table></div>
+<p>모두 중하위 등급대의 지역 국립대·사립대 학과입니다. 앞에서 본 대로 <strong>경쟁률 변화가 합격선에 가장 잘 옮겨붙는 자리</strong>이기도 합니다. 이 학과들을 쓴 학생과는 한 번 더 이야기를 나눠 둘 만합니다. 반대로 서울권 상위 학과를 쓴 학생에게는, 경쟁률이 올랐다는 소식을 전할 때 위 그림의 왼쪽 막대를 함께 보여 주는 편이 낫겠습니다.</p>
+
+<h2>6. 우리 학교는 그 안에서 어디쯤인가</h2>
 ${histSvg(P, MINE, A.d, D.mine.d)}
 <p>전체와 우리 학생이 쓴 학과의 변화율 분포를 겹쳐 본 것입니다. 모양은 닮았지만 <strong>우리 쪽이 오른쪽으로 조금 밀려 있습니다.</strong> 중앙값이 전체 ${pct(A.d)}인데 우리는 ${pct(D.mine.d)}이고, 경쟁률이 오른 자리의 비율도 전체 ${(A.up * 100).toFixed(0)}%에 견줘 우리는 ${(D.mine.up * 100).toFixed(0)}%입니다.</p>
 <p>크지는 않지만 방향이 분명한 차이입니다. 앞에서 본 대로 <strong>호남권과 지역 국립대의 교과·종합이 오른 해</strong>인데, 우리 학생 지원이 바로 그쪽에 몰려 있기 때문입니다. 전국 평균이 제자리라는 말을 우리 교실에 그대로 옮기기 어려운 까닭이 여기 있습니다.</p>
 
-<h2>6. 우리 학생이 쓴 대학</h2>
+<h2>7. 우리 학생이 쓴 대학</h2>
 <div class="tw"><table>
   <caption>우리 학생 지원이 있는 대학 가운데, 견줄 쌍이 20개 이상인 곳입니다. 「지원」은 우리 학교 지원 건수입니다.<br>「경쟁률」 칸은 학과마다의 변화율을 모아 중앙값을 낸 것이라, 왼쪽 두 칸의 중앙값 차이와 방향이 다를 수 있습니다 — 많이 오른 학과가 적게 내린 학과보다 많으면 그렇게 됩니다.</caption>
   <thead><tr><th scope="col">대학</th><th scope="col" class="num">지원</th><th scope="col" class="num">쌍</th><th scope="col" class="num">2026</th><th scope="col" class="num">2027</th><th scope="col" class="num">경쟁률</th><th scope="col" class="num">모집인원</th></tr></thead>
@@ -523,6 +784,8 @@ ${cases(D.down)}
   <h3>이 분석의 한계</h3>
   <p>견준 것은 ${n0(A.n)}쌍입니다. 2027 자료가 있는 대학 가운데 모집단위·전형 이름이 작년과 그대로인 것만 이었습니다 — 이름이 바뀌거나 학과가 통폐합된 것은 빠졌습니다. 특별전형을 뺀 ${n0(live)}줄 가운데 ${(A.n / live * 100).toFixed(0)}%입니다.</p>
   <p>2026 쪽 숫자는 입결 자료의 경쟁률이고, 2027 쪽은 대학이 발표한 최종 경쟁률입니다. 두 자료의 집계 시점이 완전히 같다고 보기는 어렵습니다. 그래서 개별 학과의 값보다 <strong>묶음별 중앙값과 방향</strong>을 보는 편이 낫습니다.</p>
+  <p>5절의 합격선은 <strong>대학어디가가 공시한 최종등록자 70% 지점의 내신</strong>입니다. 합격선 그 자체가 아니라 합격자 분포의 한 지점이고, 대학이 무엇을 어떻게 세어 올렸는지는 학교마다 조금씩 다릅니다. 교과 성적을 산출하는 방식도 대학마다 달라 등급 0.1의 무게가 어디서나 같지는 않습니다.</p>
+  <p>5절 마지막 표의 「예상」은 <strong>예측이 아니라 지난 다섯 해의 평균적 반응</strong>입니다. 같은 구간 안에서도 학과마다 크게 흩어지고(가운데 절반이 ${up2(-H.bins[6].hi)}~${up2(-H.bins[6].lo)}등급), 올해 대학이 전형을 어떻게 바꿨는지는 들어 있지 않습니다. 한 학생의 지원 여부를 이 숫자로 정하지는 마시기 바랍니다.</p>
   <p>중앙값을 쓴 것은 평균이 소수 모집 학과의 극단값에 끌려가기 때문입니다. 「크게 오른 곳」 표에서 10명 이상만 고른 것도 같은 이유입니다.</p>
 </div>
 
@@ -537,3 +800,49 @@ ${cases(D.down)}
 `;
 fs.writeFileSync(path.join(ROOT, '경쟁률분석.html'), html);
 console.log(`경쟁률분석.html  ${(html.length / 1024).toFixed(0)}KB`);
+
+/* ── 아티팩트용 ──────────────────────────────────────────────────
+ *
+ * 같은 내용을 클로드 아티팩트에 올릴 수 있는 꼴로 한 벌 더 쓴다. 아티팩트는
+ * <!doctype>·<html>·<head>·<body> 를 스스로 씌우므로 알맹이만 남기고,
+ * 보는 사람의 테마를 따라가도록 색을 토큰으로 바꾼다. 그림 속 색까지 함께
+ * 바꾸는 것은, 밝은 배경에 맞춰 고른 색이 어두운 배경에서 읽히지 않기 때문이다.
+ */
+const DARK = `    --bg:#161513; --surface:#1E1D1A; --line:#33312D; --ink:#F4F2EE; --ink2:#DCD9D3;
+    --sub:#9C978E; --amber:#FBBF24; --amber2:#F97316;
+    --grid:#2C2A26; --rule:#6E6A63; --track:#2A2825;`;
+const TOKEN = [
+  [/--sub:#6B6B6B; --amber:#F59E0B;/, '--sub:#6B6B6B; --amber:#F59E0B; --amber2:#B45309;\n  --grid:#EFEDE9; --rule:#A8A29A; --track:#F2F0EC;'],
+  [/background:#F2F0EC;/g, 'background:var(--track);'],
+  [/width:1px; background:#A8A29A;/g, 'width:1px; background:var(--rule);'],
+  [/\.ax \{ font-size:11px; fill:#6B6B6B;/, '.ax { font-size:11px; fill:var(--sub);'],
+  [/\.val \{ font-size:12px; font-weight:700; fill:#1A1A1A;/, '.val { font-size:12px; font-weight:700; fill:var(--ink);'],
+];
+const PAINT = [
+  [/stroke="#EFEDE9"/g, 'stroke="var(--grid)"'], [/stroke="#E8E6E2"/g, 'stroke="var(--line)"'],
+  [/stroke="#A8A29A"/g, 'stroke="var(--rule)"'], [/stroke="#F59E0B"/g, 'stroke="var(--amber)"'],
+  [/stroke="#fff"/g, 'stroke="var(--surface)"'], [/fill="#F59E0B"/g, 'fill="var(--amber)"'],
+  [/fill="#B45309"/g, 'fill="var(--amber2)"'], [/background:#F59E0B/g, 'background:var(--amber)'],
+  [/background:#B45309/g, 'background:var(--amber2)'],
+];
+{
+  const head = html.slice(html.indexOf('<title>'), html.indexOf('</style>'));
+  const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>'));
+  const css = TOKEN.reduce((t, [re, to]) => t.replace(re, to), head);
+  const art = `${css}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+${DARK}
+  }
+}
+:root[data-theme="dark"] {
+${DARK.replace(/^ {4}/gm, '  ')}
+}
+a { color:var(--amber2); text-underline-offset:2px; }
+a:focus-visible, :focus-visible { outline:2px solid var(--amber); outline-offset:2px; }
+code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em; color:var(--sub); }
+</style>
+${PAINT.reduce((t, [re, to]) => t.replace(re, to), body)}`;
+  fs.writeFileSync(path.join(ROOT, '경쟁률분석.아티팩트.html'), art);
+  console.log(`경쟁률분석.아티팩트.html  ${(art.length / 1024).toFixed(0)}KB`);
+}
