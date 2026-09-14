@@ -233,6 +233,22 @@ function pickTrack(entry, app) {
   const sameKind = kind === '기타' ? tracks
     : tracks.filter((t) => t.kind === kind || t.kind === '기타');
 
+  /*
+   * **글자까지 똑같은 이름이 먼저다.**
+   *
+   * `normTrack` 은 「학생부교과」·「전형」 같은 유형 말을 떼어 내는데, 부산대
+   * 「학생부교과(학생부교과전형)」처럼 유형 말만으로 된 이름은 떼고 나면 빈
+   * 문자열이 된다. 그러면 `typeOnly` 에 걸려 아래 두 바퀴를 다 건너뛰고, 마지막
+   * 갈래에서는 그 유형의 전형이 여럿이라(농어촌·지역인재·학생부교과) 못 고른다.
+   * 정작 양쪽 이름은 한 글자도 다르지 않은데 말이다. 띄어쓰기만 지우고 견준다.
+   */
+  const flat = (x) => String(x || '').replace(/\s+/g, '');
+  for (const probe of [app.typeSub, app.typeName]) {
+    if (!probe) continue;
+    const hit = sameKind.filter((t) => flat(t.name) === flat(probe));
+    if (hit.length === 1) return { ok: true, track: hit[0], why: '전형 이름이 글자까지 같음' };
+  }
+
   for (const probe of [app.typeSub, app.typeName]) {
     if (!probe) continue;
     if (typeOnly(probe)) continue;             // 유형뿐인 이름은 아래에서 따로
@@ -329,9 +345,37 @@ export function rateOf(index, app) {
   if (!t.ok) return t;
 
   const key = normUnit(app.dept);
-  const row = t.track.rows.get(key);
+  let row = t.track.rows.get(key);
   if (row === null) return fail('unit', '같은 이름의 모집단위가 둘이라 가리지 못했습니다');
-  if (!row) return fail('unit', `${t.track.name} 에 「${app.dept}」가 없습니다`);
+  if (!row) {
+    /*
+     * **앞부분이 같은 모집단위가 하나뿐이면 그것** — 다만 방향을 가린다.
+     *
+     * 두 자료가 같은 모집단위를 다른 깊이로 적는다. 순천대 페이지는
+     * 「사회과학분야(경제학전공)(무역학전공)…」이라 전공을 다 늘어놓고 즐겨찾기는
+     * 「사회과학분야」라고만 적는다. 거꾸로 전남대는 즐겨찾기가
+     * 「경영학부(경영학전공, 회계학전공, AI비즈니스전공)」인데 페이지는 「경영학부」다.
+     * 둘 다 같은 자리를 가리키므로 이어야 한다.
+     *
+     * 그런데 **페이지 쪽이 짧으면서 괄호로 전공 하나를 집은 때**는 다르다.
+     * 경북대 실기는 「미술학과(한국화전공)」·「미술학과(서양화전공)」이 따로 있고
+     * 즐겨찾기는 넷을 묶어 적는다. 앞부분만 보고 이으면 서양화 지원자에게
+     * 한국화 경쟁률이 붙는다. 그래서 페이지 쪽이 짧을 때는 그 이름에 전공
+     * 구분(가운뎃점)이 없을 때에만 잇는다.
+     */
+    const cands = [];
+    for (const [k, v] of t.track.rows) {
+      if (!v || v.spread || k.length < 3 || key.length < 3) continue;
+      if (k.startsWith(key)) cands.push([k, v]);                     // 페이지가 더 자세히 적음
+      else if (key.startsWith(k) && !k.includes('·')) cands.push([k, v]); // 페이지가 학부로만 적음
+    }
+    if (cands.length !== 1) {
+      return fail('unit', `${t.track.name} 에 「${app.dept}」가 없습니다`);
+    }
+    [, row] = cands[0];
+    return settle(app, u.univ, { ...t, why: '모집단위 앞부분이 같고 후보가 하나',
+      warn: { kind: 'unit', mine: app.dept, theirs: row.unit } }, row);
+  }
   if (row.spread) {
     return fail('unit', `${t.track.name} 은 학과별로 나눠 적지 않았습니다`
       + ` — 대학 페이지의 모집 ${row.quota} · 경쟁 ${row.rate} 은 전형 전체 숫자입니다`);
