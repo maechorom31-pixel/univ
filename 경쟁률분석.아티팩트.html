@@ -17,21 +17,33 @@ body {
 .wrap { max-width:1120px; margin:0 auto; padding:40px 24px 64px; }
 header { padding-bottom:24px; border-bottom:1px solid var(--line); margin-bottom:8px; }
 h1 { font-size:27px; line-height:1.3; font-weight:700; color:var(--ink); margin:0 0 8px; letter-spacing:-0.01em; }
-.lede { max-width:33em; color:var(--sub); margin:0; }
-h2 { font-size:20px; line-height:1.3; font-weight:700; color:var(--ink); margin:48px 0 4px; letter-spacing:-0.01em; }
-h3 { font-size:16px; font-weight:600; color:var(--ink); margin:32px 0 4px; }
-p { max-width:38em; margin:12px 0; }
-.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin:24px 0 8px; }
+.lede { max-width:32em; color:var(--sub); margin:0 0 10px; }
+.lede:last-child { margin-bottom:0; }
+h2 { font-size:20px; line-height:1.35; font-weight:700; color:var(--ink); margin:52px 0 8px; letter-spacing:-0.01em; }
+h3 { font-size:16px; line-height:1.4; font-weight:600; color:var(--ink); margin:36px 0 8px; }
+p { max-width:36em; margin:0 0 20px; }
+h2 + p, h3 + p, .note h3 + p { margin-top:4px; }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:12px; margin:24px 0; }
 .card { background:var(--surface); border:1px solid var(--line); padding:16px; }
 .card .k { font-size:13px; color:var(--sub); margin:0 0 6px; }
 .card .v { font-size:29px; font-weight:700; color:var(--ink); line-height:1.2; margin:0; letter-spacing:-0.02em; }
 .card .n { font-size:13px; color:var(--sub); margin:6px 0 0; }
-.tw { overflow-x:auto; margin:16px 0 0; border:1px solid var(--line); background:var(--surface); }
+.tw { overflow-x:auto; margin:16px 0 24px; border:1px solid var(--line); background:var(--surface); }
 table { border-collapse:collapse; width:100%; font-size:14px; }
-caption { text-align:left; padding:14px 16px 0; font-size:13px; color:var(--sub); line-height:1.55; }
+caption { text-align:left; padding:14px 16px 4px; font-size:13px; color:var(--sub); line-height:1.65; }
+/* 표 설명은 표 폭을 따라가면 안 된다 — 좁은 화면에서 옆으로 밀려 읽히지 않는다.
+   스크롤 래퍼 왼쪽에 붙여 두고 화면 폭 안으로 가둔다. */
+.capin { display:block; position:sticky; left:0; max-width:44em;
+  width:min(100%, calc(100vw - 66px)); }
 th,td { padding:9px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
 thead th { font-size:12px; font-weight:600; color:var(--sub); white-space:nowrap; background:var(--surface); }
 tbody th { font-weight:600; color:var(--ink); white-space:nowrap; }
+/* 좁은 화면에서 가로로 밀 때 이름 열은 붙들어 둔다 */
+@media (max-width:640px) {
+  tbody th[scope="row"], thead th:first-child {
+    position:sticky; left:0; z-index:10; background:var(--surface);
+    box-shadow:1px 0 0 var(--line); }
+}
 tbody th small { display:block; font-weight:400; font-size:12px; color:var(--sub); white-space:normal; }
 tbody tr:last-child th, tbody tr:last-child td { border-bottom:0; }
 .num { text-align:right; white-space:nowrap; }
@@ -42,19 +54,19 @@ td.bar { width:46%; min-width:220px; }
 .track { position:relative; display:block; height:14px; background:var(--track); }
 .zero { position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:var(--rule); }
 .fill { position:absolute; top:0; bottom:0; background:var(--amber); border-radius:2px; }
-.fig { margin:20px 0 0; padding:16px 16px 12px; background:var(--surface); border:1px solid var(--line); }
+.fig { margin:20px 0 24px; padding:16px 16px 12px; background:var(--surface); border:1px solid var(--line); }
 .fig svg { display:block; }
-.fig figcaption { margin-top:10px; font-size:13px; color:var(--sub); line-height:1.55; }
+.fig figcaption { margin-top:12px; font-size:13px; color:var(--sub); line-height:1.65; max-width:48em; }
 .key { display:inline-flex; align-items:center; margin-right:14px; white-space:nowrap; }
 .sw { display:inline-block; width:10px; height:10px; margin-right:6px; border-radius:2px; }
 .ax { font-size:11px; fill:var(--sub); font-family:inherit; }
 .val { font-size:12px; font-weight:700; fill:var(--ink); font-family:inherit; }
-.note { background:var(--surface); border:1px solid var(--line); padding:16px 18px; margin:24px 0 0; }
-.note p { margin:0 0 10px; max-width:40em; }
+.note { background:var(--surface); border:1px solid var(--line); padding:18px 20px; margin:24px 0; }
+.note p { margin:0 0 14px; max-width:36em; }
 .note p:last-child { margin-bottom:0; }
 .note h3 { margin:0 0 8px; }
 footer { margin-top:56px; padding-top:20px; border-top:1px solid var(--line); color:var(--sub); font-size:13px; }
-footer p { max-width:40em; margin:0 0 8px; }
+footer p { max-width:38em; margin:0 0 10px; line-height:1.65; }
 @media (max-width:640px) {
   .wrap { padding:28px 16px 48px; }
   h1 { font-size:23px; }
@@ -90,22 +102,23 @@ code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em;
 <div class="wrap">
 <header>
   <h1>2027 수시 최종 경쟁률, 무엇이 달라졌나</h1>
-  <p class="lede">2026 입시 결과와 2027 최종 경쟁률을 같은 대학·전형·모집단위끼리 맞대어 본 결과입니다. 견줄 수 있었던 것은 5,027쌍, 59개&nbsp;대학입니다. 기회균형·농어촌 같은 정원외 전형은 빼고&nbsp;봤습니다. 5절에서는 다섯 해 입결을 이어 붙여 <strong>경쟁률이 정말 합격선을 움직이는지</strong>도 함께&nbsp;쟀습니다.</p>
+  <p class="lede">2026 입시 결과와 2027 최종 경쟁률을 같은 대학·전형·모집단위끼리 맞대어 본 결과입니다. 견줄 수 있었던 것은 5,027쌍, 59개 대학이고, 기회균형·농어촌 같은 정원외 전형은 빼고&nbsp;봤습니다.</p>
+  <p class="lede">5절부터는 다섯 해 입결을 이어 붙여 <strong>경쟁률이 정말 합격선을 움직이는지</strong>, 그 변화가 소식인지 늘 있던 출렁임인지까지 함께&nbsp;쟀습니다.</p>
 </header>
 
 <h2>한눈에</h2>
 <div class="cards">
-  <div class="card"><p class="k">전체 경쟁률 중앙값</p><p class="v">8.53 → 8.25</p><p class="n">-1.1% · 거의 제자리</p></div>
+  <div class="card"><p class="k">전체 경쟁률</p><p class="v">11.01 → 11.08</p><p class="n">자리 가중 +0.6% · 거의 제자리</p></div>
   <div class="card"><p class="k">오른 줄</p><p class="v">48%</p><p class="n">5,027쌍 가운데 절반 남짓</p></div>
   <div class="card"><p class="k">교과 ↔ 논술</p><p class="v">-8.4% / +15.4%</p><p class="n">방향이 정반대</p></div>
-  <div class="card"><p class="k">우리 학생이 쓴 학과</p><p class="v">+3.1%</p><p class="n">556쌍 · 전체보다 빡빡</p></div>
-  <div class="card"><p class="k">경쟁률 30%↑일 때 합격선</p><p class="v">0.30</p><p class="n">등급 상승 · 다섯 해 38,934쌍</p></div>
+  <div class="card"><p class="k">우리 학생이 쓴 학과</p><p class="v">+4.7%</p><p class="n">자리 가중 · 학과별 중앙값은 +3.1%</p></div>
+  <div class="card"><p class="k">세 명 더 몰릴 때 합격선</p><p class="v">0.34</p><p class="n">등급 상승 · 다섯 해 38,934쌍</p></div>
 </div>
 <p>총계만 보면 작년과 다를 바 없어 보입니다. 그런데 안을 들여다보면 방향이 크게 갈립니다. <strong>전형 유형</strong>이 가장 크게 가르고, 그다음이 <strong>권역</strong>입니다.</p>
 
 <h2>1. 판의 크기 — 고3은 줄고 N수생은 늘었다</h2>
 <div class="tw"><table>
-  <caption>2027학년도 수능 응시원서 접수 결과입니다. 경쟁률 자료로는 알 수 없는 숫자라 바깥에서 들여왔습니다.</caption>
+  <caption><span class="capin">2027학년도 수능 응시원서 접수 결과입니다. 경쟁률 자료로는 알 수 없는 숫자라 바깥에서 들여왔습니다.</span></caption>
   <thead><tr><th scope="col">구분</th><th scope="col" class="num">2027</th><th scope="col" class="num">2026</th><th scope="col" class="num">증감</th></tr></thead>
   <tbody>
 <tr><th scope="row">재학생 (고3)</th><td class="num">355,391</td><td class="num">371,897</td><td class="num strong">-16,506</td></tr>
@@ -117,7 +130,7 @@ code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em;
 
 <h2>2. 전형 유형 — 교과는 빠지고 논술은 몰렸다</h2>
 <div class="tw"><table>
-  <caption>2026 대비 2027 최종 경쟁률 변화율의 중앙값. 막대는 0을 가운데 두고 왼쪽이 하락, 오른쪽이 상승입니다.</caption>
+  <caption><span class="capin">2026 대비 2027 최종 경쟁률 변화율의 중앙값. 막대는 0을 가운데 두고 왼쪽이 하락, 오른쪽이 상승입니다.</span></caption>
   <thead><tr><th scope="col">전형 유형</th><th scope="col">변화</th><th scope="col">중앙 변화율</th><th scope="col">쌍</th></tr></thead>
   <tbody>
 <tr><th scope="row">교과</th><td class="bar"><span class="track"><span class="zero"></span><span class="fill" style="left:22.80%;width:27.20%"></span></span></td><td class="num strong">-8.4%</td><td class="num">2,788</td></tr>
@@ -130,7 +143,7 @@ code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em;
 
 <h2>3. 권역 — 수도권과 호남이 반대로 움직였다</h2>
 <div class="tw"><table>
-  <caption>「서울 상위」는 입결 자료가 서울 주요 대학으로 따로 묶어 둔 분류를 그대로 쓴 것입니다.</caption>
+  <caption><span class="capin">「서울 상위」는 입결 자료가 서울 주요 대학으로 따로 묶어 둔 분류를 그대로 쓴 것입니다.</span></caption>
   <thead><tr><th scope="col">권역</th><th scope="col">변화</th><th scope="col">중앙 변화율</th><th scope="col">쌍</th></tr></thead>
   <tbody>
 <tr><th scope="row">서울 상위</th><td class="bar"><span class="track"><span class="zero"></span><span class="fill" style="left:12.39%;width:37.61%"></span></span></td><td class="num strong">-5.6%</td><td class="num">778</td></tr>
@@ -145,7 +158,7 @@ code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em;
 
 <h3>권역 × 전형 유형</h3>
 <div class="tw"><table>
-  <caption>칸 안의 작은 숫자는 견준 쌍의 수입니다. 15쌍이 안 되는 칸은 내지 않았습니다.</caption>
+  <caption><span class="capin">칸 안의 작은 숫자는 견준 쌍의 수입니다. 15쌍이 안 되는 칸은 내지 않았습니다.</span></caption>
   <thead><tr><th scope="col">권역</th><th scope="col" class="num">교과</th><th scope="col" class="num">종합</th><th scope="col" class="num">논술</th></tr></thead>
   <tbody>
 <tr><th scope="row">서울 상위</th><td class="num strong">-19.9%<small>235</small></td><td class="num strong">-5.0%<small>409</small></td><td class="num strong">+12.1%<small>134</small></td></tr>
@@ -162,7 +175,7 @@ code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em;
 
 <h2>4. 모집인원 — 경쟁률을 움직인 것은 지원자보다 모집인원이었다</h2>
 <div class="tw"><table>
-  <caption>모집인원을 10% 넘게 줄인 곳 · 비슷한 곳 · 10% 넘게 늘린 곳으로 나눠 봤습니다.</caption>
+  <caption><span class="capin">모집인원을 10% 넘게 줄인 곳 · 비슷한 곳 · 10% 넘게 늘린 곳으로 나눠 봤습니다.</span></caption>
   <thead><tr><th scope="col">2027 모집인원</th><th scope="col" class="num">쌍</th><th scope="col" class="num">모집인원</th><th scope="col" class="num">지원자</th><th scope="col" class="num">경쟁률</th></tr></thead>
   <tbody>
 <tr><th scope="row">줄임</th><td class="num">678</td><td class="num">-25.1%</td><td class="num">-15.5%</td><td class="num strong">+11.1%</td></tr>
@@ -177,7 +190,7 @@ code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em;
 
 <h3>모집 규모별</h3>
 <div class="tw"><table>
-  <caption>모집인원이 적을수록 경쟁률이 높고, 변동도 큽니다.</caption>
+  <caption><span class="capin">모집인원이 적을수록 경쟁률이 높고, 변동도 큽니다.</span></caption>
   <thead><tr><th scope="col">모집 규모</th><th scope="col">변화</th><th scope="col">중앙 변화율</th><th scope="col">쌍</th></tr></thead>
   <tbody>
 <tr><th scope="row">1~3명</th><td class="bar"><span class="track"><span class="zero"></span><span class="fill" style="left:50.00%;width:50.00%"></span></span></td><td class="num strong">+5.5%</td><td class="num">454</td></tr>
@@ -189,98 +202,132 @@ code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em;
 </table></div>
 <p>소수 모집(1~3명)은 경쟁률 자체가 높은 데다 해마다 크게 출렁입니다. 한두 명 더 쓰고 덜 쓰는 것으로 경쟁률이 배로 움직이니, <strong>소수 모집 학과의 작년 경쟁률은 참고치 이상으로 쓰기 어렵습니다.</strong></p>
 
-<h2>5. 경쟁률이 오르면 합격선도 오르나 — 방향은 맞지만 폭은 작다</h2>
+<h2>5. 경쟁률이 오르면 합격선도 오르나 — 올라갈 때만 그렇다</h2>
 <p>여기까지는 경쟁률이 어떻게 움직였는지만 보았습니다. 정작 궁금한 것은 그 움직임이 합격에 닿느냐입니다. 2022~2026학년도 다섯 해 입결을 같은 대학·전형·모집단위끼리 해마다 이어 붙여 <strong>38,934쌍</strong>을 얻었고, 「경쟁률이 얼마나 변했을 때 이듬해 합격선이 얼마나 움직였는가」를 세었습니다. 합격선은 등급70을 씁니다.</p>
-<figure class="fig"><svg viewBox="0 0 760 300" role="img" width="100%" height="auto" aria-label="경쟁률이 많이 오른 구간일수록 이듬해 합격선이 높아지는 오르막 선. 가운데 절반의 범위는 어느 구간에서나 0을 걸친다."><line x1="56" y1="41.6" x2="742" y2="41.6" stroke="var(--grid)"/><text x="48" y="45.6" text-anchor="end" class="ax">0.6</text><line x1="56" y1="88.3" x2="742" y2="88.3" stroke="var(--grid)"/><text x="48" y="92.3" text-anchor="end" class="ax">0.3</text><line x1="56" y1="135.0" x2="742" y2="135.0" stroke="var(--rule)"/><text x="48" y="139.0" text-anchor="end" class="ax">0</text><line x1="56" y1="181.7" x2="742" y2="181.7" stroke="var(--grid)"/><text x="48" y="185.7" text-anchor="end" class="ax">-0.3</text><line x1="56" y1="228.4" x2="742" y2="228.4" stroke="var(--grid)"/><text x="48" y="232.4" text-anchor="end" class="ax">-0.6</text><text x="48" y="18.0" text-anchor="end" class="ax">등급</text><polygon points="105.0,121.0 203.0,107.0 301.0,100.7 399.0,91.4 497.0,85.2 595.0,75.8 693.0,35.3 693.0,130.3 595.0,150.6 497.0,158.4 399.0,164.6 301.0,172.4 203.0,181.7 105.0,205.1" fill="var(--amber)" fill-opacity="0.16"/><polyline fill="none" stroke="var(--amber)" stroke-width="2.5" points="105.0,152.1 203.0,136.6 301.0,131.9 399.0,125.7 497.0,121.0 595.0,113.2 693.0,88.3"/><circle cx="105.0" cy="152.1" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>−30% 아래 · 합격선 완화 0.11등급 · 7,123쌍</title></circle><text x="105.0" y="141.1" text-anchor="middle" class="val">−0.11</text><text x="105.0" y="262" text-anchor="middle" class="ax">−30% 아래</text><text x="105.0" y="277" text-anchor="middle" class="ax">35%</text><circle cx="203.0" cy="136.6" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>−30~−15% · 합격선 완화 0.01등급 · 5,892쌍</title></circle><text x="203.0" y="125.6" text-anchor="middle" class="val">−0.01</text><text x="203.0" y="262" text-anchor="middle" class="ax">−30~−15%</text><text x="203.0" y="277" text-anchor="middle" class="ax">46%</text><circle cx="301.0" cy="131.9" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>−15~−5% · 합격선 상승 0.02등급 · 4,198쌍</title></circle><text x="301.0" y="120.9" text-anchor="middle" class="val">+0.02</text><text x="301.0" y="262" text-anchor="middle" class="ax">−15~−5%</text><text x="301.0" y="277" text-anchor="middle" class="ax">51%</text><circle cx="399.0" cy="125.7" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>±5% 안 · 합격선 상승 0.06등급 · 3,865쌍</title></circle><text x="399.0" y="114.7" text-anchor="middle" class="val">+0.06</text><text x="399.0" y="262" text-anchor="middle" class="ax">±5% 안</text><text x="399.0" y="277" text-anchor="middle" class="ax">56%</text><circle cx="497.0" cy="121.0" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>+5~15% · 합격선 상승 0.09등급 · 3,407쌍</title></circle><text x="497.0" y="110.0" text-anchor="middle" class="val">+0.09</text><text x="497.0" y="262" text-anchor="middle" class="ax">+5~15%</text><text x="497.0" y="277" text-anchor="middle" class="ax">60%</text><circle cx="595.0" cy="113.2" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>+15~30% · 합격선 상승 0.14등급 · 4,104쌍</title></circle><text x="595.0" y="102.2" text-anchor="middle" class="val">+0.14</text><text x="595.0" y="262" text-anchor="middle" class="ax">+15~30%</text><text x="595.0" y="277" text-anchor="middle" class="ax">65%</text><circle cx="693.0" cy="88.3" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>+30% 위 · 합격선 상승 0.30등급 · 10,345쌍</title></circle><text x="693.0" y="77.3" text-anchor="middle" class="val">+0.30</text><text x="693.0" y="262" text-anchor="middle" class="ax">+30% 위</text><text x="693.0" y="277" text-anchor="middle" class="ax">76%</text><text x="742" y="36.0" text-anchor="end" class="ax">위로 갈수록 합격선이 올라감</text></svg><figcaption>가로는 그해 경쟁률 변화, 세로는 이듬해 합격선(등급70)이 움직인 폭입니다. 굵은 선이 중앙값, 옅은 띠가 가운데 절반(25~75%)이고, 칸 밑 백분율은 그 구간에서 합격선이 실제로 올라간 학과의 비율입니다. 2022~2026학년도 입결.</figcaption></figure>
-<p>선은 한 번도 꺾이지 않고 오른쪽으로 올라갑니다. 경쟁률이 30% 넘게 빠진 자리는 이듬해 합격선이 중앙값 <strong>0.11등급 내려갔고</strong>, 30% 넘게 오른 자리는 <strong>0.30등급 올라갔습니다.</strong> 합격선이 실제로 올라간 학과의 비율도 35%에서 76%까지 한 계단씩 늡니다. 순위끼리 견준 상관계수는 0.38(등급 숫자 그대로는 -0.38)로, 사회 자료에서는 뚜렷한 축에 듭니다. <strong>경쟁률은 합격선의 신호가 맞습니다.</strong></p>
-<p>다만 폭을 보아야 합니다. 경쟁률이 중앙값 +62.0% 오른 자리에서도 합격선은 0.30등급 남짓 움직였습니다. 내신 0.3등급은 상담에서 진로를 바꿀 만한 크기가 아닙니다. 게다가 옅은 띠가 말해 주듯 <strong>같은 구간 안에서도 학과마다 제각각입니다</strong> — 경쟁률이 30% 넘게 오른 자리 가운데 24%는 오히려 합격선이 내려갔습니다. 경쟁률만 보고 「이 학과는 올해 힘들겠다」고 말하면 넷에 하나는 틀리는 셈입니다.</p>
+<div class="note">
+  <h3>경쟁률은 「명」으로 읽습니다</h3>
+  <p>이 절부터는 경쟁률 변화를 백분율이 아니라 <strong>명</strong>으로 적습니다. 경쟁률은 본디 「한 자리에 몇 명」이니 그 차이도 명입니다. 백분율로 적으면 <strong>2.4 → 8.5가 +254%</strong>로 부풀어, 정작 <strong>한 자리 놓고 겨루는 사람이 여섯 명 늘었다</strong>는 사실이 가려집니다. 반대로 20 → 25는 +25%로 조그맣게 보이지만 다섯 명이 는 것입니다.</p>
+  <p>둘 중 무엇이 합격선을 더 잘 잡아내는지 재 보았습니다. 순위 상관이 백분율 0.38, 명 0.36로 <strong>사실상 같았습니다</strong> — 경쟁률이 3 아래인 자리에서는 명 쪽이 오히려 나았습니다. 잃는 것이 없으니 읽히는 쪽을 씁니다.</p>
+</div>
+<figure class="fig"><svg viewBox="0 0 760 300" role="img" width="100%" height="auto" aria-label="경쟁률이 많이 오른 구간일수록 이듬해 합격선이 높아지는 오르막 선. 가운데 절반의 범위는 어느 구간에서나 0을 걸친다."><line x1="56" y1="41.6" x2="742" y2="41.6" stroke="var(--grid)"/><text x="48" y="45.6" text-anchor="end" class="ax">0.6</text><line x1="56" y1="88.3" x2="742" y2="88.3" stroke="var(--grid)"/><text x="48" y="92.3" text-anchor="end" class="ax">0.3</text><line x1="56" y1="135.0" x2="742" y2="135.0" stroke="var(--rule)"/><text x="48" y="139.0" text-anchor="end" class="ax">0</text><line x1="56" y1="181.7" x2="742" y2="181.7" stroke="var(--grid)"/><text x="48" y="185.7" text-anchor="end" class="ax">-0.3</text><line x1="56" y1="228.4" x2="742" y2="228.4" stroke="var(--grid)"/><text x="48" y="232.4" text-anchor="end" class="ax">-0.6</text><text x="48" y="18.0" text-anchor="end" class="ax">등급</text><polygon points="105.0,117.9 203.0,110.1 301.0,102.3 399.0,88.3 497.0,80.5 595.0,64.9 693.0,30.7 693.0,121.0 595.0,144.3 497.0,163.0 399.0,177.0 301.0,183.3 203.0,192.6 105.0,187.9" fill="var(--amber)" fill-opacity="0.16"/><polyline fill="none" stroke="var(--amber)" stroke-width="2.5" points="105.0,142.8 203.0,141.2 301.0,135.0 399.0,130.3 497.0,119.4 595.0,107.0 693.0,82.1"/><circle cx="105.0" cy="142.8" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>3명 넘게 줄고 · 합격선 완화 0.05등급 · 6,015쌍</title></circle><text x="105.0" y="131.8" text-anchor="middle" class="val">−0.05</text><text x="105.0" y="262" text-anchor="middle" class="ax">3명 넘게 줄고</text><text x="105.0" y="277" text-anchor="middle" class="ax">40%</text><circle cx="203.0" cy="141.2" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>1~3명 줄고 · 합격선 완화 0.04등급 · 6,817쌍</title></circle><text x="203.0" y="130.2" text-anchor="middle" class="val">−0.04</text><text x="203.0" y="262" text-anchor="middle" class="ax">1~3명 줄고</text><text x="203.0" y="277" text-anchor="middle" class="ax">43%</text><circle cx="301.0" cy="135.0" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>0.3~1명 줄고 · 합격선 완화 0.00등급 · 4,305쌍</title></circle><text x="301.0" y="124.0" text-anchor="middle" class="val">0.00</text><text x="301.0" y="262" text-anchor="middle" class="ax">0.3~1명 줄고</text><text x="301.0" y="277" text-anchor="middle" class="ax">48%</text><circle cx="399.0" cy="130.3" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>거의 그대로 · 합격선 상승 0.03등급 · 4,202쌍</title></circle><text x="399.0" y="119.3" text-anchor="middle" class="val">+0.03</text><text x="399.0" y="262" text-anchor="middle" class="ax">거의 그대로</text><text x="399.0" y="277" text-anchor="middle" class="ax">52%</text><circle cx="497.0" cy="119.4" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>0.3~1명 늘고 · 합격선 상승 0.10등급 · 4,044쌍</title></circle><text x="497.0" y="108.4" text-anchor="middle" class="val">+0.10</text><text x="497.0" y="262" text-anchor="middle" class="ax">0.3~1명 늘고</text><text x="497.0" y="277" text-anchor="middle" class="ax">59%</text><circle cx="595.0" cy="107.0" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>1~3명 늘고 · 합격선 상승 0.18등급 · 7,051쌍</title></circle><text x="595.0" y="96.0" text-anchor="middle" class="val">+0.18</text><text x="595.0" y="262" text-anchor="middle" class="ax">1~3명 늘고</text><text x="595.0" y="277" text-anchor="middle" class="ax">69%</text><circle cx="693.0" cy="82.1" r="4.5" fill="var(--amber2)" stroke="var(--surface)" stroke-width="2"><title>3명 넘게 늘고 · 합격선 상승 0.34등급 · 6,500쌍</title></circle><text x="693.0" y="71.1" text-anchor="middle" class="val">+0.34</text><text x="693.0" y="262" text-anchor="middle" class="ax">3명 넘게 늘고</text><text x="693.0" y="277" text-anchor="middle" class="ax">81%</text><text x="742" y="36.0" text-anchor="end" class="ax">위로 갈수록 합격선이 올라감</text></svg><figcaption>가로는 그해 경쟁률 변화, 세로는 이듬해 합격선(등급70)이 움직인 폭입니다. 굵은 선이 중앙값, 옅은 띠가 가운데 절반(25~75%)이고, 칸 밑 백분율은 그 구간에서 합격선이 실제로 올라간 학과의 비율입니다. 2022~2026학년도 입결.</figcaption></figure>
+<p>선은 한 번도 꺾이지 않고 오른쪽으로 올라갑니다. <strong>한 자리에 세 명 넘게 더 몰린 자리는 이듬해 합격선이 중앙값 0.34등급 올라갔고</strong>, 실제로 올라간 학과가 81%였습니다. 경쟁률은 합격선의 신호가 맞습니다.</p>
+<p>다만 폭을 보아야 합니다. 세 명이 더 몰려도 합격선은 0.3등급 남짓 움직입니다. 내신 0.3등급은 상담에서 진로를 바꿀 만한 크기가 아닙니다. 게다가 옅은 띠가 말해 주듯 <strong>같은 구간 안에서도 학과마다 제각각입니다</strong> — 세 명 넘게 몰린 자리 가운데 19%는 오히려 합격선이 내려갔습니다.</p>
 
-<p>「모집인원을 줄여서 경쟁률도 컷도 같이 올랐을 뿐 아니냐」는 반문이 자연스럽습니다. 그래서 <strong>모집인원을 5% 안쪽으로밖에 건드리지 않은 18,863쌍</strong>만 따로 세어 보았습니다. 경쟁률이 30% 넘게 오른 자리의 합격선이 0.30등급 올라갔고, 30% 넘게 내린 자리는 0.08등급 내려가 <strong>전체와 거의 같았습니다.</strong> 모집인원이 뒤에서 둘 다 끌어당긴 것만은 아니라는 뜻입니다.</p>
+<h3>내려갈 때는 따라 내려오지 않는다</h3>
+<p>명으로 바꿔 보니 전에 안 보이던 것이 하나 드러났습니다. <strong>선의 왼쪽 절반이 거의 평평합니다.</strong> 경쟁률이 한 자리에 세 명 넘게 빠진 자리에서도 합격선은 0.05등급밖에 내려가지 않았고, 그마저 절반 가까이(40%)는 오히려 올라갔습니다. 오른쪽 끝의 0.34등급과 견주면 <strong>대여섯 배 차이입니다.</strong></p>
+<p>합격선은 올라가기는 쉬워도 내려가기는 어렵다는 뜻입니다. 지원자가 빠져도 남은 지원자 가운데 윗머리는 그대로 남기 때문으로 보입니다. 상담에 옮기면 이렇습니다 — <strong>「작년보다 경쟁률이 떨어졌으니 해볼 만하다」는 기대는 대체로 빗나갑니다.</strong> 경쟁률이 빠졌다는 소식은 오른 소식만큼의 무게를 갖지 않습니다.</p>
+<p>「모집인원을 줄여서 경쟁률도 컷도 같이 올랐을 뿐 아니냐」는 반문도 자연스럽습니다. 그래서 <strong>모집인원을 5% 안쪽으로밖에 건드리지 않은 18,863쌍</strong>만 따로 세어 보았습니다. 세 명 넘게 몰린 자리의 합격선이 0.33등급 올라가 <strong>전체와 거의 같았습니다.</strong> 모집인원이 뒤에서 둘 다 끌어당긴 것만은 아니라는 뜻입니다.</p>
 
 <h3>누구의 합격선이 흔들리는가</h3>
-<figure class="fig"><svg viewBox="0 0 760 250" role="img" width="100%" height="auto" aria-label="작년 합격선이 낮은 등급대일수록 경쟁률 변화에 합격선이 크게 흔들리는 막대그림."><line x1="78" y1="34.8" x2="742" y2="34.8" stroke="var(--grid)"/><text x="70" y="38.8" text-anchor="end" class="ax">0.50</text><line x1="78" y1="71.9" x2="742" y2="71.9" stroke="var(--grid)"/><text x="70" y="75.9" text-anchor="end" class="ax">0.25</text><line x1="78" y1="109.0" x2="742" y2="109.0" stroke="var(--rule)"/><text x="70" y="113.0" text-anchor="end" class="ax">0</text><line x1="78" y1="146.1" x2="742" y2="146.1" stroke="var(--grid)"/><text x="70" y="150.1" text-anchor="end" class="ax">-0.25</text><line x1="78" y1="183.2" x2="742" y2="183.2" stroke="var(--grid)"/><text x="70" y="187.2" text-anchor="end" class="ax">-0.50</text><rect x="99.2" y="101.6" width="39.8" height="7.4" fill="var(--amber)" rx="2"><title>1~2등급대 · 경쟁률 +30% 위 · 합격선 상승 0.05등급</title></rect><text x="119.2" y="96.6" text-anchor="middle" class="val">0.05</text><rect x="149.7" y="109.0" width="39.8" height="5.9" fill="var(--amber2)" rx="2"><title>1~2등급대 · 경쟁률 −30% 아래 · 합격선 완화 0.04등급</title></rect><text x="169.6" y="127.9" text-anchor="middle" class="val">0.04</text><text x="144.4" y="218" text-anchor="middle" class="ax">1~2등급대</text><text x="144.4" y="233" text-anchor="middle" class="ax">3,078쌍</text><rect x="232.0" y="85.3" width="39.8" height="23.7" fill="var(--amber)" rx="2"><title>2~3등급대 · 경쟁률 +30% 위 · 합격선 상승 0.16등급</title></rect><text x="252.0" y="80.3" text-anchor="middle" class="val">0.16</text><rect x="282.5" y="109.0" width="39.8" height="14.8" fill="var(--amber2)" rx="2"><title>2~3등급대 · 경쟁률 −30% 아래 · 합격선 완화 0.10등급</title></rect><text x="302.4" y="136.8" text-anchor="middle" class="val">0.10</text><text x="277.2" y="218" text-anchor="middle" class="ax">2~3등급대</text><text x="277.2" y="233" text-anchor="middle" class="ax">7,029쌍</text><rect x="364.8" y="69.0" width="39.8" height="40.0" fill="var(--amber)" rx="2"><title>3~4등급대 · 경쟁률 +30% 위 · 합격선 상승 0.27등급</title></rect><text x="384.8" y="64.0" text-anchor="middle" class="val">0.27</text><rect x="415.3" y="109.0" width="39.8" height="22.3" fill="var(--amber2)" rx="2"><title>3~4등급대 · 경쟁률 −30% 아래 · 합격선 완화 0.15등급</title></rect><text x="435.2" y="144.3" text-anchor="middle" class="val">0.15</text><text x="410.0" y="218" text-anchor="middle" class="ax">3~4등급대</text><text x="410.0" y="233" text-anchor="middle" class="ax">9,619쌍</text><rect x="497.6" y="54.1" width="39.8" height="54.9" fill="var(--amber)" rx="2"><title>4~5등급대 · 경쟁률 +30% 위 · 합격선 상승 0.37등급</title></rect><text x="517.6" y="49.1" text-anchor="middle" class="val">0.37</text><rect x="548.1" y="109.0" width="39.8" height="26.7" fill="var(--amber2)" rx="2"><title>4~5등급대 · 경쟁률 −30% 아래 · 합격선 완화 0.18등급</title></rect><text x="568.0" y="148.7" text-anchor="middle" class="val">0.18</text><text x="542.8" y="218" text-anchor="middle" class="ax">4~5등급대</text><text x="542.8" y="233" text-anchor="middle" class="ax">8,851쌍</text><rect x="630.4" y="34.8" width="39.8" height="74.2" fill="var(--amber)" rx="2"><title>5등급 아래 · 경쟁률 +30% 위 · 합격선 상승 0.50등급</title></rect><text x="650.4" y="29.8" text-anchor="middle" class="val">0.50</text><rect x="680.9" y="109.0" width="39.8" height="11.9" fill="var(--amber2)" rx="2"><title>5등급 아래 · 경쟁률 −30% 아래 · 합격선 완화 0.08등급</title></rect><text x="700.8" y="133.9" text-anchor="middle" class="val">0.08</text><text x="675.6" y="218" text-anchor="middle" class="ax">5등급 아래</text><text x="675.6" y="233" text-anchor="middle" class="ax">10,357쌍</text></svg><figcaption><span class="key"><span class="sw" style="background:var(--amber)"></span>경쟁률이 30% 넘게 오른 해</span><span class="key"><span class="sw" style="background:var(--amber2)"></span>30% 넘게 내린 해</span><br>위로 솟은 막대가 합격선이 올라간 폭, 아래로 뻗은 막대가 내려간 폭입니다(등급). 가로는 그 학과의 <em>작년</em> 합격선 수준입니다.</figcaption></figure>
-<p>같은 자를 작년 합격선 수준별로 나눠 대면 그림이 갈립니다. <strong>1~2등급대 학과는 경쟁률이 30% 넘게 올라도 합격선이 0.05등급밖에 움직이지 않습니다.</strong> 반대로 5등급 아래 학과는 0.50등급, 열 배입니다. 상위권은 어차피 지원자 윗머리가 두꺼워 몇 명 더 온다고 컷이 밀리지 않고, 중하위권은 지원자층이 얇아 조금만 몰려도 컷이 따라 올라가기 때문으로 보입니다.</p>
+<figure class="fig"><svg viewBox="0 0 760 250" role="img" width="100%" height="auto" aria-label="작년 합격선이 낮은 등급대일수록 경쟁률 변화에 합격선이 크게 흔들리는 막대그림."><line x1="78" y1="34.8" x2="742" y2="34.8" stroke="var(--grid)"/><text x="70" y="38.8" text-anchor="end" class="ax">0.50</text><line x1="78" y1="71.9" x2="742" y2="71.9" stroke="var(--grid)"/><text x="70" y="75.9" text-anchor="end" class="ax">0.25</text><line x1="78" y1="109.0" x2="742" y2="109.0" stroke="var(--rule)"/><text x="70" y="113.0" text-anchor="end" class="ax">0</text><line x1="78" y1="146.1" x2="742" y2="146.1" stroke="var(--grid)"/><text x="70" y="150.1" text-anchor="end" class="ax">-0.25</text><line x1="78" y1="183.2" x2="742" y2="183.2" stroke="var(--grid)"/><text x="70" y="187.2" text-anchor="end" class="ax">-0.50</text><rect x="99.2" y="100.1" width="39.8" height="8.9" fill="var(--amber)" rx="2"><title>1~2등급대 · 세 명 넘게 더 몰린 해 · 합격선 상승 0.06등급</title></rect><text x="119.2" y="95.1" text-anchor="middle" class="val">0.06</text><rect x="149.7" y="109.0" width="39.8" height="1.5" fill="var(--amber2)" rx="2"><title>1~2등급대 · 세 명 넘게 빠진 해 · 합격선 완화 0.01등급</title></rect><text x="169.6" y="123.5" text-anchor="middle" class="val">0.01</text><text x="144.4" y="218" text-anchor="middle" class="ax">1~2등급대</text><text x="144.4" y="233" text-anchor="middle" class="ax">3,078쌍</text><rect x="232.0" y="82.3" width="39.8" height="26.7" fill="var(--amber)" rx="2"><title>2~3등급대 · 세 명 넘게 더 몰린 해 · 합격선 상승 0.18등급</title></rect><text x="252.0" y="77.3" text-anchor="middle" class="val">0.18</text><rect x="282.5" y="109.0" width="39.8" height="10.4" fill="var(--amber2)" rx="2"><title>2~3등급대 · 세 명 넘게 빠진 해 · 합격선 완화 0.07등급</title></rect><text x="302.4" y="132.4" text-anchor="middle" class="val">0.07</text><text x="277.2" y="218" text-anchor="middle" class="ax">2~3등급대</text><text x="277.2" y="233" text-anchor="middle" class="ax">7,029쌍</text><rect x="364.8" y="64.5" width="39.8" height="44.5" fill="var(--amber)" rx="2"><title>3~4등급대 · 세 명 넘게 더 몰린 해 · 합격선 상승 0.30등급</title></rect><text x="384.8" y="59.5" text-anchor="middle" class="val">0.30</text><rect x="415.3" y="109.0" width="39.8" height="11.9" fill="var(--amber2)" rx="2"><title>3~4등급대 · 세 명 넘게 빠진 해 · 합격선 완화 0.08등급</title></rect><text x="435.2" y="133.9" text-anchor="middle" class="val">0.08</text><text x="410.0" y="218" text-anchor="middle" class="ax">3~4등급대</text><text x="410.0" y="233" text-anchor="middle" class="ax">9,619쌍</text><rect x="497.6" y="37.8" width="39.8" height="71.2" fill="var(--amber)" rx="2"><title>4~5등급대 · 세 명 넘게 더 몰린 해 · 합격선 상승 0.48등급</title></rect><text x="517.6" y="32.8" text-anchor="middle" class="val">0.48</text><rect x="548.1" y="109.0" width="39.8" height="10.4" fill="var(--amber2)" rx="2"><title>4~5등급대 · 세 명 넘게 빠진 해 · 합격선 완화 0.07등급</title></rect><text x="568.0" y="132.4" text-anchor="middle" class="val">0.07</text><text x="542.8" y="218" text-anchor="middle" class="ax">4~5등급대</text><text x="542.8" y="233" text-anchor="middle" class="ax">8,851쌍</text><rect x="630.4" y="2.2" width="39.8" height="106.8" fill="var(--amber)" rx="2"><title>5등급 아래 · 세 명 넘게 더 몰린 해 · 합격선 상승 0.72등급</title></rect><text x="650.4" y="-2.8" text-anchor="middle" class="val">0.72</text><rect x="680.9" y="109.0" width="39.8" height="4.7" fill="var(--amber2)" rx="2"><title>5등급 아래 · 세 명 넘게 빠진 해 · 합격선 완화 0.03등급</title></rect><text x="700.8" y="126.7" text-anchor="middle" class="val">0.03</text><text x="675.6" y="218" text-anchor="middle" class="ax">5등급 아래</text><text x="675.6" y="233" text-anchor="middle" class="ax">10,357쌍</text></svg><figcaption><span class="key"><span class="sw" style="background:var(--amber)"></span>한 자리에 세 명 넘게 더 몰린 해</span><span class="key"><span class="sw" style="background:var(--amber2)"></span>세 명 넘게 빠진 해</span><br>위로 솟은 막대가 합격선이 올라간 폭, 아래로 뻗은 막대가 내려간 폭입니다(등급). 가로는 그 학과의 <em>작년</em> 합격선 수준입니다.</figcaption></figure>
+<p>같은 자를 작년 합격선 수준별로 나눠 대면 그림이 갈립니다. <strong>1~2등급대 학과는 세 명이 더 몰려도 합격선이 0.06등급밖에 움직이지 않습니다.</strong> 반대로 5등급 아래 학과는 0.72등급, 열 배가 넘습니다. 상위권은 어차피 지원자 윗머리가 두꺼워 몇 명 더 온다고 컷이 밀리지 않고, 중하위권은 지원자층이 얇아 조금만 몰려도 컷이 따라 올라가기 때문으로 보입니다. 앞서 본 비대칭도 모든 등급대에서 한결같습니다 — 어느 줄에서나 <strong>내려가는 쪽 막대가 훨씬 짧습니다.</strong></p>
 <p>상담에 그대로 옮기면 이렇습니다. <strong>1~3등급대 학과를 쓰는 학생에게 경쟁률 변화는 거의 소식이 아니고, 4등급 아래 학과를 쓰는 학생에게는 실제로 영향이 있습니다.</strong> 정작 경쟁률 표를 들여다보며 불안해하는 쪽은 앞의 학생들인 경우가 많습니다.</p>
 <div class="tw"><table>
-<caption>전형 유형과 모집 규모별로 본, 경쟁률이 30% 넘게 오른 해의 합격선 이동입니다. 「상승 폭」은 등급이고, 클수록 빡빡해진 것입니다.</caption>
+<caption><span class="capin">전형 유형과 모집 규모별로 본, 한 자리에 세 명 넘게 더 몰린 해의 합격선 이동입니다. 「상승 폭」은 등급이고, 클수록 빡빡해진 것입니다.</span></caption>
 <thead><tr><th scope="col">묶음</th><th scope="col" class="num">쌍</th><th scope="col" class="num">상승 폭</th><th scope="col" class="num">올라간 비율</th></tr></thead>
 <tbody>
-<tr><th scope="row">교과</th><td class="num">6,632</td><td class="num strong">+0.36</td><td class="num">80%</td></tr>
-<tr><th scope="row">종합</th><td class="num">3,645</td><td class="num strong">+0.21</td><td class="num">71%</td></tr>
-<tr><th scope="row">논술</th><td class="num">68</td><td class="num strong">+0.20</td><td class="num">69%</td></tr>
-<tr><th scope="row">1~4명 뽑는 곳</th><td class="num">1,271</td><td class="num strong">+0.32</td><td class="num">72%</td></tr>
-<tr><th scope="row">5~9명 뽑는 곳</th><td class="num">4,020</td><td class="num strong">+0.31</td><td class="num">78%</td></tr>
-<tr><th scope="row">10~19명 뽑는 곳</th><td class="num">3,336</td><td class="num strong">+0.31</td><td class="num">78%</td></tr>
-<tr><th scope="row">20~49명 뽑는 곳</th><td class="num">1,516</td><td class="num strong">+0.27</td><td class="num">76%</td></tr>
-<tr><th scope="row">50명 위 뽑는 곳</th><td class="num">202</td><td class="num strong">+0.27</td><td class="num">71%</td></tr>
+<tr><th scope="row">교과</th><td class="num">3,748</td><td class="num strong">+0.43</td><td class="num">87%</td></tr>
+<tr><th scope="row">종합</th><td class="num">2,657</td><td class="num strong">+0.22</td><td class="num">74%</td></tr>
+<tr><th scope="row">논술</th><td class="num">95</td><td class="num strong">+0.20</td><td class="num">64%</td></tr>
+<tr><th scope="row">1~4명 뽑는 곳</th><td class="num">881</td><td class="num strong">+0.36</td><td class="num">78%</td></tr>
+<tr><th scope="row">5~9명 뽑는 곳</th><td class="num">2,771</td><td class="num strong">+0.33</td><td class="num">82%</td></tr>
+<tr><th scope="row">10~19명 뽑는 곳</th><td class="num">2,070</td><td class="num strong">+0.35</td><td class="num">82%</td></tr>
+<tr><th scope="row">20~49명 뽑는 곳</th><td class="num">685</td><td class="num strong">+0.30</td><td class="num">81%</td></tr>
+<tr><th scope="row">50명 위 뽑는 곳</th><td class="num">93</td><td class="num strong">+0.33</td><td class="num">76%</td></tr>
 </tbody></table></div>
-<p>교과가 종합보다 크게 흔들립니다(0.36 대 0.21등급). 교과는 내신 줄 세우기가 곧 합격선이라 지원자가 늘면 바로 컷에 닿지만, 종합은 서류와 면접이 사이에 끼어 있어 한 겹 걸러집니다. <strong>종합 지원자에게 경쟁률은 교과 지원자보다 더 먼 이야기입니다.</strong> 모집 규모는 생각만큼 크게 가르지 않았습니다.</p>
+<p>교과가 종합보다 크게 흔들립니다(0.43 대 0.22등급). 교과는 내신 줄 세우기가 곧 합격선이라 지원자가 늘면 바로 컷에 닿지만, 종합은 서류와 면접이 사이에 끼어 있어 한 겹 걸러집니다. <strong>종합 지원자에게 경쟁률은 교과 지원자보다 더 먼 이야기입니다.</strong> 모집 규모는 생각만큼 크게 가르지 않았습니다.</p>
+
+<h2>6. 평소에도 이만큼은 출렁인다 — 무엇이 진짜 소식인가</h2>
+<p>지금까지는 「올해 몇 명 늘었나」만 보았습니다. 그런데 경쟁률은 아무 일 없어도 해마다 오르내립니다. 세 해 최종 경쟁률을 이어 붙여 재 보니, <strong>한 학과가 평소 한 해에 출렁이는 폭이 중앙값 3.0명</strong>이었습니다. 앞 절에서 「세 명 넘게 늘었다」를 큰 변화로 친 것이, 사실은 <strong>웬만한 학과의 평소 출렁임과 비슷한 크기</strong>였던 셈입니다.</p>
+<p>그래서 가름을 하나 더 두었습니다. 그 학과의 <strong>평소 출렁임 폭을 넘었을 때에만</strong> 신호로 치는 것입니다. 값을 하는지 확인해 보았습니다.</p>
+<div class="tw"><table>
+<caption><span class="capin">앞선 세 해의 출렁임 폭과 견주어, 올해 변화가 그 안인지 밖인지로 가른 것입니다. 「상승 폭」이 클수록 이듬해 합격선이 빡빡해졌다는 뜻입니다.</span></caption>
+<thead><tr><th scope="col">묶음</th><th scope="col" class="num">쌍</th><th scope="col" class="num">상승 폭</th><th scope="col" class="num">올라간 비율</th></tr></thead>
+<tbody>
+<tr><th scope="row">늘어난 학과<small>평소 출렁임 안</small></th><td class="num">4,511</td><td class="num strong">+0.15</td><td class="num">67%</td></tr>
+<tr><th scope="row">늘어난 학과<small>평소 범위를 넘어섬</small></th><td class="num">2,668</td><td class="num strong">+0.40</td><td class="num">82%</td></tr>
+<tr><th scope="row">늘어난 학과<small>평소 범위의 두 배를 넘어섬</small></th><td class="num">1,256</td><td class="num strong">+0.50</td><td class="num">85%</td></tr>
+<tr><th scope="row">줄어든 학과<small>평소 출렁임 안</small></th><td class="num">4,845</td><td class="num strong">+0.03</td><td class="num">53%</td></tr>
+<tr><th scope="row">줄어든 학과<small>평소 범위를 넘어섬</small></th><td class="num">1,314</td><td class="num strong">−0.05</td><td class="num">40%</td></tr>
+</tbody></table></div>
+<p>가름이 값을 합니다. 경쟁률이 늘어난 학과라도 <strong>평소 출렁임 안이면 합격선이 0.15등급, 평소 범위를 넘었으면 0.40등급</strong>으로 세 배 가까이 벌어집니다. 두 배를 넘긴 자리는 0.50등급입니다.</p>
+<p>더 또렷한 것은 이것입니다. 앞 절의 <strong>「세 명 넘게 늘었다」는 한 묶음을 다시 갈라 보면</strong>, 그 정도가 평소 출렁임인 학과는 0.23등급(800쌍), 평소보다 유별난 학과는 0.48등급(1,530쌍)으로 <strong>두 배 갈립니다.</strong> 같은 「세 명 증가」라도 어떤 학과에서 일어났느냐가 그만큼 중요합니다.</p>
+<p>줄어든 쪽은 여기서도 조용합니다. 평소 범위를 크게 벗어나 빠져도 합격선은 0.05등급 움직였을 뿐입니다.</p>
 
 <h3>그래서 2027은</h3>
-<p>올해 경쟁률 변화를 위 표에 대 보았습니다. 낱낱의 학과를 맞히려는 것이 아니라 판이 어느 쪽으로 기울었는지만 보는 것이고, 그 학과가 앉은 등급대의 값을 씁니다.</p>
+<p>올해 자료에 같은 자를 대 보았습니다. 세 해치 경쟁률을 붙일 수 있었던 3,662곳이 대상입니다.</p>
 <div class="cards">
-  <div class="card"><p class="k">경쟁률이 30% 넘게 오른 학과</p><p class="v">23%</p><p class="n">이어진 5,027곳 가운데 1,144곳</p></div>
-  <div class="card"><p class="k">우리 학생이 쓴 곳 가운데</p><p class="v">28%</p><p class="n">556곳 가운데 154곳</p></div>
-  <div class="card"><p class="k">예상 합격선 상승 · 전체</p><p class="v">+0.04</p><p class="n">등급, 중앙값 · 67%가 올라가는 쪽</p></div>
-  <div class="card"><p class="k">예상 합격선 상승 · 우리</p><p class="v">+0.06</p><p class="n">등급, 중앙값 · 72%가 올라가는 쪽</p></div>
+  <div class="card"><p class="k">평소 출렁임 폭</p><p class="v">3.0명</p><p class="n">한 자리당 · 중앙값</p></div>
+  <div class="card"><p class="k">평소 범위를 벗어난 곳</p><p class="v">35%</p><p class="n">위로 746 · 아래로 531</p></div>
+  <div class="card"><p class="k">우리 학생이 쓴 곳 가운데</p><p class="v">39%</p><p class="n">405곳 가운데</p></div>
+  <div class="card"><p class="k">예상 합격선 상승 · 우리</p><p class="v">+0.05</p><p class="n">등급, 중앙값 · 60%가 올라가는 쪽</p></div>
 </div>
-<p>중앙값으로는 0.04등급, 우리 학생이 쓴 곳은 0.06등급입니다. <strong>판 전체로는 지난해와 크게 다르지 않은 해입니다.</strong> 우리 쪽이 조금 더 빡빡한 것은 4절에서 본 대로 지원이 호남권 국립대에 몰려 있고, 그쪽이 마침 경쟁률이 오른 자리이기 때문입니다.</p>
-<p>다만 중앙값이 조용하다고 모두가 조용한 것은 아닙니다. 우리 학생이 쓴 곳 가운데 경쟁률이 크게 오르고, 작년 합격선으로 보아 흔들릴 만한 자리를 골라 두었습니다.</p>
+<p><strong>올해 경쟁률 변화의 셋 가운데 둘은 그 학과가 평소에도 하던 출렁임 안입니다.</strong> 경쟁률 표를 열어 「작년보다 올랐다/내렸다」를 세는 일의 상당 부분이 잡음을 읽는 일이라는 뜻입니다. 판 전체의 예상 합격선 이동이 +0.02등급으로 사실상 제자리인 것도 같은 이야기입니다.</p>
+<p>남은 셋 중 하나가 볼 만한 자리입니다. 우리 학생이 쓴 곳 가운데 <strong>그 학과 기준으로 유별나게 몰린 곳</strong>을 골라 두었습니다.</p>
 <div class="tw"><table>
-<caption>우리 학생이 지원한 학과 가운데 경쟁률이 30% 넘게 오른 곳입니다. 「예상」은 지난 다섯 해에 같은 등급대에서 같은 정도로 경쟁률이 올랐을 때의 합격선 이동 중앙값으로, <strong>예측이 아니라 과거의 평균적 반응</strong>입니다. 값이 클수록 합격선이 올라가는 쪽입니다. 실제로는 이 값의 양쪽으로 크게 흩어집니다.</caption>
-<thead><tr><th scope="col">대학 · 모집단위</th><th scope="col" class="num">작년 컷</th><th scope="col" class="num">경쟁률</th><th scope="col" class="num">변화</th><th scope="col" class="num">예상 상승</th></tr></thead>
+<caption><span class="capin">우리 학생이 지원한 학과 가운데, 올해 늘어난 폭이 그 학과의 평소 출렁임을 넘어선 곳입니다. 「평소」는 앞선 세 해에 한 해 동안 오르내리던 폭이고, 「예상」은 지난 다섯 해에 같은 등급대에서 같은 정도로 몰렸을 때의 합격선 이동 중앙값입니다 — <strong>예측이 아니라 과거의 평균적 반응</strong>이며, 실제로는 이 값의 양쪽으로 크게 흩어집니다.</span></caption>
+<thead><tr><th scope="col">대학 · 모집단위</th><th scope="col" class="num">작년 컷</th><th scope="col" class="num">경쟁률</th><th scope="col" class="num">늘어난 폭</th><th scope="col" class="num">평소</th><th scope="col" class="num">예상 상승</th></tr></thead>
 <tbody>
-<tr><th scope="row">대전대학교<small>반도체공학과 · 교과면접전형</small></th><td class="num">5.83</td><td class="num">1.83<small>→ 6.80</small></td><td class="num">+271.6%</td><td class="num strong">+1.11</td></tr>
-<tr><th scope="row">국립목포대학교<small>교육학과 · 지역인재(종합)</small></th><td class="num">5.21</td><td class="num">2.88<small>→ 10.40</small></td><td class="num">+261.1%</td><td class="num strong">+1.10</td></tr>
-<tr><th scope="row">국립경국대학교<small>자유전공학부 · 학생부교과(지역인재전형)</small></th><td class="num">5.74</td><td class="num">3.82<small>→ 12.40</small></td><td class="num">+224.6%</td><td class="num strong">+0.93</td></tr>
-<tr><th scope="row">경상국립대학교<small>생물산업기계공학과 · 학생부교과(일반전형)</small></th><td class="num">5.11</td><td class="num">5.36<small>→ 16.10</small></td><td class="num">+200.4%</td><td class="num strong">+0.87</td></tr>
-<tr><th scope="row">전주대학교<small>소방안전공학과 · 학생부교과(지역인재1전형)</small></th><td class="num">6.15</td><td class="num">3.75<small>→ 9.60</small></td><td class="num">+156.0%</td><td class="num strong">+0.77</td></tr>
-<tr><th scope="row">강원대학교<small>지질·지구물리학부 · 지역교과전형</small></th><td class="num">4.45</td><td class="num">2.43<small>→ 8.50</small></td><td class="num">+249.8%</td><td class="num strong">+0.76</td></tr>
-<tr><th scope="row">건양대학교<small>사회복지학과 · 학생부종합전형</small></th><td class="num">6.46</td><td class="num">4.00<small>→ 9.80</small></td><td class="num">+145.0%</td><td class="num strong">+0.70</td></tr>
-<tr><th scope="row">국립목포대학교<small>패션의류학과 · 교과일반</small></th><td class="num">6.99</td><td class="num">4.16<small>→ 9.44</small></td><td class="num">+126.9%</td><td class="num strong">+0.66</td></tr>
-<tr><th scope="row">조선대학교<small>화학교육과 · 학생부교과(일반전형)</small></th><td class="num">5.76</td><td class="num">2.67<small>→ 5.89</small></td><td class="num">+120.6%</td><td class="num strong">+0.64</td></tr>
-<tr><th scope="row">국립군산대학교<small>식품영양학과[교직] · 학생부종합 일반학생</small></th><td class="num">6.53</td><td class="num">4.60<small>→ 10.14</small></td><td class="num">+120.4%</td><td class="num strong">+0.64</td></tr>
-<tr><th scope="row">국립공주대학교<small>산림과학과 · 학생부교과전형 일반전형(정원내)</small></th><td class="num">5.41</td><td class="num">5.83<small>→ 12.25</small></td><td class="num">+110.1%</td><td class="num strong">+0.60</td></tr>
-<tr><th scope="row">국립군산대학교<small>무역학과 · 학생부종합 일반학생</small></th><td class="num">7.36</td><td class="num">2.30<small>→ 4.83</small></td><td class="num">+110.0%</td><td class="num strong">+0.60</td></tr>
+<tr><th scope="row">경상국립대학교<small>지역시스템공학과 · 학생부교과(일반전형)</small></th><td class="num">5.45</td><td class="num">4.17<small>→ 25.25</small></td><td class="num strong">+21.1명</td><td class="num muted">0.9명</td><td class="num strong">+1.49</td></tr>
+<tr><th scope="row">경상국립대학교<small>생물산업기계공학과 · 학생부교과(일반전형)</small></th><td class="num">5.11</td><td class="num">5.36<small>→ 16.10</small></td><td class="num strong">+10.7명</td><td class="num muted">1.4명</td><td class="num strong">+1.10</td></tr>
+<tr><th scope="row">국립경국대학교<small>자유전공학부 · 학생부교과(지역인재전형)</small></th><td class="num">5.74</td><td class="num">3.82<small>→ 12.40</small></td><td class="num strong">+8.6명</td><td class="num muted">0.6명</td><td class="num strong">+0.93</td></tr>
+<tr><th scope="row">국립목포대학교<small>교육학과 · 지역인재(종합)</small></th><td class="num">5.21</td><td class="num">2.88<small>→ 10.40</small></td><td class="num strong">+7.5명</td><td class="num muted">0.1명</td><td class="num strong">+0.88</td></tr>
+<tr><th scope="row">국립공주대학교<small>산림과학과 · 학생부교과전형 일반전형(정원내)</small></th><td class="num">5.41</td><td class="num">5.83<small>→ 12.25</small></td><td class="num strong">+6.4명</td><td class="num muted">4.3명</td><td class="num strong">+0.79</td></tr>
+<tr><th scope="row">전주대학교<small>소방안전공학과 · 학생부교과(지역인재1전형)</small></th><td class="num">6.15</td><td class="num">3.75<small>→ 9.60</small></td><td class="num strong">+5.8명</td><td class="num muted">2.8명</td><td class="num strong">+0.77</td></tr>
+<tr><th scope="row">건양대학교<small>사회복지학과 · 학생부종합전형</small></th><td class="num">6.46</td><td class="num">4.00<small>→ 9.80</small></td><td class="num strong">+5.8명</td><td class="num muted">1.7명</td><td class="num strong">+0.77</td></tr>
+<tr><th scope="row">국립군산대학교<small>식품영양학과[교직] · 학생부종합 일반학생</small></th><td class="num">6.53</td><td class="num">4.60<small>→ 10.14</small></td><td class="num strong">+5.5명</td><td class="num muted">2.8명</td><td class="num strong">+0.75</td></tr>
+<tr><th scope="row">경상국립대학교<small>생물산업기계공학과 · 학생부종합(일반전형)</small></th><td class="num">5.80</td><td class="num">7.40<small>→ 12.80</small></td><td class="num strong">+5.4명</td><td class="num muted">2.6명</td><td class="num strong">+0.73</td></tr>
+<tr><th scope="row">국립목포대학교<small>패션의류학과 · 교과일반</small></th><td class="num">6.99</td><td class="num">4.16<small>→ 9.44</small></td><td class="num strong">+5.3명</td><td class="num muted">0.8명</td><td class="num strong">+0.71</td></tr>
+<tr><th scope="row">국립공주대학교<small>식품영양학과 · 학생부종합전형 일반전형(정원내)</small></th><td class="num">5.02</td><td class="num">11.63<small>→ 16.75</small></td><td class="num strong">+5.1명</td><td class="num muted">0.5명</td><td class="num strong">+0.71</td></tr>
+<tr><th scope="row">조선대학교<small>무역학과 · 학생부종합(면접전형)</small></th><td class="num">6.36</td><td class="num">9.50<small>→ 14.40</small></td><td class="num strong">+4.9명</td><td class="num muted">2.8명</td><td class="num strong">+0.70</td></tr>
 </tbody></table></div>
-<p>모두 중하위 등급대의 지역 국립대·사립대 학과입니다. 앞에서 본 대로 <strong>경쟁률 변화가 합격선에 가장 잘 옮겨붙는 자리</strong>이기도 합니다. 이 학과들을 쓴 학생과는 한 번 더 이야기를 나눠 둘 만합니다. 반대로 서울권 상위 학과를 쓴 학생에게는, 경쟁률이 올랐다는 소식을 전할 때 위 그림의 왼쪽 막대를 함께 보여 주는 편이 낫겠습니다.</p>
+<p>모두 중하위 등급대의 지역 국립대·사립대 학과입니다. 앞에서 본 대로 <strong>경쟁률 변화가 합격선에 가장 잘 옮겨붙는 자리</strong>이기도 합니다. 맨 윗줄은 평소 0.9명씩 오르내리던 곳에 올해만 21명이 몰린 것이니, 다른 줄과는 성격이 다릅니다. 이 학과들을 쓴 학생과는 한 번 더 이야기를 나눠 둘 만합니다.</p>
+<p>반대로 표에 없는 학과, 특히 서울권 상위 학과를 쓴 학생에게는 <strong>경쟁률이 올랐다는 소식 자체가 대개 소식이 아니라는 점</strong>을 함께 일러 주는 편이 낫겠습니다.</p>
 
-<h2>6. 우리 학교는 그 안에서 어디쯤인가</h2>
+<h2>7. 우리 학교는 그 안에서 어디쯤인가</h2>
 <figure class="fig"><svg viewBox="0 0 760 260" role="img" width="100%" height="auto" aria-label="경쟁률 변화율 분포. 전체와 우리 학교가 쓴 학과를 비교한 막대그림."><line x1="44" y1="216.0" x2="744" y2="216.0" stroke="var(--line)"/><text x="36" y="220.0" text-anchor="end" class="ax">0%</text><line x1="44" y1="116.0" x2="744" y2="116.0" stroke="var(--line)"/><text x="36" y="120.0" text-anchor="end" class="ax">6%</text><line x1="44" y1="16.0" x2="744" y2="16.0" stroke="var(--line)"/><text x="36" y="20.0" text-anchor="end" class="ax">13%</text><rect x="45.0" y="168.0" width="27.2" height="48.0" fill="var(--amber)" rx="2"><title>-60~-50% · 전체 3.1% (154쌍)</title></rect><rect x="74.2" y="179.4" width="27.2" height="36.6" fill="var(--amber2)" rx="2"><title>-60~-50% · 우리 2.3% (13쌍)</title></rect><text x="44.0" y="234" text-anchor="middle" class="ax">-60</text><rect x="103.3" y="143.7" width="27.2" height="72.3" fill="var(--amber)" rx="2"><title>-50~-40% · 전체 4.6% (232쌍)</title></rect><rect x="132.5" y="154.0" width="27.2" height="62.0" fill="var(--amber2)" rx="2"><title>-50~-40% · 우리 4.0% (22쌍)</title></rect><rect x="161.7" y="94.2" width="27.2" height="121.8" fill="var(--amber)" rx="2"><title>-40~-30% · 전체 7.8% (391쌍)</title></rect><rect x="190.8" y="94.9" width="27.2" height="121.1" fill="var(--amber2)" rx="2"><title>-40~-30% · 우리 7.7% (43쌍)</title></rect><text x="160.7" y="234" text-anchor="middle" class="ax">-40</text><rect x="220.0" y="59.9" width="27.2" height="156.1" fill="var(--amber)" rx="2"><title>-30~-20% · 전체 10.0% (501쌍)</title></rect><rect x="249.2" y="47.0" width="27.2" height="169.0" fill="var(--amber2)" rx="2"><title>-30~-20% · 우리 10.8% (60쌍)</title></rect><rect x="278.3" y="25.3" width="27.2" height="190.7" fill="var(--amber)" rx="2"><title>-20~-10% · 전체 12.2% (612쌍)</title></rect><rect x="307.5" y="66.7" width="27.2" height="149.3" fill="var(--amber2)" rx="2"><title>-20~-10% · 우리 9.5% (53쌍)</title></rect><text x="277.3" y="234" text-anchor="middle" class="ax">-20</text><rect x="336.7" y="16.0" width="27.2" height="200.0" fill="var(--amber)" rx="2"><title>-10~-0% · 전체 12.8% (642쌍)</title></rect><rect x="365.8" y="21.7" width="27.2" height="194.3" fill="var(--amber2)" rx="2"><title>-10~-0% · 우리 12.4% (69쌍)</title></rect><rect x="395.0" y="69.9" width="27.2" height="146.1" fill="var(--amber)" rx="2"><title>-0~10% · 전체 9.3% (469쌍)</title></rect><rect x="424.2" y="80.8" width="27.2" height="135.2" fill="var(--amber2)" rx="2"><title>-0~10% · 우리 8.6% (48쌍)</title></rect><text x="394.0" y="234" text-anchor="middle" class="ax">0</text><rect x="453.3" y="79.6" width="27.2" height="136.4" fill="var(--amber)" rx="2"><title>10~20% · 전체 8.7% (438쌍)</title></rect><rect x="482.5" y="61.1" width="27.2" height="154.9" fill="var(--amber2)" rx="2"><title>10~20% · 우리 9.9% (55쌍)</title></rect><rect x="511.7" y="105.4" width="27.2" height="110.6" fill="var(--amber)" rx="2"><title>20~30% · 전체 7.1% (355쌍)</title></rect><rect x="540.8" y="111.8" width="27.2" height="104.2" fill="var(--amber2)" rx="2"><title>20~30% · 우리 6.7% (37쌍)</title></rect><text x="510.7" y="234" text-anchor="middle" class="ax">20</text><rect x="570.0" y="136.2" width="27.2" height="79.8" fill="var(--amber)" rx="2"><title>30~40% · 전체 5.1% (256쌍)</title></rect><rect x="599.2" y="134.3" width="27.2" height="81.7" fill="var(--amber2)" rx="2"><title>30~40% · 우리 5.2% (29쌍)</title></rect><rect x="628.3" y="163.4" width="27.2" height="52.6" fill="var(--amber)" rx="2"><title>40~50% · 전체 3.4% (169쌍)</title></rect><rect x="657.5" y="159.7" width="27.2" height="56.3" fill="var(--amber2)" rx="2"><title>40~50% · 우리 3.6% (20쌍)</title></rect><text x="627.3" y="234" text-anchor="middle" class="ax">40</text><rect x="686.7" y="167.1" width="27.2" height="48.9" fill="var(--amber)" rx="2"><title>50~60% · 전체 3.1% (157쌍)</title></rect><rect x="715.8" y="165.3" width="27.2" height="50.7" fill="var(--amber2)" rx="2"><title>50~60% · 우리 3.2% (18쌍)</title></rect><line x1="44" y1="216" x2="744" y2="216" stroke="var(--rule)"/><text x="744" y="254" text-anchor="end" class="ax">경쟁률 변화율(%)</text></svg><figcaption><span class="key"><span class="sw" style="background:var(--amber)"></span>전체 5,027쌍</span><span class="key"><span class="sw" style="background:var(--amber2)"></span>우리 학생이 쓴 학과 556쌍</span> · 세로축은 비율입니다. 점선은 각각의 중앙값(전체 -1.1% · 우리 +3.1%).</figcaption></figure>
 <p>전체와 우리 학생이 쓴 학과의 변화율 분포를 겹쳐 본 것입니다. 모양은 닮았지만 <strong>우리 쪽이 오른쪽으로 조금 밀려 있습니다.</strong> 중앙값이 전체 -1.1%인데 우리는 +3.1%이고, 경쟁률이 오른 자리의 비율도 전체 48%에 견줘 우리는 53%입니다.</p>
+<div class="note">
+  <h3>중앙값과 자리 가중 — 어느 쪽을 볼 것인가</h3>
+  <p>같은 묶음을 두 가지로 셀 수 있습니다. <strong>학과별 중앙값</strong>은 학과 하나를 한 표로 치므로 「보통 학과가 어떻게 움직였나」를 말하고, <strong>자리 가중</strong>은 지원 합을 모집 합으로 나누므로 「실제로 얼마나 몰렸나」를 말합니다. 뒤엣것은 큰 학과가 그만큼 큰 무게를 갖습니다.</p>
+  <p>우리 학생이 쓴 학과는 중앙값 +3.1%, 자리 가중 +4.7%로 <strong>자리 가중 쪽이 더 높습니다.</strong> 크게 오른 자리가 대체로 사람을 많이 뽑는 학과였다는 뜻입니다. 체감이 중앙값보다 높게 느껴진다면 그 어긋남이 까닭입니다.</p>
+  <p>단순평균은 쓰지 않았습니다. 한 명 뽑는 학과가 4.2 → 25.3이 되는 일이 흔해, 평균은 그런 몇 자리에 통째로 끌려갑니다 — 어떤 대학에서는 중앙값 −11%와 평균 +11%가 갈렸습니다.</p>
+</div>
 <p>크지는 않지만 방향이 분명한 차이입니다. 앞에서 본 대로 <strong>호남권과 지역 국립대의 교과·종합이 오른 해</strong>인데, 우리 학생 지원이 바로 그쪽에 몰려 있기 때문입니다. 전국 평균이 제자리라는 말을 우리 교실에 그대로 옮기기 어려운 까닭이 여기 있습니다.</p>
 
-<h2>7. 우리 학생이 쓴 대학</h2>
+<h2>8. 우리 학생이 쓴 대학</h2>
 <div class="tw"><table>
-  <caption>우리 학생 지원이 있는 대학 가운데, 견줄 쌍이 20개 이상인 곳입니다. 「지원」은 우리 학교 지원 건수입니다.<br>「경쟁률」 칸은 학과마다의 변화율을 모아 중앙값을 낸 것이라, 왼쪽 두 칸의 중앙값 차이와 방향이 다를 수 있습니다 — 많이 오른 학과가 적게 내린 학과보다 많으면 그렇게 됩니다.</caption>
-  <thead><tr><th scope="col">대학</th><th scope="col" class="num">지원</th><th scope="col" class="num">쌍</th><th scope="col" class="num">2026</th><th scope="col" class="num">2027</th><th scope="col" class="num">경쟁률</th><th scope="col" class="num">모집인원</th></tr></thead>
+  <caption><span class="capin">우리 학생이 지원한 대학 가운데, <strong>우리 학생이 쓴 학과</strong>로 견줄 쌍이 셋 이상인 곳입니다. 「지원」은 우리 학교 지원 건수, 「학과」는 그중 작년 자료와 이어진 학과 수입니다.<br>「경쟁률」은 그 학과들의 지원 합을 모집 합으로 나눈 것이라 <strong>큰 학과가 그만큼 큰 무게</strong>를 갖습니다. 오른쪽 「학과별」은 학과마다의 변화율을 모아 낸 중앙값으로, 보통 학과가 어떻게 움직였는지를 봅니다. 둘이 어긋나면 몇몇 큰 학과가 판을 끌고 갔다는 뜻입니다.</span></caption>
+  <thead><tr><th scope="col">대학</th><th scope="col" class="num">지원</th><th scope="col" class="num">학과</th><th scope="col" class="num">경쟁률</th><th scope="col" class="num">변화</th><th scope="col" class="num">학과별</th><th scope="col" class="num">오른 곳</th></tr></thead>
   <tbody>
-<tr><th scope="row">전남대학교</th><td class="num">65</td><td class="num">155</td><td class="num">7.80</td><td class="num">7.00</td><td class="num strong">-11.3%</td><td class="num">+3.0%</td></tr>
-<tr><th scope="row">조선대학교</th><td class="num">56</td><td class="num">129</td><td class="num">5.82</td><td class="num">5.94</td><td class="num strong">0.0%</td><td class="num">-2.2%</td></tr>
-<tr><th scope="row">전북대학교</th><td class="num">51</td><td class="num">90</td><td class="num">10.68</td><td class="num">10.84</td><td class="num strong">+7.3%</td><td class="num">+3.5%</td></tr>
-<tr><th scope="row">국립목포대학교</th><td class="num">45</td><td class="num">90</td><td class="num">4.97</td><td class="num">6.58</td><td class="num strong">+28.4%</td><td class="num">+1.0%</td></tr>
-<tr><th scope="row">원광대학교</th><td class="num">35</td><td class="num">34</td><td class="num">6.29</td><td class="num">6.21</td><td class="num strong">+13.4%</td><td class="num">0.0%</td></tr>
-<tr><th scope="row">동신대학교</th><td class="num">35</td><td class="num">46</td><td class="num">2.92</td><td class="num">3.10</td><td class="num strong">+0.5%</td><td class="num">-2.3%</td></tr>
-<tr><th scope="row">경상국립대학교</th><td class="num">31</td><td class="num">242</td><td class="num">6.97</td><td class="num">8.58</td><td class="num strong">+13.6%</td><td class="num">+0.1%</td></tr>
-<tr><th scope="row">광주대학교</th><td class="num">19</td><td class="num">32</td><td class="num">5.64</td><td class="num">5.31</td><td class="num strong">+0.8%</td><td class="num">+2.9%</td></tr>
-<tr><th scope="row">전주대학교</th><td class="num">17</td><td class="num">101</td><td class="num">4.07</td><td class="num">4.30</td><td class="num strong">+2.8%</td><td class="num">+2.6%</td></tr>
-<tr><th scope="row">건국대학교서울캠퍼스</th><td class="num">13</td><td class="num">84</td><td class="num">13.20</td><td class="num">13.80</td><td class="num strong">-1.0%</td><td class="num">+2.6%</td></tr>
-<tr><th scope="row">충북대학교</th><td class="num">9</td><td class="num">312</td><td class="num">10.23</td><td class="num">8.84</td><td class="num strong">-14.5%</td><td class="num">+4.5%</td></tr>
-<tr><th scope="row">경북대학교</th><td class="num">8</td><td class="num">348</td><td class="num">11.60</td><td class="num">11.00</td><td class="num strong">0.0%</td><td class="num">-1.1%</td></tr>
-<tr><th scope="row">고려대학교(서울)</th><td class="num">8</td><td class="num">109</td><td class="num">13.90</td><td class="num">13.36</td><td class="num strong">-7.4%</td><td class="num">+1.9%</td></tr>
-<tr><th scope="row">중앙대학교</th><td class="num">7</td><td class="num">87</td><td class="num">68.50</td><td class="num">86.50</td><td class="num strong">+13.4%</td><td class="num">-18.0%</td></tr>
-<tr><th scope="row">부산대학교</th><td class="num">7</td><td class="num">200</td><td class="num">10.15</td><td class="num">9.80</td><td class="num strong">-0.1%</td><td class="num">+4.6%</td></tr>
-<tr><th scope="row">국민대학교</th><td class="num">5</td><td class="num">24</td><td class="num">13.39</td><td class="num">13.53</td><td class="num strong">-6.4%</td><td class="num">+5.5%</td></tr>
-<tr><th scope="row">배재대학교</th><td class="num">5</td><td class="num">47</td><td class="num">6.20</td><td class="num">5.60</td><td class="num strong">+4.0%</td><td class="num">-1.3%</td></tr>
-<tr><th scope="row">국립부경대학교</th><td class="num">5</td><td class="num">30</td><td class="num">6.42</td><td class="num">5.50</td><td class="num strong">-16.7%</td><td class="num">+16.0%</td></tr>
-<tr><th scope="row">인하대학교</th><td class="num">4</td><td class="num">139</td><td class="num">10.00</td><td class="num">7.88</td><td class="num strong">-20.3%</td><td class="num">+2.2%</td></tr>
-<tr><th scope="row">숭실대학교</th><td class="num">4</td><td class="num">142</td><td class="num">16.33</td><td class="num">19.45</td><td class="num strong">+13.5%</td><td class="num">-26.7%</td></tr>
+<tr><th scope="row">전남대학교</th><td class="num">65</td><td class="num">61</td><td class="num">8.10<small>→ 8.23</small></td><td class="num strong">+1.6%</td><td class="num">-5.3%</td><td class="num">41%</td></tr>
+<tr><th scope="row">조선대학교</th><td class="num">56</td><td class="num">49</td><td class="num">5.45<small>→ 5.80</small></td><td class="num strong">+6.4%</td><td class="num">+0.5%</td><td class="num">51%</td></tr>
+<tr><th scope="row">전북대학교</th><td class="num">51</td><td class="num">35</td><td class="num">7.46<small>→ 8.72</small></td><td class="num strong">+17.0%</td><td class="num">+8.3%</td><td class="num">57%</td></tr>
+<tr><th scope="row">국립목포대학교</th><td class="num">45</td><td class="num">33</td><td class="num">5.21<small>→ 6.41</small></td><td class="num strong">+23.2%</td><td class="num">+21.5%</td><td class="num">67%</td></tr>
+<tr><th scope="row">원광대학교</th><td class="num">35</td><td class="num">12</td><td class="num">7.96<small>→ 8.40</small></td><td class="num strong">+5.5%</td><td class="num">+13.4%</td><td class="num">67%</td></tr>
+<tr><th scope="row">동신대학교</th><td class="num">35</td><td class="num">21</td><td class="num">4.76<small>→ 5.12</small></td><td class="num strong">+7.4%</td><td class="num">+8.5%</td><td class="num">57%</td></tr>
+<tr><th scope="row">경상국립대학교</th><td class="num">31</td><td class="num">54</td><td class="num">8.58<small>→ 8.97</small></td><td class="num strong">+4.5%</td><td class="num">+17.9%</td><td class="num">67%</td></tr>
+<tr><th scope="row">광주대학교</th><td class="num">19</td><td class="num">14</td><td class="num">7.03<small>→ 5.75</small></td><td class="num strong">-18.2%</td><td class="num">-3.9%</td><td class="num">43%</td></tr>
+<tr><th scope="row">전주대학교</th><td class="num">17</td><td class="num">31</td><td class="num">5.90<small>→ 5.81</small></td><td class="num strong">-1.6%</td><td class="num">-0.5%</td><td class="num">48%</td></tr>
+<tr><th scope="row">호남대학교</th><td class="num">14</td><td class="num">6</td><td class="num">7.05<small>→ 6.47</small></td><td class="num strong">-8.3%</td><td class="num">-9.8%</td><td class="num">17%</td></tr>
+<tr><th scope="row">건국대학교서울캠퍼스</th><td class="num">13</td><td class="num">8</td><td class="num">20.81<small>→ 29.18</small></td><td class="num strong">+40.2%</td><td class="num">+2.5%</td><td class="num">63%</td></tr>
+<tr><th scope="row">충북대학교</th><td class="num">9</td><td class="num">30</td><td class="num">11.89<small>→ 9.73</small></td><td class="num strong">-18.2%</td><td class="num">-18.9%</td><td class="num">30%</td></tr>
+<tr><th scope="row">경북대학교</th><td class="num">8</td><td class="num">12</td><td class="num">14.42<small>→ 14.48</small></td><td class="num strong">+0.5%</td><td class="num">+7.2%</td><td class="num">58%</td></tr>
+<tr><th scope="row">고려대학교(서울)</th><td class="num">8</td><td class="num">4</td><td class="num">17.11<small>→ 17.26</small></td><td class="num strong">+0.9%</td><td class="num">-8.4%</td><td class="num">50%</td></tr>
+<tr><th scope="row">중앙대학교</th><td class="num">7</td><td class="num">13</td><td class="num">64.34<small>→ 72.33</small></td><td class="num strong">+12.4%</td><td class="num">+26.5%</td><td class="num">69%</td></tr>
+<tr><th scope="row">부산대학교</th><td class="num">7</td><td class="num">14</td><td class="num">11.60<small>→ 12.77</small></td><td class="num strong">+10.2%</td><td class="num">+5.3%</td><td class="num">57%</td></tr>
+<tr><th scope="row">국민대학교</th><td class="num">5</td><td class="num">3</td><td class="num">17.13<small>→ 18.27</small></td><td class="num strong">+6.6%</td><td class="num">+15.1%</td><td class="num">67%</td></tr>
+<tr><th scope="row">배재대학교</th><td class="num">5</td><td class="num">6</td><td class="num">5.57<small>→ 6.19</small></td><td class="num strong">+11.2%</td><td class="num">+12.2%</td><td class="num">67%</td></tr>
+<tr><th scope="row">인하대학교</th><td class="num">4</td><td class="num">12</td><td class="num">10.02<small>→ 10.40</small></td><td class="num strong">+3.7%</td><td class="num">-11.0%</td><td class="num">42%</td></tr>
+<tr><th scope="row">숭실대학교</th><td class="num">4</td><td class="num">16</td><td class="num">20.46<small>→ 31.53</small></td><td class="num strong">+54.1%</td><td class="num">+43.6%</td><td class="num">69%</td></tr>
+<tr><th scope="row">국립한국교통대학교</th><td class="num">4</td><td class="num">4</td><td class="num">14.76<small>→ 9.89</small></td><td class="num strong">-33.0%</td><td class="num">-20.6%</td><td class="num">25%</td></tr>
+<tr><th scope="row">순천향대학교</th><td class="num">4</td><td class="num">3</td><td class="num">9.88<small>→ 5.84</small></td><td class="num strong">-40.9%</td><td class="num">-29.4%</td><td class="num">33%</td></tr>
   </tbody>
 </table></div>
 
 <h3>크게 오른 곳</h3>
 <div class="tw"><table>
-  <caption>우리 학생이 지원한 학과 가운데, 양쪽 해 모두 10명 이상 뽑은 것만 골랐습니다. 소수 모집의 출렁임을 빼기 위해서입니다.</caption>
+  <caption><span class="capin">우리 학생이 지원한 학과 가운데, 양쪽 해 모두 10명 이상 뽑은 것만 골랐습니다. 소수 모집의 출렁임을 빼기 위해서입니다.</span></caption>
   <thead><tr><th scope="col">대학 · 전형</th><th scope="col">모집단위</th><th scope="col" class="num">모집</th><th scope="col" class="num">2026</th><th scope="col" class="num">2027</th><th scope="col" class="num">변화</th></tr></thead>
   <tbody>
 <tr><th scope="row">경상국립대학교<small>학생부교과(일반전형)</small></th><td>지역시스템공학과</td><td class="num">12→12</td><td class="num">4.17</td><td class="num">25.25</td><td class="num strong">+505.5%</td></tr>
@@ -321,7 +368,7 @@ code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.9em;
   <p>견준 것은 5,027쌍입니다. 2027 자료가 있는 대학 가운데 모집단위·전형 이름이 작년과 그대로인 것만 이었습니다 — 이름이 바뀌거나 학과가 통폐합된 것은 빠졌습니다. 특별전형을 뺀 12,243줄 가운데 41%입니다.</p>
   <p>2026 쪽 숫자는 입결 자료의 경쟁률이고, 2027 쪽은 대학이 발표한 최종 경쟁률입니다. 두 자료의 집계 시점이 완전히 같다고 보기는 어렵습니다. 그래서 개별 학과의 값보다 <strong>묶음별 중앙값과 방향</strong>을 보는 편이 낫습니다.</p>
   <p>5절의 합격선은 <strong>대학어디가가 공시한 최종등록자 70% 지점의 내신</strong>입니다. 합격선 그 자체가 아니라 합격자 분포의 한 지점이고, 대학이 무엇을 어떻게 세어 올렸는지는 학교마다 조금씩 다릅니다. 교과 성적을 산출하는 방식도 대학마다 달라 등급 0.1의 무게가 어디서나 같지는 않습니다.</p>
-  <p>5절 마지막 표의 「예상」은 <strong>예측이 아니라 지난 다섯 해의 평균적 반응</strong>입니다. 같은 구간 안에서도 학과마다 크게 흩어지고(가운데 절반이 +0.03~+0.64등급), 올해 대학이 전형을 어떻게 바꿨는지는 들어 있지 않습니다. 한 학생의 지원 여부를 이 숫자로 정하지는 마시기 바랍니다.</p>
+  <p>5절 마지막 표의 「예상」은 <strong>예측이 아니라 지난 다섯 해의 평균적 반응</strong>입니다. 같은 구간 안에서도 학과마다 크게 흩어지고(가운데 절반이 +0.09~+0.67등급), 올해 대학이 전형을 어떻게 바꿨는지는 들어 있지 않습니다. 한 학생의 지원 여부를 이 숫자로 정하지는 마시기 바랍니다.</p>
   <p>중앙값을 쓴 것은 평균이 소수 모집 학과의 극단값에 끌려가기 때문입니다. 「크게 오른 곳」 표에서 10명 이상만 고른 것도 같은 이유입니다.</p>
 </div>
 
