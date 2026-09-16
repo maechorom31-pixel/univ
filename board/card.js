@@ -15,7 +15,7 @@
 import * as store from './store.js';
 import { realRate, normType, typeGroups, fillTrend } from './match.js';
 import { confidence, pctText } from './confidence.js';
-import { josa, rate1, typedRate, typedRateText, methodLine } from './text.js';
+import { josa, rate1, typedRate, typedRateText, methodLine, isoDay } from './text.js';
 
 export { realRate };
 
@@ -445,10 +445,12 @@ export function detailPanel(app, student, onClose) {
     ['최종 경쟁률', store.fieldOf(app, '최종경쟁률')],
     ['생년월일', store.fieldOf(app.hak, '생년월일')],
   ];
+  // 생년월일은 시트가 날짜형으로 바꿔 시각까지 붙여 줄 수 있다 — 날짜만 보인다
+  const shown = (k, v) => (k === '최종 경쟁률' ? rateShown(v) : k === '생년월일' ? isoDay(v.value) : v.value);
   if (paperwork.some(([, v]) => v && v.value)) {
     body.appendChild(rows('원서를 낸 뒤', paperwork.map(([k, v]) => [
       k,
-      v && v.value ? (k === '최종 경쟁률' ? rateShown(v) : v.value) : null,
+      v && v.value ? shown(k, v) : null,
       whoTyped(v),
     ])));
   }
@@ -527,7 +529,8 @@ export function detailPanel(app, student, onClose) {
     const tag = paper.loose ? `전형일정표 · ${paper.type} (전형 추정)` : '전형일정표';
     sched.push(['원서 접수 마감',
       paper.apply ? when(paper.apply) + (paper.applyClock ? ` ${paper.applyClock}` : '') : null, tag]);
-    if (paper.stage1) sched.push(['1단계 발표', when(paper.stage1), tag]);
+    // 「면접 없음」으로 정한 지원은 일괄로 본다 — 1단계 발표 줄을 세우지 않는다
+    if (paper.stage1 && store.interviewForce(app) !== '없음') sched.push(['1단계 발표', when(paper.stage1), tag]);
     if (paper.final) sched.push(['최종 발표', when(paper.final), tag]);
   }
   sched.push(['등록 마감', null, '모집요강 확인']);
@@ -569,7 +572,8 @@ export function detailPanel(app, student, onClose) {
     const wrap = el('div', 'field');
     wrap.appendChild(el('p', 'hint',
       '모집요강만 보고 정한 값이라 틀릴 수 있습니다. 여기서 정해 두면 꼬리표 ·'
-      + ' 면접 준비 판 · 날짜 칸이 모두 그 값을 따르고, 학생 화면에도 같이 갑니다.'));
+      + ' 면접 준비 판 · 날짜 칸이 모두 그 값을 따르고, 학생 화면에도 같이 갑니다.'
+      + ' 「없음」으로 정하면 단계 꼬리표와 1단계 발표 줄도 함께 빠집니다.'));
     const line = el('div', 'field-in');
 
     const sel = document.createElement('select');

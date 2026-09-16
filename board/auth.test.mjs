@@ -52,13 +52,21 @@ const Utilities = {
 };
 
 /* CacheService 대역 — 만료는 흉내 내지 않는다. 지우기는 시험이 직접 한다. */
+/*
+ * 탭 읽기 캐시(`tab:`·`tabstamp:`)와 설정 캐시(`config:`)는 **시험이 켤 때만** 산다.
+ * 여기 시험들은 시트 대역에 줄을 바로 밀어 넣고 다음 요청에서 보이길 기대하는데,
+ * 실제 서버에서는 그런 손 편집이 TAB_CACHE_SEC 안에는 안 보이는 것이 맞다.
+ * 캐시 자체는 아래 「탭 읽기 캐시」 시험이 켜 놓고 잰다.
+ */
 const cacheStore = new Map();
+let liveCache = false;
+const gated = (k) => !liveCache && /^(tab:|tabstamp:|config:)/.test(k);
 const CacheService = {
   getScriptCache: () => ({
-    get: (k) => (cacheStore.has(k) ? cacheStore.get(k) : null),
+    get: (k) => (!gated(k) && cacheStore.has(k) ? cacheStore.get(k) : null),
     getAll: (ks) => {
       const o = {};
-      for (const k of ks) if (cacheStore.has(k)) o[k] = cacheStore.get(k);
+      for (const k of ks) if (!gated(k) && cacheStore.has(k)) o[k] = cacheStore.get(k);
       return o;
     },
     put: (k, v) => cacheStore.set(k, String(v)),
@@ -84,12 +92,15 @@ const mkSheet = (rows = []) => ({
         getValue: () => (rows[row - 1] || [])[col - 1] || '',
         getValues: () => [[(rows[row - 1] || [])[col - 1] || '']],
         setValues: () => {},
+        setNumberFormat() { return this; },
       };
     }
     return {
       getValues: () => rows.slice(r - 1, r - 1 + nr).map(x => x.slice(c - 1, c - 1 + nc)),
       getValue: () => (rows[r - 1] || [])[c - 1] || '',
       setValues: (v) => { rows.splice(r - 1, v.length, ...v); },
+      // 글자 서식(@) — 실제 시트는 이걸 두면 「2008-03-14」를 날짜로 안 바꾼다. 몇 번 두었는지 센다.
+      setNumberFormat(fmt) { textFormats.push([r, fmt]); return this; },
     };
   },
   setFrozenRows: () => {},
@@ -99,7 +110,9 @@ const mkSheet = (rows = []) => ({
   appendRow: (line) => rows.push(line),
   deleteRow: (n) => rows.splice(n - 1, 1),
 });
+const textFormats = [];
 const book = {
+  getSpreadsheetTimeZone: () => 'Asia/Seoul',
   getSheetByName: (n) => sheets[n] || null,
   insertSheet: (n) => (sheets[n] = mkSheet([])),
   getSheets: () => Object.keys(sheets).map((n) => ({ ...sheets[n], getName: () => n })),
@@ -398,7 +411,7 @@ console.log('\n원본 파싱 캐시');
   sheets['메모'].appendRow(['m9', '3101', '', '캐시 중에 적은 메모', 'N', '담임', '2026-09-01']);
   const live = G.handle_({ action: 'students', key: '84348434' });
   eq(live.notes.some((n) => String(n.noteId) === 'm9'), true,
-    '배치·메모·결과는 캐시하지 않는다 — 방금 쓴 것이 바로 보인다');
+    '원본 캐시는 배치·메모·결과를 안 품는다 — 탭 캐시를 끈 채면 방금 쓴 것이 바로 보인다');
   eq(live.cached, true, '원본은 캐시에서 왔다고 응답에 적는다');
 
   // 새로고침(fresh=1)은 캐시를 건너뛰고 그 결과로 캐시를 갈아 둔다
@@ -555,6 +568,56 @@ console.log('\n학생 응답 둘로 — lite · studentRest');
     JSON.stringify([full.dates, full.results, full.notes]), '둘을 합치면 옛 응답과 같다');
   eq(G.handle_({ action: 'studentRest', token: '없는것' }).ok, false, '엉뚱한 토큰은 studentRest 도 못 연다');
   eq(full.lite, false, '전체 응답은 lite 가 아니다');
+}
+
+/*
+ * **탭 읽기 캐시.** 학생 한 명이 열 때마다 탭 여섯을 통째로 읽던 것을 캐시에서
+ * 읽는다. 이 스크립트를 거친 쓰기는 도장을 바꿔 **바로** 보이고, 시트를 손으로
+ * 고친 것은 TAB_CACHE_SEC 안에는 안 보이되 fresh=1 로 건너뛴다.
+ */
+console.log('\n탭 읽기 캐시');
+{
+  const K = '84348434';
+  liveCache = true;
+  cacheStore.clear();
+  let reads = 0;
+  const orig = sheets['입력'].getDataRange;
+  sheets['입력'].getDataRange = () => { reads += 1; return orig(); };
+
+  G.handle_({ action: 'student', token: 'tokA' });
+  G.handle_({ action: 'student', token: 'tokA' });
+  eq(reads, 1, '두 번째 학생 요청은 입력 탭을 다시 읽지 않는다');
+
+  // 스크립트를 거친 쓰기는 도장을 바꿔 다음 읽기가 시트를 본다
+  const w = G.handle_({ action: 'studentField', token: 'tokA', field: '생년월일', value: '2008-03-14' });
+  eq(w.ok, true, '학생이 생년월일을 적는다');
+  const after = G.handle_({ action: 'student', token: 'tokA' });
+  eq(after.fields.some((f) => f.field === '생년월일' && f.value === '2008-03-14'), true,
+    '방금 적은 값이 바로 보인다 — 쓰기가 캐시 도장을 바꾼다');
+  eq(textFormats.some(([, fmt]) => fmt === '@'), true,
+    '글자 서식(@)으로 쓴다 — 시트가 생년월일을 날짜로, 수험번호 앞 0 을 숫자로 바꾸지 않게');
+  const before = reads;
+  G.handle_({ action: 'student', token: 'tokA' });
+  eq(reads, before, '그 다음은 다시 캐시');
+
+  // 손으로 고친 줄은 캐시 안에서는 안 보이고, fresh=1 이 건너뛴다
+  sheets['입력'].appendRow(['', '3101', '수험번호', '0012345', 'confirmed', '손편집', '2026-09-16']);
+  const stale = G.handle_({ action: 'students', key: K });
+  eq(stale.fields.some((f) => f.value === '0012345'), false, '손으로 넣은 줄은 캐시 시간 안에는 안 보인다 (계약)');
+  const fresh = G.handle_({ action: 'students', key: K, fresh: '1' });
+  eq(fresh.fields.some((f) => f.value === '0012345'), true, '「원본 새로 읽기」(fresh=1)는 탭 캐시도 건너뛴다');
+
+  // 지우기는 늘 시트를 새로 읽고 줄 번호를 잡는다 — 캐시의 줄 번호로 엉뚱한 줄을 지우지 않는다
+  const del = G.handle_({ action: 'studentField', token: 'tokA', field: '생년월일', value: '' });
+  eq(del.ok, true, '빈 값으로 지운다');
+  const gone = G.handle_({ action: 'student', token: 'tokA' });
+  eq(gone.fields.some((f) => f.field === '생년월일'), false, '지운 것이 바로 빠진다');
+  eq(sheets['입력'].getDataRange().getValues().some((r) => String(r[3]) === '0012345'), true,
+    '손으로 넣은 다른 줄은 그대로다 — 엉뚱한 줄을 지우지 않았다');
+
+  sheets['입력'].getDataRange = orig;
+  liveCache = false;
+  cacheStore.clear();
 }
 
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');

@@ -37,7 +37,7 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-09-08a';
+var CODE_VER = '2026-09-16a';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
@@ -178,6 +178,7 @@ function handle_(p) {
   // 설정 탭 메모는 **요청 단위**다. 요청 들머리에서 비워, 어떤 실행 환경에서도
   // (시험 대역 포함) 묵은 설정이 다음 요청으로 새지 않게 한다.
   CONFIG_MEMO = null;
+  TAB_MEMO = {};
   var action = p.action || 'ping';
 
   /*
@@ -305,6 +306,9 @@ var DEFAULT_KEY = '84348434';
 var CONFIG_MEMO = null;
 function configTab_() {
   if (CONFIG_MEMO) return CONFIG_MEMO;
+  // 요청마다 설정 탭을 읽으면 왕복 둘이 든다. 설정은 드물게 바뀌니 잠깐 캐시한다.
+  var cached = cacheGet_('config:v1');
+  if (cached && cached.emails) { CONFIG_MEMO = cached; return cached; }
   var out = { emails: [], b2: '', c2: '' };
   try {
     var sh = tab_(SHEET.config);          // 없으면 머리글과 함께 만들어 준다 (설치 편의)
@@ -319,6 +323,7 @@ function configTab_() {
       }
     }
   } catch (err) { /* 못 읽으면 빈 설정 — 여태의 기본 동작과 같다 */ }
+  cachePut_('config:v1', out, 60);
   CONFIG_MEMO = out;
   return out;
 }
@@ -975,8 +980,26 @@ function tab_(name) {
  * 자정(KST)이면 날짜만, 시각이 있으면(배치의 at 처럼 — seen 비교가 시각을 쓴다)
  * KST 시각까지 남긴다. parseFavorites_ 쪽 txt_ 와 같은 종류의 함정이다.
  */
+/*
+ * **날짜만인지는 시트의 시간대로 가른다.** 「2008-03-14」를 적으면 시트는 그 파일의
+ * 시간대 자정으로 저장한다. 파일 시간대가 서울이 아니면(새로 만든 시트가 미국
+ * 시간대인 일이 흔하다) 서울 시각으로는 자정이 아니라서, 생년월일이
+ * 「2008-03-14T16:00:00+09:00」처럼 시각까지 붙어 화면에 나왔다. 그 파일의
+ * 시간대로 자정이면 날짜만 남긴다. 시각이 정말 있는 값만 서울 시각으로 적는다.
+ */
+var SHEET_TZ = null;
+function sheetTz_() {
+  if (SHEET_TZ) return SHEET_TZ;
+  try { SHEET_TZ = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() || 'Asia/Seoul'; }
+  catch (err) { SHEET_TZ = 'Asia/Seoul'; }
+  return SHEET_TZ;
+}
 function cell_(v) {
   if (v instanceof Date && !isNaN(v.getTime())) {
+    var tz = sheetTz_();
+    if (Utilities.formatDate(v, tz, 'HH:mm:ss') === '00:00:00') {
+      return Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+    }
     var day = Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd');
     var time = Utilities.formatDate(v, 'Asia/Seoul', 'HH:mm:ss');
     return time === '00:00:00' ? day : day + 'T' + time + '+09:00';
@@ -984,27 +1007,94 @@ function cell_(v) {
   return v;
 }
 
-function rows_(name) {
-  var sh = tab_(name), last = sh.getLastRow();
-  if (last < 2) return [];
+/* ===== 탭 읽기 캐시 =================================================
+ * 학생 한 명이 화면을 열 때마다 배치·별칭·입력·일정·결과·메모·공유 탭을 통째로
+ * 읽었다. 탭 하나가 시트 왕복 두 번(getLastRow·getValues)이라 요청 하나에
+ * 열 번 남짓이고, 학생이 몰리면 그 왕복이 그대로 겹쳐 느려졌다. 탭 내용은
+ * 이 스크립트가 쓸 때만 바뀌므로(선생님이 손으로 고치는 일은 드물다) 읽은 것을
+ * 캐시에 두고, **쓸 때마다 그 탭의 도장(stamp)을 바꿔** 옛 캐시를 버린다.
+ *
+ *   읽기   도장을 먼저 읽고 → 그 도장의 캐시가 있으면 그것, 없으면 시트를 읽어
+ *          그 도장 아래 넣는다. 사이에 누가 썼으면 도장이 바뀌어 있어 다음 읽기가
+ *          다시 시트를 본다 — 낡은 것을 새 도장 아래 넣는 길이 없다.
+ *   쓰기   시트에 쓴 **뒤에** 도장을 바꾼다(bumpTab_). 지우기·덮어쓰기·붙이기 모두.
+ *   fresh  줄 번호(_row)로 지우거나 덮는 자리는 캐시를 안 본다 — 그 사이에 줄이
+ *          지워졌으면 엉뚱한 줄을 지운다. 쓰는 길은 다 fresh 다.
+ *
+ * 선생님이 시트를 손으로 고치면 TAB_CACHE_SEC 안에는 옛 값이 보일 수 있다.
+ * 보드의 「원본 새로 읽기」(fresh=1)는 이 캐시도 건너뛴다.
+ */
+var TAB_CACHE_SEC = 120;
+var TAB_MEMO = {};                       // 요청 안에서 같은 탭을 두 번 안 읽게
+
+function tabStamp_(name) {
+  try { return CacheService.getScriptCache().get('tabstamp:' + name) || '0'; }
+  catch (err) { return '0'; }
+}
+
+/** 탭을 쓴 뒤에 부른다 — 그 탭의 캐시를 버린다. */
+function bumpTab_(name) {
+  delete TAB_MEMO[name];
+  try {
+    CacheService.getScriptCache().put('tabstamp:' + name,
+      String(new Date().getTime()) + ':' + Math.floor(Math.random() * 1e6), 21600);
+  } catch (err) { /* 캐시가 안 되면 매번 시트를 읽을 뿐이다 */ }
+}
+
+/** 시트를 바로 읽는다 — 왕복 한 번(getDataRange). */
+function readRows_(name) {
+  var sh = tab_(name);
+  var vals = sh.getDataRange().getValues(), out = [];
   var head = HEADERS[name];
-  var vals = sh.getRange(2, 1, last - 1, head.length).getValues(), out = [];
-  for (var i = 0; i < vals.length; i++) {
+  for (var i = 1; i < vals.length; i++) {
     if (!String(vals[i].join('')).trim()) continue;
     var o = {};
     for (var j = 0; j < head.length; j++) o[head[j]] = cell_(vals[i][j]);
-    o._row = i + 2;
+    o._row = i + 1;
     out.push(o);
   }
   return out;
 }
 
-/** 같은 키의 행이 있으면 덮어쓰고 없으면 붙인다. */
+/**
+ * 탭의 줄들. `fresh` 가 참이면 캐시를 안 보고 시트를 읽는다 — 줄 번호로 지우거나
+ * 덮는 자리는 반드시 fresh 로 부른다.
+ */
+function rows_(name, fresh) {
+  if (fresh) {
+    var got = readRows_(name);
+    TAB_MEMO[name] = got;
+    return got;
+  }
+  if (TAB_MEMO[name]) return TAB_MEMO[name];
+  var stamp = tabStamp_(name);
+  var key = 'tab:' + name + ':' + stamp;
+  var hit = cacheGet_(key);
+  if (hit && hit.rows) { TAB_MEMO[name] = hit.rows; return hit.rows; }
+  var out = readRows_(name);
+  cachePut_(key, { rows: out }, TAB_CACHE_SEC);
+  TAB_MEMO[name] = out;
+  return out;
+}
+
+/** 줄 하나를 지우고 캐시를 버린다. 줄 번호는 fresh 로 읽은 것이어야 한다. */
+function deleteRow_(name, row) {
+  tab_(name).deleteRow(row);
+  bumpTab_(name);
+}
+
+/**
+ * 같은 키의 행이 있으면 덮어쓰고 없으면 붙인다.
+ *
+ * **글자 그대로 저장한다(서식 @).** 시트는 「2008-03-14」를 날짜로, 「0012345」를
+ * 숫자 12345 로 바꿔 버린다. 생년월일이 시각까지 붙어 돌아오고 수험번호 앞 0 이
+ * 사라지던 까닭이다. 쓰기 전에 그 줄을 글자 서식으로 두면 적은 그대로 남는다.
+ */
 function upsert_(name, keyCols, obj) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var sh = tab_(name), head = HEADERS[name], existing = rows_(name);
+    var sh = tab_(name), head = HEADERS[name], existing = rows_(name, true);
     var at = -1;
     for (var i = 0; i < existing.length && at < 0; i++) {
       var same = true;
@@ -1017,8 +1107,9 @@ function upsert_(name, keyCols, obj) {
     for (var c = 0; c < head.length; c++) {
       line.push(obj[head[c]] == null ? '' : obj[head[c]]);
     }
-    if (at > 0) sh.getRange(at, 1, 1, head.length).setValues([line]);
-    else sh.appendRow(line);
+    var row = at > 0 ? at : sh.getLastRow() + 1;
+    sh.getRange(row, 1, 1, head.length).setNumberFormat('@').setValues([line]);
+    bumpTab_(name);
     return at > 0 ? 'updated' : 'added';
   } finally {
     lock.releaseLock();
@@ -1203,10 +1294,10 @@ function loadAll_(me, fresh) {
     openToAll: usingDefaultKey_(),
     // 원본을 캐시에서 읽었으면 언제 파싱한 것인지 — 화면이 필요하면 적을 수 있다
     cached: Boolean(sp.cached), parsedAt: sp.parsedAt || '',
-    state: rows_(SHEET.state), notes: rows_(SHEET.note),
-    results: rows_(SHEET.result), dates: rows_(SHEET.date),
-    fields: rows_(SHEET.field),
-    aliases: rows_(SHEET.alias),
+    state: rows_(SHEET.state, fresh), notes: rows_(SHEET.note, fresh),
+    results: rows_(SHEET.result, fresh), dates: rows_(SHEET.date, fresh),
+    fields: rows_(SHEET.field, fresh),
+    aliases: rows_(SHEET.alias, fresh),
     grades: sp.grades,
     gradeProblem: sp.gradeProblem
   };
@@ -1270,7 +1361,7 @@ function setRank_(p, who) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var all = rows_(SHEET.state);
+    var all = rows_(SHEET.state, true);
     var mine = [];
     var newest = '';
     for (var i = 0; i < all.length; i++) {
@@ -1358,10 +1449,10 @@ function addNote_(p, who) {
 }
 
 function removeNote_(p, who) {
-  var sh = tab_(SHEET.note), all = rows_(SHEET.note);
+  var all = rows_(SHEET.note, true);
   for (var i = 0; i < all.length; i++) {
     if (String(all[i].noteId) === String(p.noteId)) {
-      sh.deleteRow(all[i]._row);
+      deleteRow_(SHEET.note, all[i]._row);
       log_(who, 'removeNote', String(p.noteId));
       return { ok: true, removed: true };
     }
@@ -1392,7 +1483,7 @@ function setResult_(p, who, status) {
 
 /** 담임이 학생이 적은 결과를 확인해 확정으로 올린다. */
 function approveResult_(p, who) {
-  var all = rows_(SHEET.result), hit = null;
+  var all = rows_(SHEET.result, true), hit = null;
   for (var i = 0; i < all.length; i++) {
     if (String(all[i].id) === String(p.id)) hit = all[i];
   }
@@ -1414,10 +1505,10 @@ function setDate_(p, who, status) {
   }
   // 빈 날짜는 **지우기**다. 모의면접을 잘못 잡았을 때 되돌릴 길이 있어야 한다.
   if (!from) {
-    var sh = tab_(SHEET.date), all = rows_(SHEET.date);
+    var all = rows_(SHEET.date, true);
     for (var i = 0; i < all.length; i++) {
       if (String(all[i].id) === String(p.id) && String(all[i].kind) === String(p.kind)) {
-        sh.deleteRow(all[i]._row);
+        deleteRow_(SHEET.date, all[i]._row);
         log_(who, 'clearDate', p.kind + ' ' + p.id);
         return { ok: true, removed: true };
       }
@@ -1535,14 +1626,14 @@ function studentAction_(action, p) {
    * 메모까지 학생이 지울 수 있다.
    */
   if (action === 'studentNoteRemove') {
-    var all = rows_(SHEET.note);
+    var all = rows_(SHEET.note, true);
     for (var i = 0; i < all.length; i++) {
       var n = all[i];
       if (String(n.noteId) !== String(p.noteId)) continue;
       if (String(n.hak) !== hak || String(n.by) !== who) {
         return { ok: false, error: '본인이 적은 메모만 지울 수 있습니다.' };
       }
-      tab_(SHEET.note).deleteRow(n._row);
+      deleteRow_(SHEET.note, n._row);
       log_(who, 'studentNoteRemove', String(p.noteId));
       return { ok: true, removed: true };
     }
@@ -1583,10 +1674,10 @@ function setAlias_(p, who) {
 }
 
 function removeAlias_(p, who) {
-  var sh = tab_(SHEET.alias), all = rows_(SHEET.alias);
+  var all = rows_(SHEET.alias, true);
   for (var i = 0; i < all.length; i++) {
     if (String(all[i].univ) === String(p.univ) && String(all[i].dept) === String(p.dept)) {
-      sh.deleteRow(all[i]._row);
+      deleteRow_(SHEET.alias, all[i]._row);
       log_(who, 'removeAlias', p.univ + ' ' + p.dept);
       return { ok: true, removed: true };
     }
@@ -1597,7 +1688,7 @@ function removeAlias_(p, who) {
 /** 담임이 학생이 넣은 날짜를 확인해 확정으로 올린다. */
 function approveDate_(p, who) {
   if (!p.id || !p.kind) return { ok: false, error: 'id 와 종목이 필요합니다.' };
-  var all = rows_(SHEET.date), hit = null;
+  var all = rows_(SHEET.date, true), hit = null;
   for (var i = 0; i < all.length; i++) {
     if (String(all[i].id) === String(p.id) && String(all[i].kind) === String(p.kind)) hit = all[i];
   }
@@ -1640,8 +1731,8 @@ var TEACHER_FIELDS = ['면접여부'];
 var LOCK_FIELD = '마감';
 
 /** 이 학생의 마감된 카드 id → 행. */
-function locksOf_(hak) {
-  var all = rows_(SHEET.field), out = {};
+function locksOf_(hak, fresh) {
+  var all = rows_(SHEET.field, fresh), out = {};
   for (var i = 0; i < all.length; i++) {
     if (String(all[i].hak) === String(hak) && String(all[i].field) === LOCK_FIELD
         && String(all[i].id || '') && String(all[i].value || '').trim()) out[String(all[i].id)] = all[i];
@@ -1652,7 +1743,7 @@ function locksOf_(hak) {
 function setLock_(hak, id, on, who) {
   hak = String(hak || '').trim(); id = String(id || '').trim();
   if (!hak || !id) return { ok: false, error: '학번과 id 가 필요합니다.' };
-  var was = locksOf_(hak)[id] || null;
+  var was = locksOf_(hak, true)[id] || null;
   if (on) {
     if (was) return { ok: true, at: was.at, by: was.by, already: true };
     var now = now_();
@@ -1663,7 +1754,7 @@ function setLock_(hak, id, on, who) {
     return { ok: true, at: now, by: who };
   }
   if (was) {
-    tab_(SHEET.field).deleteRow(was._row);
+    deleteRow_(SHEET.field, was._row);
     log_(who, 'unlock', hak + ' ' + id + ' 마감 풀기');
   }
   return { ok: true };
@@ -1693,11 +1784,11 @@ function setField_(p, who, status) {
 
   var value = String(p.value == null ? '' : p.value).trim();
   if (!value) {
-    var all = rows_(SHEET.field);
+    var all = rows_(SHEET.field, true);
     for (var i = 0; i < all.length; i++) {
       if (String(all[i].id) === id && String(all[i].hak) === String(p.hak)
           && String(all[i].field) === field) {
-        tab_(SHEET.field).deleteRow(all[i]._row);
+        deleteRow_(SHEET.field, all[i]._row);
         log_(who, 'setField', p.hak + ' ' + field + ' 지움');
         return { ok: true };
       }
@@ -1716,7 +1807,7 @@ function setField_(p, who, status) {
 function approveField_(p, who) {
   var field = String(p.field || '').trim();
   var id = field === '생년월일' ? '' : String(p.id || '');
-  var all = rows_(SHEET.field), hit = null;
+  var all = rows_(SHEET.field, true), hit = null;
   for (var i = 0; i < all.length; i++) {
     if (String(all[i].id) === id && String(all[i].hak) === String(p.hak)
         && String(all[i].field) === field) hit = all[i];
@@ -1735,7 +1826,7 @@ function issueAll_(p, who) {
   var parsed = sourceParsed_();   // 캐시 사용
   var only = String(p.cls || '').trim();
   var have = {};
-  rows_(SHEET.share).forEach(function (r) { have[String(r.hak)] = String(r.token); });
+  rows_(SHEET.share, true).forEach(function (r) { have[String(r.hak)] = String(r.token); });
 
   /*
    * **한 번에 쓴다.** 예전에는 새 학생마다 upsert_ 를 불렀는데, upsert_ 는 한 번마다
@@ -1761,7 +1852,8 @@ function issueAll_(p, who) {
     try {
       var sh = tab_(SHEET.share);
       sh.getRange(sh.getLastRow() + 1, 1, fresh.length, HEADERS[SHEET.share].length)
-        .setValues(fresh);
+        .setNumberFormat('@').setValues(fresh);
+      bumpTab_(SHEET.share);
     } finally {
       lock.releaseLock();
     }

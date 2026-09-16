@@ -88,18 +88,17 @@ export async function start(token, demoData, opts = {}) {
     return;
   }
   /*
-   * **서버 요청은 둘을 나란히.** 카드를 그리는 데 필요한 것(지원 목록·배치·별칭,
-   * 시트 읽기 둘)만 `lite` 로 먼저 받고, 날짜·결과·입력·메모(읽기 넷)는 `studentRest`
-   * 로 따로 받는다. Apps Script 는 두 실행을 동시에 돌리므로 첫 그리기가 일곱을
-   * 다 읽을 때까지 기다리지 않는다. 옛 서버는 `lite` 를 몰라 다 주고 `studentRest`
-   * 를 거절하는데, 그때는 이미 다 받았으니 조용히 넘어간다.
+   * **서버 요청은 하나.** 한때 핵심(`lite`)과 나머지(`studentRest`)를 나란히 두 번
+   * 불렀다 — 시트 읽기 일곱을 셋·넷으로 갈라 첫 그리기를 앞당기려던 것이다.
+   * 그런데 Apps Script 는 한 배포가 **동시에 돌릴 수 있는 실행 수가 서른 남짓**이라,
+   * 학생이 몰리는 시간에는 한 명이 둘씩 차지하는 것이 그대로 대기 줄이 됐다.
+   * 이제 서버가 탭을 캐시에서 읽어 한 번에 다 줘도 빠르니(Code.gs `rows_`),
+   * 한 번만 부른다. 옛 서버(`lite` 를 모르는)도 원래 한 번에 다 주던 길이다.
    */
-  const core = api.call('student', { token, lite: 1 }, { timeout: 45000 });   // 지원·배치·별칭·입력
-  const rest = api.call('studentRest', { token }, { timeout: 45000 });
-  rest.catch(() => {});                       // 먼저 실패해도 「처리 안 된 거절」로 남지 않게
   try {
-    const data = await core;
+    const data = await api.call('student', { token }, { timeout: 45000 });
     apply(data);
+    if (data.lite) applyRest(await api.call('studentRest', { token }, { timeout: 45000 }));
     mark('server', data);
   } catch (err) {
     state.error = err.message;
@@ -108,16 +107,8 @@ export async function start(token, demoData, opts = {}) {
     return;
   }
   render();
-  // 지원 목록을 알았으니 제 대학의 입결 조각을 받는다 — 나머지 응답과 나란히
-  const ip = loadIpgyeol();
-  try {
-    applyRest(await rest);
-    mark('rest');
-  } catch (err) {
-    if (!state.gotFull) state.notice = `날짜·결과를 불러오지 못했습니다 — ${err.message} 새로고침해 주세요.`;
-  }
-  render();
-  await Promise.all([pub, ip]);
+  // 지원 목록을 알았으니 제 대학의 입결 조각을 받는다 — 공개 자료와 나란히
+  await Promise.all([pub, loadIpgyeol()]);
   mark('pub');
 }
 
@@ -535,12 +526,14 @@ function birthPanel() {
   if (!state.apps.some((a) => afterApply(a))) return wrap;
 
   const saved = state.fields.get('|생년월일');
+  // 시트가 날짜형으로 바꿔 시각까지 붙여 돌려줘도 **날짜만** 보인다 (2008-03-14)
+  const birth = saved ? isoDay(saved.value) : '';
   const box = el('section', 'panel');
   const fold = document.createElement('details');
   fold.open = !saved;
   const sum = document.createElement('summary');
   sum.textContent = saved
-    ? `생년월일 ${saved.value}${saved.status === 'student' ? ' — 확인 대기' : ''}`
+    ? `생년월일 ${birth}${saved.status === 'student' ? ' — 확인 대기' : ''}`
     : '생년월일 적기';
   fold.appendChild(sum);
 
@@ -552,7 +545,7 @@ function birthPanel() {
   const input = document.createElement('input');
   input.type = 'date';
   input.setAttribute('aria-label', '생년월일');
-  input.value = saved ? saved.value : '';
+  input.value = birth;
   input.disabled = state.busy;
   row.appendChild(input);
   const btn = el('button', 'btn', '저장');
@@ -608,7 +601,8 @@ function announcePanel() {
       list.push({ app, kind: '최종 발표', d: fin });
     } else if (st1 && st1.to <= today && !r.stage1) {
       const s = summaryOf(app);
-      if (s && s.stages > 1) list.push({ app, kind: '1단계 발표', d: st1 });
+      // 선생님이 「면접 없음」으로 정한 지원은 일괄로 본다 — 1단계 발표를 묻지 않는다
+      if (s && s.stages > 1 && interviewForce(app) !== '없음') list.push({ app, kind: '1단계 발표', d: st1 });
     }
   }
   if (!list.length) return wrap;
@@ -810,7 +804,9 @@ function slotFigures(box, app, brief) {
   const ivYes = hasInterviewOf(app);
   const force = interviewForce(app);
   const share = ivYes && s ? interviewShare(s.mojip) : null;
-  if (s && s.stages > 1) pin(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`);
+  // 「없음」으로 못박았으면 단계 꼬리표도 안 단다 — 교사 보드와 같은 규칙
+  if (force === '없음') { /* 꼬리표 없음 */ }
+  else if (s && s.stages > 1) pin(share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`);
   else if (ivYes && force) pin('면접 있음');
   else if (share != null) pin(`면접 ${share}%`);
   const iv = dateOf(app, '면접');
@@ -1293,9 +1289,10 @@ function marks(app) {
     const ivYes = hasInterviewOf(app);
     const force = interviewForce(app);
     const share = ivYes && s ? interviewShare(s.mojip) : null;
-    const txt = s && s.stages > 1
-      ? (share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`)
-      : (ivYes && force ? '면접 있음' : share != null ? `면접 ${share}%` : '');
+    const txt = force === '없음' ? ''          // 「없음」이면 단계 꼬리표도 없다
+      : s && s.stages > 1
+        ? (share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`)
+        : (ivYes && force ? '면접 있음' : share != null ? `면접 ${share}%` : '');
     if (txt) {
       const p = add(txt);
       const line = methodLine(s.mojip);
@@ -2257,7 +2254,8 @@ function openDetail(app) {
     if (paper) {
       const when = (x) => (x ? (x.from === x.to ? label(x.from) : `${label(x.from)}~${label(x.to)}`) : null);
       list.push(['원서 접수 마감', paper.apply ? when(paper.apply) : null]);
-      list.push(['1단계 발표', when(paper.stage1)]);
+      // 「면접 없음」으로 정한 지원은 일괄로 본다 — 1단계 발표 줄을 세우지 않는다
+      if (interviewForce(app) !== '없음') list.push(['1단계 발표', when(paper.stage1)]);
       list.push(['최종 발표', when(paper.final)]);
     }
     if (mo && mo.exam) list.push(['대학별 고사', mo.exam]);

@@ -18,7 +18,7 @@
 import * as store from './store.js';
 import { detailPanel } from './card.js';
 import { normType, outsideLimit, isGuessedFit } from './match.js';
-import { josa, rate1, minReqShort, methodLine, interviewShare } from './text.js';
+import { josa, rate1, minReqShort, methodLine, interviewShare, isoDay } from './text.js';
 
 const RANKS = [1, 2, 3, 4, 5, 6];
 const SLOT_LABEL = { rank: '순위', pool: '후보', archive: '보관', tray: '전문대' };
@@ -580,7 +580,8 @@ function waitingFields() {
     const txt = el('div', 'txt');
     txt.appendChild(el('div', 'univ', `${x.student.hak} ${tidy(x.student.name)}`
       + (x.app ? ` — ${shortName(x.app)}` : '')));
-    txt.appendChild(el('div', 'dept', `${x.field} ${x.value}`));
+    // 생년월일은 시트가 시각까지 붙여 줄 수 있다 — 날짜만
+    txt.appendChild(el('div', 'dept', `${x.field} ${x.field === '생년월일' ? isoDay(x.value) : x.value}`));
     row.appendChild(txt);
     const ok = el('button', 'btn', '맞습니다');
     ok.type = 'button';
@@ -1085,9 +1086,15 @@ function pills(app) {
   const iv = store.interviewOf(app);
   const share = iv.yes ? interviewShare(s.mojip) : null;
   const forced = iv.force ? `면접 ${iv.force} (선생님 확인)` : '';
-  const stageTxt = s.stages > 1
-    ? (share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`)
-    : (iv.yes && iv.force ? '면접 있음' : share != null ? `면접 ${share}%` : '');
+  /*
+   * 「없음」으로 못박았으면 **단계 꼬리표도 안 단다.** 모집요강이 2단계라고 해도
+   * 선생님이 면접이 없다고 정한 자리는 일괄로 보는 것이 맞다 — 「2단계」만 남으면
+   * 학생은 여전히 1단계 발표를 기다리고 면접을 짐작한다.
+   */
+  const stageTxt = iv.force === '없음' ? ''
+    : s.stages > 1
+      ? (share != null ? `${s.stages}단계 면접${share}%` : `${s.stages}단계`)
+      : (iv.yes && iv.force ? '면접 있음' : share != null ? `면접 ${share}%` : '');
   if (stageTxt) {
     const p = add(stageTxt, 'mark');
     const line = methodLine(s.mojip);
