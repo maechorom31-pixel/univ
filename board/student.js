@@ -98,8 +98,12 @@ export async function start(token, demoData, opts = {}) {
   try {
     const data = await api.call('student', { token }, { timeout: 45000 });
     apply(data);
-    if (data.lite) applyRest(await api.call('studentRest', { token }, { timeout: 45000 }));
     mark('server', data);
+    // 옛 서버(lite 만 아는 판)면 나머지를 한 번 더 받는다 — 못 받아도 카드는 그린다
+    if (data.lite) {
+      try { applyRest(await api.call('studentRest', { token }, { timeout: 45000 })); mark('rest'); }
+      catch (err) { state.notice = `날짜·결과를 불러오지 못했습니다 — ${err.message} 새로고침해 주세요.`; }
+    }
   } catch (err) {
     state.error = err.message;
     render();
@@ -1167,7 +1171,7 @@ function timingLine() {
   const sec = (ms) => (ms == null ? '…' : `${(ms / 1000).toFixed(1)}초`);
   const bits = [
     `서버 ${sec(t.server)}${t.took != null ? ` (안에서 ${t.took}ms${t.cached === false ? ' · 원본 새로 읽음' : t.cached ? ' · 캐시' : ''})` : ''}`,
-    `나머지 ${sec(t.rest)}`,
+    ...(t.rest != null ? [`나머지 ${sec(t.rest)}`] : []),     // 옛 서버(lite)일 때만
     `자료 ${sec(t.pub)}${state.ipFiles != null ? ` (입결 ${state.ipFiles}개 대학만)` : ''}`,
   ];
   const p = el('p', 'hint timing', `걸린 시간 — ${bits.join(' · ')}`);
