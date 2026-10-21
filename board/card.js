@@ -16,6 +16,7 @@ import * as store from './store.js';
 import { realRate, normType, typeGroups, fillTrend } from './match.js';
 import { confidence, pctText } from './confidence.js';
 import { josa, rate1, typedRate, typedRateText, methodLine, isoDay } from './text.js';
+import { ITEMS, ITEM, NONE, numOf, myScoreOf } from './fix.js';
 
 export { realRate };
 
@@ -256,25 +257,40 @@ export function detailPanel(app, student, onClose) {
     body.appendChild(el('p', 'note', `작년 자료가 붙지 않았습니다 — ${s.why}`));
   }
 
+  /*
+   * **선생님 고침.** 카드의 항목마다 손으로 적은 값이 있으면 그것을 쓰고 출처를
+   * 「선생님 고침」으로 적는다(board/fix.js). 숫자(컷·경쟁률·모집인원)는 요약에
+   * 이미 덮여 오고, 글(전형 이름 따위)은 여기서 `pick` 으로 고른다.
+   * `now` 는 「지금 화면에 보이는 값」 — 아래 고치기 칸이 미리 채워 둔다.
+   */
+  const fixed = (s && s.fixed) || {};
+  const pick = (key, auto) => (fixed[key] ? fixed[key].value : auto);
+  const now = {};
+  const R = (key, label, value, src) => {
+    now[key] = value == null ? '' : String(value);
+    return [label, value, fixed[key] ? '선생님 고침' : src];
+  };
+
   /* 1. 전형 */
   const mLine = methodLine(mo);
+  const wComp = mo && mo.wSubj != null
+    ? `교과 ${mo.wSubj}${mo.wAtt ? ` + 출결 ${mo.wAtt}` : ''}${mo.wVol ? ` + 봉사 ${mo.wVol}` : ''}`
+    : null;
   body.appendChild(rows('전형', [
-    ['모집 시기', app.period, '즐겨찾기'],
-    ['전형 유형', app.typeCat, '즐겨찾기'],
-    ['전형 이름', app.typeName, '즐겨찾기'],
-    ['세부 유형', app.typeSub, '즐겨찾기'],
-    ['선발 방식', app.selectType, '즐겨찾기'],
-    ['계열', app.track || (isCollege ? s.track : null), app.track ? '즐겨찾기' : '전문대 자료'],
-    ['지역', app.region, '즐겨찾기'],
+    R('모집시기', '모집 시기', pick('모집시기', app.period), '즐겨찾기'),
+    R('전형유형', '전형 유형', pick('전형유형', app.typeCat), '즐겨찾기'),
+    R('전형이름', '전형 이름', pick('전형이름', app.typeName), '즐겨찾기'),
+    R('세부유형', '세부 유형', pick('세부유형', app.typeSub), '즐겨찾기'),
+    R('선발방식', '선발 방식', pick('선발방식', app.selectType), '즐겨찾기'),
+    R('계열', '계열', pick('계열', app.track || (isCollege ? s.track : null)), app.track ? '즐겨찾기' : '전문대 자료'),
+    R('지역', '지역', pick('지역', app.region), '즐겨찾기'),
     /*
      * 「전형 단계 2단계」보다 「1단계 서류100 (3배수) → 2단계 1단계70+면접30」이
      * 학생에게 이 전형이 **무엇으로 뽑는지** 말해 준다. 원문을 못 읽으면 단계 수만.
      */
-    ['전형 방법', mLine, '모집요강'],
-    ['전형 단계', !mLine && mo && mo.stages ? `${mo.stages}단계` : null, '모집요강'],
-    ['학생부 구성', mo && mo.wSubj != null
-      ? `교과 ${mo.wSubj}${mo.wAtt ? ` + 출결 ${mo.wAtt}` : ''}${mo.wVol ? ` + 봉사 ${mo.wVol}` : ''}`
-      : null, '모집요강'],
+    R('전형방법', '전형 방법', mLine, '모집요강'),
+    R('전형단계', '전형 단계', (!mLine || fixed['전형단계']) && s.stages ? `${s.stages}단계` : null, '모집요강'),
+    R('학생부구성', '학생부 구성', pick('학생부구성', wComp), '모집요강'),
   ]));
 
   /*
@@ -315,19 +331,20 @@ export function detailPanel(app, student, onClose) {
   const rateShown = (v) => typedRateText(v.value);
 
   const quotaBlock = rows('인원과 경쟁률', [
-    ['올해 모집 인원', quotaNow != null
+    R('올해모집인원', '올해 모집 인원', quotaNow != null
       ? `${quotaNow}명${diff ? ` (작년 ${quotaPrev}명, ${diff > 0 ? '+' : ''}${diff})` : ''}`
-      : app.quotaText || null, '즐겨찾기 + 모집요강'],
-    ['작년 모집 인원', !diff && quotaPrev != null ? `${quotaPrev}명` : null, '모집요강'],
-    [yr('경쟁률'), s && s.rate != null ? `${rate1(s.rate)}:1` : null, isCollege ? '전문대 자료' : ipSrc],
-    ['작년 실질 경쟁률', real.value != null ? `${rate1(real.value)}:1` : null,
-      real.why || '명목 × 모집 ÷ (모집 + 추합)'],
+      : app.quotaText || null, '즐겨찾기 + 모집요강'),
+    R('작년모집인원', '작년 모집 인원', (!diff || fixed['작년모집인원']) && quotaPrev != null ? `${quotaPrev}명` : null, '모집요강'),
+    R('작년경쟁률', fixed['작년경쟁률'] ? '작년 경쟁률' : yr('경쟁률'), s && s.rate != null ? `${rate1(s.rate)}:1` : null, isCollege ? '전문대 자료' : ipSrc),
+    R('작년실질경쟁률', '작년 실질 경쟁률', real.value != null ? `${rate1(real.value)}:1` : null,
+      real.why || '명목 × 모집 ÷ (모집 + 추합)'),
     ['올해 최종 경쟁률', (() => {
       const f = store.fieldOf(app, '최종경쟁률');
       return f && f.value ? rateShown(f) : null;
     })(), '원서를 낸 뒤 적은 값'],
-    ['충원율', isCollege && s.linked && s.rows[0] && s.rows[0].fill != null
-      ? `${Math.round(s.rows[0].fill)}%` : null, '전문대 자료'],
+    R('충원율', '충원율', fixed['충원율'] ? `${numOf(fixed['충원율'].value)}%`
+      : isCollege && s.linked && s.rows[0] && s.rows[0].fill != null
+        ? `${Math.round(s.rows[0].fill)}%` : null, '전문대 자료'),
   ]);
 
   /*
@@ -415,18 +432,18 @@ export function detailPanel(app, student, onClose) {
 
   /* 3. 성적 — 내 성적과 작년 결과를 나란히. 빼지 않고 그대로 둔다. */
   const naesin = (student && student.naesin) || {};
-  const mine = app.myScore || {};
+  const mine = myScoreOf(app, s);
   body.appendChild(rows('성적', [
     ['내 전교과', g2(store.wholeGrade(student)),
       student && student.gradeFrom === '성적 시트' ? '성적 시트' : '즐겨찾기'],
-    ['내 환산 등급', g2(mine.grade), '즐겨찾기'],
-    ['내 환산 점수', mine.score != null ? String(mine.score) : null, '즐겨찾기'],
+    R('내환산등급', '내 환산 등급', g2(mine.grade), '즐겨찾기'),
+    R('내환산점수', '내 환산 점수', mine.score != null ? String(mine.score) : null, '즐겨찾기'),
     isCollege
-      ? ['작년 평균 등급', g2(s.avg), '전문대 자료']
-      : [yr('70% 컷'), g2(s && s.cut), ipSrc],
+      ? R('평균등급', '작년 평균 등급', g2(s.avg), '전문대 자료')
+      : R('70컷', fixed['70컷'] ? '작년 70% 컷' : yr('70% 컷'), g2(s && s.cut), ipSrc),
     isCollege
-      ? ['작년 최저 등급', g2(s.cut), '전문대 자료']
-      : [yr('50% 컷'), g2(s && s.cut50), ipSrc],
+      ? R('70컷', '작년 최저 등급', g2(s.cut), '전문대 자료')
+      : R('50컷', fixed['50컷'] ? '작년 50% 컷' : yr('50% 컷'), g2(s && s.cut50), ipSrc),
   ]));
 
   /*
@@ -519,22 +536,28 @@ export function detailPanel(app, student, onClose) {
     sched.push([kind, span(d), from]);
   }
   if (mo && mo.exam) {
-    sched.push(['대학별 고사', mo.exam + (mo.examWhen ? ` ${MID} ${mo.examWhen}` : ''), '모집요강']);
+    sched.push(R('대학별고사', '대학별 고사', mo.exam + (mo.examWhen ? ` ${MID} ${mo.examWhen}` : ''), '모집요강'));
   }
 
   // 전형일정표가 원서 마감·발표일까지 준다. 모집요강에 없던 칸이 여기서 채워진다.
   const paper = store.paperOf(app);
   const when = (x) => (x ? span(x) : null);
+  if (paper || fixed['원서접수마감']) {
+    const tag = !paper ? '' : paper.loose ? `전형일정표 · ${paper.type} (전형 추정)` : '전형일정표';
+    sched.push(R('원서접수마감', '원서 접수 마감', pick('원서접수마감',
+      paper && paper.apply ? when(paper.apply) + (paper.applyClock ? ` ${paper.applyClock}` : '') : null), tag));
+  }
   if (paper) {
     const tag = paper.loose ? `전형일정표 · ${paper.type} (전형 추정)` : '전형일정표';
-    sched.push(['원서 접수 마감',
-      paper.apply ? when(paper.apply) + (paper.applyClock ? ` ${paper.applyClock}` : '') : null, tag]);
-    // 「면접 없음」으로 정한 지원은 일괄로 본다 — 1단계 발표 줄을 세우지 않는다
-    if (paper.stage1 && store.interviewForce(app) !== '없음') sched.push(['1단계 발표', when(paper.stage1), tag]);
-    if (paper.final) sched.push(['최종 발표', when(paper.final), tag]);
+    // 「면접 없음」으로 정한 지원은 일괄로 본다 — 1단계 발표 줄을 세우지 않는다.
+    // 선생님이 날짜를 넣어 두었으면 위(DATE_KINDS)에 이미 섰다 — 겹쳐 세우지 않는다.
+    if (paper.stage1 && store.interviewForce(app) !== '없음' && !store.state.dates.has(`${app.id}|1단계발표`)) {
+      sched.push(['1단계 발표', when(paper.stage1), tag]);
+    }
+    if (paper.final && !store.state.dates.has(`${app.id}|최종발표`)) sched.push(['최종 발표', when(paper.final), tag]);
   }
-  sched.push(['등록 마감', null, '모집요강 확인']);
-  sched.push(['미등록 충원 발표', null, '모집요강 확인']);
+  sched.push(R('등록마감', '등록 마감', pick('등록마감', null), '모집요강 확인'));
+  sched.push(R('미등록충원발표', '미등록 충원 발표', pick('미등록충원발표', null), '모집요강 확인'));
 
   // 전형 이름을 못 맞춘 고사일은 **이 전형의 날짜가 아니다.** 참고로만 적는다.
   // 여기 적힌 값은 겹침 검사에도 쓰이지 않는다.
@@ -626,14 +649,14 @@ export function detailPanel(app, student, onClose) {
     const fix = document.createElement('details');
     fix.className = 'date-add';
     const sum = document.createElement('summary');
-    sum.textContent = '면접·실기 날짜 넣기 · 고치기';
+    sum.textContent = '면접·실기·발표 날짜 넣기 · 고치기';
     fix.appendChild(sum);
     const line = el('div', 'field-in');
     const kindSel = document.createElement('select');
     kindSel.setAttribute('aria-label', '고사 종류');
     // 모의면접도 여기서 잡는다 — 일정 탭까지 안 내려가도 되게. 몇 차인지는
     // 저장할 때 빈 자리를 찾아 정한다(모의면접1~5, 일정 탭과 같은 칸 이름).
-    for (const k of ['면접', '실기', '논술', '적성', '모의면접']) {
+    for (const k of ['면접', '실기', '논술', '적성', '1단계발표', '최종발표', '모의면접']) {
       const o = document.createElement('option');
       o.value = k;
       o.textContent = k;
@@ -667,7 +690,7 @@ export function detailPanel(app, student, onClose) {
       }
       try {
         await store.setDate(app, kind, input.value, input.value);
-        sum.textContent = `${kind}일을 저장했습니다 — 면접·실기 날짜 넣기 · 고치기`;
+        sum.textContent = `${kind}일을 ${input.value ? '저장' : '지웠'}습니다 — 면접·실기·발표 날짜 넣기 · 고치기`;
       } catch (err) {
         window.alert(`저장하지 못했습니다 — ${err.message}`);
       }
@@ -692,38 +715,83 @@ export function detailPanel(app, student, onClose) {
   }
 
   /* 5. 수능최저 — 원문 그대로 둔다. 요약하면 조건이 하나씩 빠진다. */
-  const minText = app.minReqText || (mo && mo.minReq) || '';
+  const mn = store.minReqOf(app);
+  const ref = s && s.mojipRef;
   const min = el('div', 'detail-block');
   min.appendChild(el('h3', '', '수능 최저학력 기준'));
+  now['수능최저'] = mn.fixed && !mn.has ? NONE : mn.text;
   /*
    * 기준 글이 없을 때 **「없다」와 「모른다」를 가른다.**
    * 관심대학 리스트는 기준 글 없이 Y/N 만 준다. N 이면 최저가 없는 것이지
    * 자료를 못 찾은 것이 아니라, 「모집요강을 확인해 주세요」라고 하면 안 된다.
    */
-  min.appendChild(minText
-    ? el('p', 'longtext', String(minText).replace(/^\s*\*\s*/, ''))
-    : el('p', 'hint', app.minReq === false
-      ? '이 전형은 수능 최저가 없습니다 (즐겨찾기 기준).'
-      : app.minReq === true
-        ? '즐겨찾기는 최저가 있다고만 하고 기준 글은 주지 않았습니다. 모집요강을 확인해 주세요.'
-        : '즐겨찾기와 모집요강에 최저 기준이 적혀 있지 않습니다. 모집요강을 확인해 주세요.'));
+  if (mn.text) {
+    min.appendChild(el('p', 'longtext', String(mn.text).replace(/^\s*\*\s*/, '')));
+    min.appendChild(el('p', 'src-line', `출처 ${MID} ${mn.src}`));
+  } else {
+    min.appendChild(el('p', 'hint', mn.fixed
+      ? '이 전형은 수능 최저가 없습니다 (선생님 고침).'
+      : app.minReq === false
+        ? '이 전형은 수능 최저가 없습니다 (즐겨찾기 기준).'
+        : app.minReq === true
+          ? '즐겨찾기는 최저가 있다고만 하고 기준 글은 주지 않았습니다. 모집요강을 확인해 주세요.'
+          : '즐겨찾기와 모집요강에 최저 기준이 적혀 있지 않습니다. 모집요강을 확인해 주세요.'));
+  }
+  /*
+   * **자료끼리 말이 다르면 그대로 말한다.** 관심대학 리스트는 「없음」인데 모집요강에는
+   * 기준 글이 있는 경우 — 어느 쪽이 맞는지 기계가 못 가린다.
+   */
+  if (mn.conflict) {
+    min.appendChild(el('p', 'note',
+      '관심대학 리스트에는 최저가 「없음」인데 모집요강에는 위 기준이 있습니다.'
+      + ' 대학 모집요강을 확인하고 아래에서 맞는 쪽으로 고쳐 주세요(없으면 「없음」).'));
+  }
+  /*
+   * **이름을 못 맞춘 모집요강 줄의 최저는 이 전형의 것이라고 하지 않는다.**
+   * 한 학과에 전형이 여럿이면 최저도 전형마다 다르다(모집요강 5,922개 학과 가운데
+   * 2,804곳). 여태 그 줄의 글을 그대로 써서 기회균형 카드에 일반전형 최저가 붙었다.
+   * 참고로만 보이고, 같은 전형이 맞으면 단추 하나로 이 전형의 기준으로 삼는다.
+   */
+  if (ref && ref.minReq && !mn.fixed) {
+    const box = el('div', 'note');
+    box.appendChild(el('p', '', `모집요강에서 이 전형 줄을 이름으로 찾지 못했습니다. 이 학과 「${ref.type}」 전형의 최저는 아래와 같습니다 — 다른 전형의 기준일 수 있습니다.`));
+    box.appendChild(el('p', 'longtext', ref.minReq));
+    const use = el('button', 'btn', '같은 전형이 맞습니다 — 이 기준으로 쓰기');
+    use.type = 'button';
+    use.onclick = () => saveFix(app, '수능최저', ref.minReq, use);
+    box.appendChild(use);
+    min.appendChild(box);
+  }
+  min.appendChild(fixPanel(app, ['수능최저'], now, '수능 최저 고치기'));
   body.appendChild(min);
 
   /* 6. 반영 교과 — 원문 그대로. 어느 과목이 들어가는지가 교과 전형의 반이다. */
+  now['반영교과'] = (mo && mo.refMain) || '';
+  now['진로선택'] = (mo && mo.refCareer) || '';
   if (mo && (mo.refMain || mo.refCareer)) {
     const rf = el('div', 'detail-block');
     rf.appendChild(el('h3', '', '반영 교과'));
     if (mo.refMain) rf.appendChild(el('p', 'longtext', `공통·일반선택 — ${mo.refMain}`));
     if (mo.refCareer) rf.appendChild(el('p', 'longtext', `진로선택 — ${mo.refCareer}`));
+    if (fixed['반영교과'] || fixed['진로선택']) rf.appendChild(el('p', 'src-line', `출처 ${MID} 선생님 고침`));
     body.appendChild(rf);
+  } else if (ref && (ref.refMain || ref.refCareer)) {
+    body.appendChild(refBlock('반영 교과', ref, [
+      ref.refMain ? `공통·일반선택 — ${ref.refMain}` : '',
+      ref.refCareer ? `진로선택 — ${ref.refCareer}` : '',
+    ].filter(Boolean).join('\n')));
   }
 
   /* 7. 지원 자격 */
+  now['지원자격'] = (mo && mo.eligibility) || '';
   if (mo && mo.eligibility) {
     const q = el('div', 'detail-block');
     q.appendChild(el('h3', '', '지원 자격'));
     q.appendChild(el('p', 'longtext', String(mo.eligibility)));
+    if (fixed['지원자격']) q.appendChild(el('p', 'src-line', `출처 ${MID} 선생님 고침`));
     body.appendChild(q);
+  } else if (ref && ref.eligibility) {
+    body.appendChild(refBlock('지원 자격', ref, ref.eligibility));
   }
 
   /* 8. 전문대만 있는 값 */
@@ -751,6 +819,15 @@ export function detailPanel(app, student, onClose) {
       ['등록', '한 곳만. 수시 등록하면 정시·추가모집 지원 불가', '전문대교협 공통 일정'],
     ]));
   }
+
+  /*
+   * 7.5 **카드의 모든 항목을 고친다.** 위 표에 보이는 값이 틀렸으면 여기서 적는다.
+   * 전문대·일반대에만 있는 항목은 각자 것만 보인다.
+   */
+  const keys = ITEMS.map((x) => x.key).filter((k) => (isCollege
+    ? !['50컷'].includes(k)
+    : !['평균등급', '충원율'].includes(k)));
+  body.appendChild(fixPanel(app, keys, now, '카드 항목 고치기'));
 
   /* 8. 묶이기 전 학과들 */
   body.appendChild(bundled(s));
@@ -781,6 +858,157 @@ export function detailPanel(app, student, onClose) {
   }
 
   return box;
+}
+
+/* ── 선생님 고침 ──────────────────────────────────────────────── */
+
+/*
+ * 상세는 자료가 바뀔 때마다 통째로 다시 그려진다(board.js renderDetail). 그대로면
+ * 저장하자마자 고치기 칸이 접혀서 무엇이 저장됐는지 안 보인다. 펼쳐 둔 칸과
+ * 고르던 항목, 마지막 알림을 여기 기억해 두고 다시 그릴 때 되살린다.
+ */
+const fixUi = { id: '', panel: '', key: '', msg: '' };
+
+/** 이름을 못 맞춘 모집요강 줄의 글 — 다른 전형 것일 수 있다고 적고 보여 준다. */
+function refBlock(title, ref, text) {
+  const b = el('div', 'detail-block');
+  b.appendChild(el('h3', '', title));
+  b.appendChild(el('p', 'hint',
+    `모집요강에서 이 전형 줄을 이름으로 찾지 못했습니다. 이 학과 「${ref.type}」 전형의 것입니다 — 다른 전형의 내용일 수 있습니다.`
+    + ' 맞으면 아래 「카드 항목 고치기」에 옮겨 적어 주세요.'));
+  b.appendChild(el('p', 'longtext', text));
+  return b;
+}
+
+async function saveFix(app, key, value, btn) {
+  if (btn) btn.disabled = true;
+  const item = ITEM[key];
+  try {
+    await store.setFix(app, key, value);
+    const n = item.scope === 'type' ? store.sameType(app) : 1;
+    fixUi.msg = String(value || '').trim()
+      ? `「${key}」을(를) 저장했습니다${n > 1 ? ` — 같은 전형으로 지원한 카드 ${n}장에 함께 바뀝니다` : ''}.`
+      : `「${key}」 고침을 지웠습니다 — 자동 값으로 돌아갑니다.`;
+  } catch (err) {
+    const hint = /모르는 칸/.test(err.message)
+      ? '\n\nApps Script 코드가 예전 것입니다. board/apps-script/Code.gs 를 다시 붙여 넣고 새로 배포해 주세요.'
+      : '';
+    window.alert(`저장하지 못했습니다 — ${err.message}${hint}`);
+    if (btn) btn.disabled = false;
+  }
+}
+
+/**
+ * 고치기 칸. 항목을 고르고, 지금 값을 보고, 고쳐 적고 저장한다. 비우고 저장하면 지운다.
+ * @param {string[]} keys  고를 수 있는 항목(fix.js ITEMS 의 key)
+ * @param {Object} now     항목 → 지금 화면에 보이는 값
+ */
+function fixPanel(app, keys, now, title) {
+  const fixes = store.fixesOf(app);
+  const count = keys.filter((k) => fixes[k]).length;
+  const panelId = keys.length === 1 ? keys[0] : '*';
+  if (fixUi.id !== app.id) { fixUi.id = app.id; fixUi.panel = ''; fixUi.key = ''; fixUi.msg = ''; }
+
+  const fold = document.createElement('details');
+  fold.className = 'date-add fix-panel';
+  fold.open = fixUi.panel === panelId;
+  fold.addEventListener('toggle', () => {
+    if (fold.open) fixUi.panel = panelId;
+    else if (fixUi.panel === panelId) fixUi.panel = '';
+  });
+  const sum = document.createElement('summary');
+  sum.textContent = `${title}${count ? ` — 고친 항목 ${count}개` : ''}`;
+  fold.appendChild(sum);
+
+  const wrap = el('div', 'field');
+  if (fold.open && fixUi.msg) wrap.appendChild(el('p', 'note', fixUi.msg));
+  const n = store.sameType(app);
+  wrap.appendChild(el('p', 'hint',
+    '자료가 틀렸으면 여기서 고쳐 적어 주세요. 고친 값은 출처가 「선생님 고침」으로 바뀌고'
+    + ' 보드 · 탐색 · 학생 화면에도 같이 갑니다.'
+    + ` 전형에 딸린 항목은 대학 · 세부유형 · 모집단위가 같은 지원 ${n > 1 ? `${n}장` : '모두'}에 함께 바뀌고,`
+    + ' 내 환산 등급 · 점수만 이 카드 하나에 붙습니다. 비우고 저장하면 자동 값으로 돌아갑니다.'));
+
+  let key = keys.includes(fixUi.key) ? fixUi.key : keys[0];
+  const line = el('div', 'field-in');
+  let sel = null;
+  if (keys.length > 1) {
+    sel = document.createElement('select');
+    sel.setAttribute('aria-label', '고칠 항목');
+    let group = '';
+    let og = null;
+    for (const k of keys) {
+      const item = ITEM[k];
+      if (item.group !== group) {
+        group = item.group;
+        og = document.createElement('optgroup');
+        og.label = group;
+        sel.appendChild(og);
+      }
+      const o = document.createElement('option');
+      o.value = k;
+      o.textContent = `${fixes[k] ? '✎ ' : ''}${k}${item.scope === 'app' ? ' (이 카드만)' : ''}`;
+      og.appendChild(o);
+    }
+    sel.value = key;
+    line.appendChild(sel);
+  }
+
+  const cur = el('p', 'hint');
+  const host = el('div', 'fix-in');
+  let input = null;
+  const draw = () => {
+    const item = ITEM[key];
+    const f = fixes[key];
+    cur.textContent = f
+      ? `지금 값: ${f.value} (선생님 고침${f.by ? ` · ${f.by}` : ''})`
+      : `지금 값: ${now[key] ? now[key] : '없음'} (자동)`;
+    host.textContent = '';
+    input = document.createElement(item.kind === 'long' ? 'textarea' : 'input');
+    if (item.kind === 'long') input.rows = 3;
+    else {
+      input.type = 'text';
+      if (item.kind === 'num') input.inputMode = 'numeric';
+      if (item.kind === 'dec') input.inputMode = 'decimal';
+    }
+    input.setAttribute('aria-label', `${key} 고쳐 적기`);
+    input.placeholder = item.ph || '';
+    // 고친 값이 있으면 그것, 없으면 지금 보이는 값을 미리 채운다 — 한두 글자만 고치면 되게
+    input.value = f ? f.value : (item.kind === 'num' || item.kind === 'dec'
+      ? (numOf(now[key]) != null ? String(numOf(now[key])) : '') : now[key] || '');
+    host.appendChild(input);
+  };
+  draw();
+  if (sel) sel.onchange = () => { key = sel.value; fixUi.key = key; fixUi.msg = ''; draw(); };
+
+  const save = el('button', 'btn btn-primary', '저장');
+  save.type = 'button';
+  save.onclick = () => { fixUi.key = key; saveFix(app, key, input.value, save); };
+  const undo = el('button', 'btn', '고침 지우기');
+  undo.type = 'button';
+  undo.onclick = () => {
+    if (!fixes[key]) { fixUi.msg = ''; draw(); return; }
+    fixUi.key = key;
+    saveFix(app, key, '', undo);
+  };
+
+  wrap.appendChild(line);
+  wrap.appendChild(cur);
+  wrap.appendChild(host);
+  const btns = el('div', 'field-in');
+  btns.appendChild(save);
+  btns.appendChild(undo);
+  wrap.appendChild(btns);
+
+  // 이 카드에 붙은 고침 한눈에
+  const have = keys.filter((k) => fixes[k]);
+  if (keys.length > 1 && have.length) {
+    const ul = el('ul', 'fix-list');
+    for (const k of have) ul.appendChild(el('li', 'hint', `${k} — ${fixes[k].value}`));
+    wrap.appendChild(ul);
+  }
+  fold.appendChild(wrap);
+  return fold;
 }
 
 /* ── 조각 ─────────────────────────────────────────────────────── */

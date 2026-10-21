@@ -1715,6 +1715,20 @@ var FIELDS = ['수험번호', '최종경쟁률', '생년월일', '면접여부']
  */
 var TEACHER_FIELDS = ['면접여부'];
 
+/*
+ * **선생님 고침 — 카드의 항목을 손으로 고친 값** (board/fix.js).
+ *
+ * 이름이 `고침:` 으로 시작한다(`고침:수능최저`, `고침:70컷` …). 항목이 스물 남짓이라
+ * FIELDS 에 하나씩 적지 않고 머리말로 받는다 — 보드가 항목을 더해도 여기를 다시
+ * 배포하지 않아도 된다. **선생님만 적는다** — 학생 경로에서 오면 막는다.
+ *
+ * 전형 단위 고침(최저·컷처럼 학생과 상관없는 사실)은 hak 칸이 `*`, id 칸이
+ * `전형|대학|세부유형|모집단위` 다. 같은 전형을 쓴 학생 카드에 다 같이 붙는다.
+ */
+var FIX_PREFIX = '고침:';
+var FIX_HAK = '*';
+function isFix_(field) { return String(field || '').indexOf(FIX_PREFIX) === 0; }
+
 /* ===== 마감(★) =======================================================
  * 원서는 카드 단위로 낸다. 낸 카드는 그 자리가 사실이 되고, 그 뒤에 누가 옮기면
  * 대장·보고서·면접 일정이 낸 원서와 어긋난다. 그래서 **카드마다** 마감 표시를
@@ -1774,10 +1788,12 @@ function lockedReply_(row, what) {
  */
 function setField_(p, who, status) {
   var field = String(p.field || '').trim();
-  if (FIELDS.indexOf(field) < 0) return { ok: false, error: '모르는 칸입니다: ' + field };
-  if (status === 'student' && TEACHER_FIELDS.indexOf(field) >= 0) {
+  var fix = isFix_(field) && field.length > FIX_PREFIX.length;
+  if (!fix && FIELDS.indexOf(field) < 0) return { ok: false, error: '모르는 칸입니다: ' + field };
+  if (status === 'student' && (fix || TEACHER_FIELDS.indexOf(field) >= 0)) {
     return { ok: false, error: '선생님만 고칠 수 있는 칸입니다: ' + field };
   }
+  if (String(p.hak || '') === FIX_HAK && !fix) return { ok: false, error: '학번이 필요합니다.' };
   if (!p.hak) return { ok: false, error: '학번이 필요합니다.' };
   var id = field === '생년월일' ? '' : String(p.id || '');
   if (field !== '생년월일' && !id) return { ok: false, error: 'id 가 필요합니다.' };
@@ -1930,7 +1946,12 @@ function studentView_(token, lite) {
      * 입력 탭은 핵심에 든다 — 마감(★)과 면접여부가 카드의 모양(고르개 잠김·날짜
      * 칸·꼬리표)을 정하는 값이라, 뒤에 오면 카드가 한 번 바뀌어 보인다.
      */
-    fields: rows_(SHEET.field).filter(function (r) { return String(r.hak) === hak; }),
+    fields: rows_(SHEET.field).filter(function (r) {
+      return String(r.hak) === hak || (String(r.hak) === FIX_HAK && isFix_(r.field));
+    }).map(function (r) {
+      // 전형 단위 고침은 학번이 안 붙은 사실이라 통째로 줘도 된다. 누가 고쳤는지(메일)만 뺀다.
+      return String(r.hak) === FIX_HAK ? { id: r.id, hak: r.hak, field: r.field, value: r.value, status: r.status } : r;
+    }),
     // 원본을 캐시에서 읽었나 — ?t=1 이 「캐시 미스」를 가려 볼 수 있게
     cached: Boolean(parsed.cached),
     // 핵심만 보낸 응답이라는 표시 — 화면이 나머지(studentRest)를 기다린다

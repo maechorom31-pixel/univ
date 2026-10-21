@@ -23,6 +23,7 @@ import {
 } from './match.js';
 import { josa, rate1, typedRateText, isoDay, minReqShort, methodLine, interviewShare, hasInterview, forcedInterview } from './text.js';
 import { suneungDday } from './keydates.js';
+import { applyFixes, fixesOf, minReqOf, minReqPill, myScoreOf } from './fix.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';
@@ -284,7 +285,9 @@ function summaryOf(app) {
         + ` — ${to.slice(0, 3).join(' · ')}${to.length > 3 ? ' 외' : ''}`;
     }
   }
-  const out = summarize(l, app);
+  // 선생님 고침(board/fix.js)을 덮는다 — 교사 화면 store.summary 와 같은 규칙
+  const raw = summarize(l, app);
+  const out = raw ? applyFixes(raw, fixesOf(app, (id, hak, field) => state.fields.get(`${id}|${field}`) || null)) : raw;
   summaryCache.set(app.id, out);
   return out;
 }
@@ -781,7 +784,7 @@ const pairOf = (app) => {
  */
 function slotFigures(box, app, brief) {
   const s = summaryOf(app);
-  const mine = app.myScore || {};
+  const mine = myScoreOf(app, s);
   const fig = el('div', 'slot-fig');
   const put = (k, v) => {
     if (v == null) return;
@@ -799,10 +802,10 @@ function slotFigures(box, app, brief) {
     if (title) p.title = title;
     pills.appendChild(p);
   };
-  const minTxt = app.minReqText || (s && s.mojip && s.mojip.minReq) || '';
-  if (minTxt || app.minReq === true) {
-    const short = minReqShort(minTxt);
-    pin(short ? `최저 ${short}` : '최저 있음', 'mark', minTxt);
+  {
+    const m = minReqOf(app, s);
+    const label = minReqPill(m, minReqShort);
+    if (label) pin(label, 'mark', m.text || (m.ref || m.conflict ? '담임 선생님과 모집요강을 같이 확인해 주세요.' : ''));
   }
   // 선생님이 못박아 둔 값이 먼저다 — 교사 보드 꼬리표와 같은 규칙.
   const ivYes = hasInterviewOf(app);
@@ -1210,7 +1213,7 @@ function figures(app) {
   const s = summaryOf(app);
   const naesin = (state.student && state.student.naesin) || {};
   const total = g2(naesin['전교과'] ?? naesin['전교과(100)']);
-  const mine = app.myScore || {};
+  const mine = myScoreOf(app, s);
 
   const wrap = el('div', 'figs');
   const group = (title, list) => {
@@ -1322,11 +1325,13 @@ function marks(app) {
   }
   // 관심대학 리스트는 기준 글 없이 Y/N 만 준다 — 그때도 표시가 나와야 한다.
   // 기준을 줄일 수 있으면 숫자로 말한다(「최저 3합 12」). 못 줄이면 예전 그대로.
-  if (app.minReqText || app.minReq === true) {
-    const txt = app.minReqText || (s && s.mojip && s.mojip.minReq) || '';
-    const short = minReqShort(txt);
-    const pill = add(short ? `최저 ${short}` : '수능 최저 있음', 'mark');
-    if (txt) pill.title = String(txt);
+  {
+    const m = minReqOf(app, s);
+    const label = minReqPill(m, minReqShort);
+    if (label) {
+      const pill = add(label === '최저 있음' ? '수능 최저 있음' : label, 'mark');
+      if (m.text) pill.title = String(m.text);
+    }
   }
   /*
    * 올해 처음 뽑는 전형. 학생에게는 이게 제일 헷갈리는 자리다 —
@@ -2277,9 +2282,21 @@ function openDetail(app) {
   }
 
   /* 수능최저 · 지원자격 — 원문 그대로. 요약하면 조건이 하나씩 빠진다. */
-  const minText = app.minReqText || (mo && mo.minReq) || '';
-  if (minText) block('수능 최저학력 기준', el('p', 'longtext', String(minText).replace(/^\s*\*\s*/, '')));
-  else if (app.minReq === false) block('수능 최저학력 기준', el('p', 'hint', '이 전형은 수능 최저가 없습니다.'));
+  const mn = minReqOf(app, s);
+  if (mn.text) {
+    const wrap = el('div');
+    wrap.appendChild(el('p', 'longtext', String(mn.text).replace(/^\s*\*\s*/, '')));
+    if (mn.fixed) wrap.appendChild(el('p', 'hint', '담임 선생님이 확인해 고친 기준입니다.'));
+    if (mn.conflict) {
+      wrap.appendChild(el('p', 'hint',
+        '관심대학 리스트에는 최저가 없다고 되어 있어 자료끼리 다릅니다. 담임 선생님과 모집요강을 같이 확인해 주세요.'));
+    }
+    block('수능 최저학력 기준', wrap);
+  } else if (mn.has === false) block('수능 최저학력 기준', el('p', 'hint', '이 전형은 수능 최저가 없습니다.'));
+  else if (mn.ref || mn.has === true) {
+    block('수능 최저학력 기준', el('p', 'hint',
+      '이 전형의 최저 기준을 자료에서 정확히 찾지 못했습니다. 담임 선생님과 모집요강을 같이 확인해 주세요.'));
+  }
   if (mo && (mo.refMain || mo.refCareer)) {
     const rf = el('div');
     if (mo.refMain) rf.appendChild(el('p', 'longtext', `공통·일반선택 — ${mo.refMain}`));

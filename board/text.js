@@ -139,7 +139,16 @@ export function minReqShort(text) {
     ...[...t.matchAll(MIN_ONE)].map((m) => `${m[1]}개 ${m[2]}등급`),
   ];
   const uniq = [...new Set(hits)];
-  return uniq.length === 1 ? uniq[0] : null;
+  if (uniq.length !== 1) return null;
+  /*
+   * **단서로 붙은 다른 합도 본다.** 「2개 영역 등급합 7 이내. 단, 확률과 통계 응시자는
+   * 등급합 4 이내」·「합 8 이내(과학탐구 1과목 응시 시 합 9 이내)」처럼 「N개」 없이
+   * 붙은 합은 위 식에 안 걸린다. 그대로 「2합 7」로 줄이면 확통 응시자에게 틀린 말이
+   * 된다. 다른 합이 하나라도 보이면 줄이지 않는다 — 원문은 상세에 있다.
+   */
+  const m = uniq[0].match(/합 (\d+)$/);
+  if (m && [...t.matchAll(/합(?:이)?\s*([0-9]{1,2})/g)].some((x) => x[1] !== m[1])) return null;
+  return uniq[0];
 }
 
 /**
@@ -155,6 +164,8 @@ export function minReqShort(text) {
  * 미표기보다 나쁘다.
  */
 export function methodLine(mo) {
+  // 선생님이 고쳐 적은 줄이 있으면 그대로 쓴다 (board/fix.js)
+  if (mo && mo.methodFix) return String(mo.methodFix);
   if (!mo || !mo.method1) return null;
   const m1 = String(mo.method1).trim();
   if (!((mo.stages || 1) > 1)) return `일괄 · ${m1}`;

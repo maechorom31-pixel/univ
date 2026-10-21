@@ -12,6 +12,7 @@
 import * as store from './store.js';
 import { fillTrend } from './match.js';
 import { rate1, minReqShort } from './text.js';
+import { minReqOf as fixMin } from './fix.js';
 import { fitCurve, density, percentile, pctText } from './confidence.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -98,7 +99,8 @@ function deptDetail({ list, order }) {
       const sum = store.summary(app) || {};
       const mo = sum.mojip;
       const ft = fillTrend(mo);
-      const minTxt = app.minReqText || (mo && mo.minReq) || '';
+      const mn = fixMin(app, sum);
+      const minTxt = mn.text;
       const tr = document.createElement('tr');
       tr.appendChild(el('th', 'rowhead', t));
       tr.appendChild(el('td', 'num', sum.quotaNow != null ? `${sum.quotaNow}명` : '—'));
@@ -108,7 +110,8 @@ function deptDetail({ list, order }) {
       tr.appendChild(el('td', 'num', sum.cut != null ? `${g2(sum.cut)}${yr}` : '—'));
       tr.appendChild(el('td', 'num', sum.cut50 != null ? g2(sum.cut50) : '—'));
       const short = minReqShort(minTxt);
-      const minCell = el('td', '', short || (minTxt ? '있음' : (app.minReq === false ? '없음' : '—')));
+      const minCell = el('td', '', mn.conflict ? '확인'
+        : short || (minTxt ? '있음' : mn.has === false ? '없음' : mn.ref ? '확인' : '—'));
       if (minTxt) minCell.title = String(minTxt);
       tr.appendChild(minCell);
       tr.appendChild(el('td', 'num', ft.length && ft[0].fillPct != null ? `${ft[0].fillPct}%` : '—'));

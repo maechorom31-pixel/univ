@@ -14,6 +14,7 @@
  * 기계가 고르면 반드시 몇 개를 틀리고, 틀린 값은 화면 어디에도 「틀렸다」고 안 적힌다.
  */
 import * as store from './store.js';
+import { typeKey } from './fix.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -60,6 +61,7 @@ function render() {
   main.appendChild(head);
 
   if (notice) main.appendChild(el('p', 'note', notice));
+  main.appendChild(minPanel(cls));
   main.appendChild(dupePanel());
 
   if (!groups.length) {
@@ -180,6 +182,65 @@ function dupePanel() {
   }
   box.appendChild(list);
   box.appendChild(copyDupes(dupes));
+  return box;
+}
+
+/*
+ * **수능최저 점검 — 기계가 확신하지 못한 최저를 모아 보여 준다.**
+ *
+ * 최저 글은 셋 가운데 하나에서 온다(즐겨찾기 원문 → 모집요강). 모집요강은 한
+ * 학과에 전형이 여럿이고 최저도 전형마다 달라서(5,922개 학과 중 2,804곳),
+ * 전형 이름을 못 맞추면 옆 전형의 최저가 붙을 수 있다. 그런 카드와, 자료끼리
+ * 말이 다른 카드를 전형마다 한 줄로 묶는다. 고치는 곳은 카드 상세의
+ * 「수능 최저 고치기」 — 한 번 고치면 같은 전형의 카드가 다 같이 바뀐다.
+ */
+function minPanel(cls) {
+  const box = el('div');
+  const why = new Map();      // 전형 열쇠 → {app, n, reason}
+  let fixedN = 0;
+  for (const st of store.studentsOf(cls)) {
+    for (const app of store.appsOf(st.hak)) {
+      const m = store.minReqOf(app);
+      if (m.fixed) { fixedN += 1; continue; }
+      const reason = m.conflict
+        ? '관심대학 리스트는 최저 「없음」인데 모집요강에는 기준이 있습니다'
+        : m.ref && m.has !== false
+          ? `모집요강에서 이 전형 줄을 못 찾았습니다 — 「${m.ref.type}」 전형의 최저만 있습니다`
+          : m.has === true && !m.text
+            ? '최저가 있다고만 되어 있고 기준 글이 없습니다'
+            : '';
+      if (!reason) continue;
+      const k = typeKey(app);
+      if (!why.has(k)) why.set(k, { app, n: 0, reason });
+      why.get(k).n += 1;
+    }
+  }
+  if (!why.size) return box;
+
+  const head = el('div', 'panel-head');
+  head.appendChild(el('h2', '', '수능 최저 점검'));
+  head.appendChild(el('span', 'count num', `${why.size}개 전형`));
+  box.appendChild(head);
+  box.appendChild(el('p', 'section-html section-label',
+    '자료만으로는 최저가 맞는지 확신할 수 없는 전형입니다. 카드를 열어 모집요강과 견주고,'
+    + ' 「수능 최저 고치기」에서 맞는 기준을 적어 주세요(없으면 「없음」).'
+    + ' 한 번 고치면 같은 전형으로 지원한 카드가 다 같이 바뀌고 이 목록에서 빠집니다.'
+    + (fixedN ? ` 지금까지 선생님이 고친 카드 ${fixedN}장.` : '')));
+
+  const list = el('ul', 'roster dupe-list');
+  const items = [...why.values()].sort((a, b) => String(a.app.univ).localeCompare(String(b.app.univ), 'ko'));
+  for (const { app, n, reason } of items) {
+    const li = el('li');
+    const b = el('button', 'btn', '카드 열기');
+    b.type = 'button';
+    b.onclick = () => store.select({ hak: app.hak, appId: app.id });
+    li.appendChild(el('b', '', `${shortUniv(app.univ)} ${app.dept}`
+      + `${app.typeSub || app.typeName ? ` · ${app.typeSub || app.typeName}` : ''}${n > 1 ? ` (${n}장)` : ''}`));
+    li.appendChild(el('p', 'hint', reason));
+    li.appendChild(b);
+    list.appendChild(li);
+  }
+  box.appendChild(list);
   return box;
 }
 

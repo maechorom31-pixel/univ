@@ -22,6 +22,7 @@ import {
 } from './match.js';
 import { isoDay, hasInterview, forcedInterview } from './text.js';
 import { indexRatio, rateOf } from './ratio.js';
+import * as fix from './fix.js';
 
 const listeners = new Map();
 
@@ -379,7 +380,10 @@ export function wholeGrade(student) {
 }
 
 export function gradeOf(app) {
-  const conv = app && app.myScore ? Number(app.myScore.grade) : NaN;
+  // 선생님이 고쳐 적은 환산 등급이 먼저다 (board/fix.js)
+  const fixed = app && app.id ? fixesOf(app)['내환산등급'] : null;
+  const conv = fixed ? fix.numOf(fixed.value)
+    : app && app.myScore ? Number(app.myScore.grade) : NaN;
   if (Number.isFinite(conv) && conv > 0) return { value: conv, scale: '환산' };
   const whole = wholeGrade(state.students.get(String(app && app.hak)));
   if (whole != null) return { value: whole, scale: '전교과' };
@@ -574,7 +578,60 @@ export async function removeAlias(univ, dept) {
 
 /** 카드에 얹을 요약. 모양은 match.js 의 summarize() 가 정한다. */
 export function summary(app) {
-  return summarize(link(app), app);
+  const s = summarize(link(app), app);
+  return s ? fix.applyFixes(s, fixesOf(app)) : s;
+}
+
+/* ── 선생님 고침 (board/fix.js) ────────────────────────────────────
+ * 카드의 모든 항목을 손으로 고친다. 입력 탭에 `고침:항목` 으로 남는다.
+ * 전형 단위 고침은 hak 칸이 `*` 이고 id 칸이 전형 열쇠다 — 같은 전형을 쓴
+ * 학생 카드가 다 같이 바뀐다.
+ */
+const fieldRow = (id, hak, field) => state.fields.get(`${id}|${hak}|${field}`) || null;
+
+/** 이 지원에 붙은 고침 전부 — `{ 항목: {value, by, at} }` */
+export function fixesOf(app) {
+  return fix.fixesOf(app, fieldRow);
+}
+
+/** 이 지원의 수능최저 — 고침 · 즐겨찾기 · 모집요강 차례. 화면들이 같이 쓴다. */
+export function minReqOf(app) {
+  return fix.minReqOf(app, summary(app));
+}
+
+/** 같은 전형 열쇠를 쓰는 지원 수 — 「이 전형을 쓴 학생 N명에게 함께 바뀝니다」 */
+export function sameType(app) {
+  const k = fix.typeKey(app);
+  let n = 0;
+  for (const a of state.apps.values()) if (fix.typeKey(a) === k) n += 1;
+  return n;
+}
+
+/**
+ * 고침을 적는다. **빈 값이면 지운다** — 자동 값으로 돌아간다.
+ * 화면을 먼저 바꾸고 서버에 보낸다. 실패하면 되돌린다.
+ */
+export async function setFix(app, key, value) {
+  const at = fix.slotOf(app, key);
+  if (!at) throw new Error(`모르는 항목입니다: ${key}`);
+  const ok = fix.check(key, value);
+  if (!ok.ok) throw new Error(ok.error);
+  const mapKey = `${at.id}|${at.hak}|${at.field}`;
+  const before = new Map(state.fields);
+  if (ok.value) {
+    state.fields.set(mapKey, {
+      value: ok.value, status: 'confirmed', by: state.who || '', at: new Date().toISOString(),
+    });
+  } else state.fields.delete(mapKey);
+  emit('change', 'state');
+  if (offline) return;
+  try {
+    await api.call('setField', { id: at.id, hak: at.hak, field: at.field, value: ok.value });
+  } catch (err) {
+    state.fields = before;
+    emit('change', 'state');
+    throw err;
+  }
 }
 
 /*
