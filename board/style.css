@@ -717,6 +717,16 @@ body.student .fold-row > summary, body.student .date-add > summary { min-height:
   width: 100%;
 }
 .field-in .btn { min-height: 44px; }
+/* 선생님 고침 — 고르개 · 적는 칸. 최저·자격처럼 긴 글은 여러 줄 칸이다. */
+.fix-panel select, .fix-in input, .fix-in textarea {
+  font: inherit; font-size: 16px;
+  padding: var(--s2) var(--s3); min-height: 44px;
+  border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface);
+  width: 100%; box-sizing: border-box;
+}
+.fix-in textarea { resize: vertical; line-height: 1.5; }
+.fix-list { margin: var(--s1) 0 0; padding-left: var(--s4); }
+.src-line { margin: var(--s1) 0 0; font-size: var(--t-xs); color: var(--muted); }
 /*
  * 곁단추 — 「이 전형은 면접이 없습니다」처럼 그 칸의 주된 일(날짜 넣기)이 아닌 것.
  * `.field` 가 격자라 그냥 두면 폭을 가득 채워 주된 단추처럼 보인다.
@@ -1362,7 +1372,7 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
   .detail-body { padding: 0; overflow: visible; }
   .detail-block, .tw, .tw table { break-inside: auto; page-break-inside: auto; }
   .tw { overflow: visible; }
-  .tw td.src, .memo-new, .res-bar .btn { display: none; }
+  .tw td.src, .memo-new, .res-bar .btn, .fix-panel { display: none; }
   .res-f select, .res-f input { border: 0; padding: 0; min-height: 0; font-size: 9pt; }
   .rowhead, .longtext, .memo-foot { color: #000; }
   .longtext { background: none; }
