@@ -37,7 +37,7 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-10-27';
+var CODE_VER = '2026-10-28';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
@@ -51,6 +51,7 @@ var SHEET = {
   share:   '공유',      // 학생별 토큰
   alias:   '별칭',      // 못 붙인 학과를 손으로 이어 준 것
   field:   '입력',      // 원서를 낸 뒤에 채워지는 칸 (수험번호·최종경쟁률·생년월일)
+  extra:   '추가지원',  // 즐겨찾기에 없는 지원을 손으로 더한 것 (전문대가 대부분)
   log:     '기록'
 };
 
@@ -78,6 +79,15 @@ var HEADERS = {
    * status: 'student' 학생이 적음 · 'confirmed' 선생님이 확인함 — 일정과 같다.
    */
   입력:  ['id', 'hak', 'field', 'value', 'status', 'by', 'at'],
+  /*
+   * 즐겨찾기에 없는 지원 — 전문대는 즐겨찾기를 안 거치고 내는 일이 많다.
+   * id 는 즐겨찾기 줄과 **같은 식**(학번·대학·전형·학과)으로 만든다. 나중에 즐겨찾기에
+   * 같은 지원이 들어오면 두 줄이 한 id 가 되어, 그동안 적은 결과·날짜·순위가 그대로 붙는다.
+   * interview: '있음'·'없음'·'' — 전문대는 면접 여부를 자료가 모른다. 일정 추천이 이것을 본다.
+   * status: 'student' 학생이 더함 · 'confirmed' 선생님이 더했거나 확인함 · 'removed' 뺌
+   */
+  추가지원: ['id', 'hak', 'univType', 'univ', 'dept', 'typeCat', 'typeSub', 'track', 'region',
+             'interview', 'status', 'by', 'at'],
   기록:  ['at', 'who', 'action', 'detail']
 };
 
@@ -246,6 +256,9 @@ function handle_(p) {
     case 'setLock':    return setLock_(p.hak, p.id, String(p.on || '') === '1', who);
     case 'setAlias':   return setAlias_(p, who);
     case 'removeAlias': return removeAlias_(p, who);
+    case 'addApp':     return addApp_(p, p.hak, who, 'confirmed');
+    case 'removeApp':  return removeApp_(p, '', who);
+    case 'approveApp': return approveApp_(p, who);
     default:           return { ok: false, error: '알 수 없는 요청입니다: ' + action };
   }
 }
@@ -1285,7 +1298,7 @@ function loadAll_(me, fresh) {
     sourceSheet: sp.srcName, sourceKnown: sp.known,
     sourceBook: sp.bookName,
     sourceWarn: sp.warn,
-    students: sp.students, apps: sp.apps,
+    students: sp.students, apps: appsWith_(sp.apps, fresh),
     unknownCols: sp.unknownCols, skipped: sp.skipped,
     dropped: sp.dropped,
     // 머리글을 못 찾았으면 왜인지 — 조용히 「0명」이 되지 않게 한다
@@ -1545,17 +1558,130 @@ function hakOfToken_(token) {
 /** 그 지원이 정말 이 학생 것인지 확인한다. 남의 것을 고치지 못하게. */
 function ownsApp_(hak, id) {
   var parsed = sourceParsed_();   // 캐시 사용 — 지원 목록은 엑셀을 갈 때만 바뀐다
-  for (var i = 0; i < parsed.apps.length; i++) {
-    if (parsed.apps[i].id === String(id)) return parsed.apps[i].hak === hak;
+  // 손으로 더한 지원도 제 것이다 — 안 그러면 더한 지원에 결과·날짜를 못 적는다
+  var all = appsWith_(parsed.apps);
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].id === String(id)) return all[i].hak === hak;
   }
   return false;
+}
+
+/* ===== 손으로 더한 지원 (추가지원 탭) ================================= */
+
+var UNIV_TYPES = { '일반대': 1, '전문대': 1, '특수대': 1 };
+
+/** 추가지원 줄 → 지원 레코드. 즐겨찾기 줄과 같은 모양에 manual 표시만 더한다. */
+function extraApp_(r) {
+  return {
+    id: String(r.id), hak: String(r.hak),
+    univType: String(r.univType || '일반대'), region: String(r.region || ''), univ: String(r.univ),
+    period: '수시', typeCat: String(r.typeCat || ''), typeName: String(r.typeSub || ''),
+    typeSub: String(r.typeSub || ''), track: String(r.track || ''), dept: String(r.dept),
+    quotaText: '', quota: null, selectType: '', minReqText: '', minReq: null, stage1Rule: '',
+    myScore: null, dates: {},
+    result: { stage1: null, final: null, reason: null, waitNo: null, enrolled: null },
+    unknown: {},
+    manual: true, interview: String(r.interview || ''),
+    addedStatus: String(r.status || ''), addedBy: String(r.by || ''), addedAt: String(r.at || '')
+  };
+}
+
+/**
+ * 즐겨찾기 지원 + 손으로 더한 지원. **같은 id 면 즐겨찾기가 이긴다** — 나중에 즐겨찾기에
+ * 들어온 것이니 그쪽 자료(모집인원·내 등급)가 더 많다. 그래도 id 가 같아 적은 것은 안 잃는다.
+ */
+function appsWith_(apps, fresh) {
+  var seen = {};
+  for (var i = 0; i < apps.length; i++) seen[apps[i].id] = true;
+  var out = apps.slice();
+  var extra = rows_(SHEET.extra, fresh);
+  for (var j = 0; j < extra.length; j++) {
+    var r = extra[j];
+    if (String(r.status) === 'removed' || !r.id || seen[String(r.id)]) continue;
+    seen[String(r.id)] = true;
+    out.push(extraApp_(r));
+  }
+  return out;
+}
+
+/**
+ * 지원 하나를 더한다. 선생님은 hak 을 보내고, 학생 경로는 토큰의 학번을 넘긴다
+ * (클라이언트가 보낸 hak 은 믿지 않는다).
+ */
+function addApp_(p, hak, who, status) {
+  hak = String(hak || '').trim();
+  var univ = String(p.univ || '').trim(), dept = String(p.dept || '').trim();
+  var typeSub = String(p.typeSub || '').trim();
+  var univType = UNIV_TYPES[String(p.univType || '')] ? String(p.univType) : '일반대';
+  if (!hak) return { ok: false, error: '학번이 필요합니다.' };
+  if (!univ || !dept) return { ok: false, error: '대학과 학과(모집단위)를 적어 주세요.' };
+  if (univ.length > 40 || dept.length > 60 || typeSub.length > 60) {
+    return { ok: false, error: '이름이 너무 깁니다.' };
+  }
+  var parsed = sourceParsed_();
+  var known = false;
+  for (var s = 0; s < parsed.students.length; s++) if (parsed.students[s].hak === hak) known = true;
+  if (!known) return { ok: false, error: '명단에 없는 학번입니다: ' + hak };
+  var id = appId_({ hak: hak, univ: univ, typeSub: typeSub, dept: dept });
+  var all = appsWith_(parsed.apps, true);
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].id === id) return { ok: false, error: '이미 있는 지원입니다 — ' + univ + ' ' + dept };
+  }
+  var interview = String(p.interview || '');
+  var row = {
+    id: id, hak: hak, univType: univType, univ: univ, dept: dept,
+    typeCat: String(p.typeCat || '').slice(0, 30), typeSub: typeSub,
+    track: String(p.track || '').slice(0, 10), region: String(p.region || '').slice(0, 10),
+    interview: interview === '있음' || interview === '없음' ? interview : '',
+    status: status, by: who, at: now_()
+  };
+  upsert_(SHEET.extra, ['id'], row);
+  /*
+   * 자리도 바로 잡는다 — 전문대·특수대는 6회 밖이라 「지원」(tray), 일반대는 후보(pool).
+   * 일반대를 6칸 중 어디에 둘지는 사람이 정한다(이미 여섯이 찼을 수 있다).
+   */
+  var slot = univType === '일반대' ? 'pool' : 'tray';
+  var placed = setRank_({ id: id, hak: hak, slot: slot }, who);
+  log_(who, 'addApp', hak + ' ' + univ + ' ' + dept);
+  // at — 화면이 「마지막으로 본 배치 시각」을 이걸로 올린다. 안 그러면 다음 순위 옮기기가
+  // 「그 사이에 바뀌었습니다」로 거절된다(배치 줄을 방금 이 요청이 썼으니까).
+  return { ok: true, app: extraApp_(row), slot: slot, at: (placed && placed.at) || '' };
+}
+
+/** 손으로 더한 지원을 뺀다. 학생은 **제가 더한 것만** 뺀다. 줄은 지우지 않고 removed 로 둔다. */
+function removeApp_(p, studentHak, who) {
+  var rows = rows_(SHEET.extra, true), hit = null;
+  for (var i = 0; i < rows.length; i++) if (String(rows[i].id) === String(p.id)) hit = rows[i];
+  if (!hit || String(hit.status) === 'removed') return { ok: false, error: '손으로 더한 지원이 아닙니다 — 즐겨찾기 지원은 시트에서 정리해 주세요.' };
+  if (studentHak) {
+    if (String(hit.hak) !== studentHak) return { ok: false, error: '본인 지원 내역이 아닙니다.' };
+    if (String(hit.status) !== 'student') return { ok: false, error: '선생님이 확인한 지원은 선생님께 말씀드려 빼 주세요.' };
+  }
+  var row = {};
+  for (var k in hit) if (k !== '_row') row[k] = hit[k];
+  row.status = 'removed'; row.by = who; row.at = now_();
+  upsert_(SHEET.extra, ['id'], row);
+  log_(who, 'removeApp', hit.hak + ' ' + hit.univ + ' ' + hit.dept);
+  return { ok: true };
+}
+
+/** 학생이 더한 지원을 선생님이 확인한다. */
+function approveApp_(p, who) {
+  var rows = rows_(SHEET.extra, true), hit = null;
+  for (var i = 0; i < rows.length; i++) if (String(rows[i].id) === String(p.id)) hit = rows[i];
+  if (!hit || String(hit.status) === 'removed') return { ok: false, error: '확인할 지원이 없습니다.' };
+  var row = {};
+  for (var k in hit) if (k !== '_row') row[k] = hit[k];
+  row.status = 'confirmed'; row.by = who; row.at = now_();
+  upsert_(SHEET.extra, ['id'], row);
+  return { ok: true };
 }
 
 /** 토큰으로 여는 경로. 여기 적힌 것만 학생이 부를 수 있다. */
 var STUDENT_ACTION = {
   student: 1, studentDate: 1, studentApplyNo: 1, studentField: 1, studentResult: 1,
   studentNote: 1, studentNoteRemove: 1, studentAsk: 1, studentRank: 1, studentLock: 1,
-  studentRest: 1
+  studentRest: 1, studentAddApp: 1, studentRemoveApp: 1
 };
 
 function studentAction_(action, p) {
@@ -1572,6 +1698,8 @@ function studentAction_(action, p) {
    * **학생이 생년월일을 저장할 길이 아예 없었다.**
    */
   var birthOnly = action === 'studentField' && String(p.field || '').trim() === '생년월일';
+  // 지원 더하기는 아직 id 가 없다 — 학번은 토큰에서 온 것만 쓴다
+  if (action === 'studentAddApp') return addApp_(p, hak, hak + ' 학생', 'student');
   if (!birthOnly && (!p.id || !ownsApp_(hak, p.id))) {
     return { ok: false, error: '본인 지원 내역이 아닙니다.' };
   }
@@ -1585,6 +1713,7 @@ function studentAction_(action, p) {
    * 바꾸면 그만이다. 확인을 걸면 학생은 「바꿨는데 안 바뀐다」고 읽는다.
    * 누가 바꿨는지는 `by` 에 「3201 학생」으로 남아 담임이 안다.
    */
+  if (action === 'studentRemoveApp') return removeApp_(p, hak, who);
   if (action === 'studentRank') return setRank_({ id: p.id, hak: hak, slot: p.slot, rank: p.rank, pair: p.pair, seen: p.seen }, who);
   // 카드의 「★ 확정」 — 학생이 제 카드에 마감을 건다. 푸는 것은 담임뿐이라 켜기만 받는다.
   if (action === 'studentLock') return setLock_(hak, p.id, true, who);
@@ -1943,10 +2072,11 @@ function studentView_(token, lite) {
     }
   }
 
-  var live = lite ? {} : studentLive_(hak, me.apps);
+  var myApps = appsWith_(parsed.apps).filter(function (a) { return a.hak === hak; });
+  var live = lite ? {} : studentLive_(hak, myApps.map(function (a) { return a.id; }));
   var out = {
     ok: true, hak: hak, student: me,
-    apps: parsed.apps.filter(function (a) { return a.hak === hak; }),
+    apps: myApps,
     state: rows_(SHEET.state).filter(function (r) { return String(r.hak) === hak; }),
     /*
      * 별칭(선생님이 손으로 이어 준 학과)도 준다. 안 주면 같은 지원이
@@ -2010,7 +2140,9 @@ function studentRest_(token) {
   for (var i = 0; i < parsed.students.length; i++) {
     if (parsed.students[i].hak === hak) { me = parsed.students[i]; break; }
   }
-  var out = studentLive_(hak, me ? me.apps : []);
+  var ids = appsWith_(parsed.apps).filter(function (a) { return a.hak === hak; })
+    .map(function (a) { return a.id; });
+  var out = studentLive_(hak, ids);
   out.ok = true; out.hak = hak;
   return out;
 }

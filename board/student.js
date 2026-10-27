@@ -19,8 +19,9 @@ import * as api from './api.js';
 import {
   link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule, indexAnnounce, paperFor, examFor,
   summarize, catOf, examDate, splitDepts, referenceLine, resolveUniv,
-  fillTrend, outsideLimit, isGuessedFit, buildUnivIndex,
+  fillTrend, outsideLimit, isGuessedFit, buildUnivIndex, recommendSchedule,
 } from './match.js';
+import { openAddApp, lists as addLists, draftApp } from './addapp.js';
 import { josa, rate1, typedRateText, isoDay, minReqShort, methodLine, interviewShare, hasInterview, forcedInterview } from './text.js';
 import { suneungDday, KEY_DATES } from './keydates.js';
 import {
@@ -313,7 +314,8 @@ function summaryOf(app) {
  */
 function interviewForce(app) {
   const row = state.fields.get(`${app.id}|면접여부`);
-  return forcedInterview(row && row.value);
+  // 손으로 더한 지원은 더할 때 고른 「면접 있음/없음」을 같이 갖고 온다(추가지원 탭). 선생님 칸이 먼저다.
+  return forcedInterview(row && row.value) || forcedInterview(app && app.interview);
 }
 
 function hasInterviewOf(app) {
@@ -357,13 +359,107 @@ function scheduleOpt(app) {
   const mo = s && s.mojip;
   const hasMin = minReqOf(app, s).has;   // 고침 · 즐겨찾기 · 모집요강 — 선생님 화면과 같은 판단
   const force = interviewForce(app);
-  const college = s && s.kind === 'college' && s.rows && s.rows[0];
+  /*
+   * 전문대 차수 — 선생님이 카드에서 고친 「모집시기」(수시1차·2차)로만 안다. 예전에는 입결의
+   * 차수를 보려 했는데(경로가 틀려 늘 비었다) 그건 **작년 입결이 어느 차수 것인가**라서,
+   * 2차에 낸 학생에게 1차 발표일을 줄 수 있다. 전형 이름에 「1차/2차」가 있으면 그쪽이
+   * 먼저다(match.js collegeRound).
+   */
+  const when = String(((fixesOf(app, (id, hak, field) => state.fields.get(`${id}|${field}`) || null))['모집시기'] || {}).value || '');
   return {
     hasMin,
     stages: force === '없음' ? 1 : (s && s.stages) || null,
     interview: hasInterview(mo, s && s.stages, force),
-    phase: college && college.ipgyeol ? college.ipgyeol.phase || null : null,
+    phase: /2\s*차/.test(when) ? '수시2차' : /1\s*차/.test(when) ? '수시1차' : null,
   };
+}
+
+/* ── 지원 더하기 (board/addapp.js) ─────────────────────────────────
+ * 관심대학 목록에 없는 지원 — 대개 전문대. 더하면 「추가지원」 탭에 남고 선생님 화면에도
+ * 「학생이 더함」으로 뜬다. 일정은 더하기 전에 미리 보여 준다(선생님 화면과 같은 함수).
+ */
+function addBar() {
+  const bar = el('div', 'add-bar');
+  const btn = el('button', 'btn', '+ 지원 더하기');
+  btn.type = 'button';
+  btn.disabled = state.busy;
+  btn.onclick = () => {
+    const src = state.src || state.pubParts || {};
+    openAddApp({
+      title: '관심대학 목록에 없는 지원(전문대 등)',
+      forStudent: true,
+      list: addLists({ college: src.college, mojip: src.mojip }),
+      preview: (app) => previewSchedule(app),
+      submit: (draft) => addApp(draft),
+    });
+  };
+  bar.appendChild(btn);
+  bar.appendChild(el('span', 'hint', '전문대처럼 목록에 없는 곳에 원서를 냈다면 여기서 더해 주세요.'));
+  return bar;
+}
+
+let draftSeq = 0;
+/** 고르는 중인 지원의 일정 추천 — 카드가 쓰는 것과 같은 고르기. */
+function previewSchedule(app) {
+  const src = state.src || state.pubParts;
+  if (!src) return [];
+  const tmp = { ...app, id: `draft-${draftSeq += 1}`, hak: (state.student && state.student.hak) || '' };
+  try {
+    return recommendSchedule(tmp, src.sched, src.announce, scheduleOpt(tmp), KEY_DATES);
+  } finally {
+    summaryCache.delete(tmp.id);
+  }
+}
+
+async function addApp(draft) {
+  let app; let slot; let at = '';
+  if (offline) {
+    app = { ...draftApp((state.student && state.student.hak) || '', {}), ...draft, typeName: draft.typeSub,
+      id: `local-${Date.now()}`, addedStatus: 'student' };
+    slot = app.univType === '일반대' ? 'pool' : 'tray';
+  } else {
+    const r = await api.call('studentAddApp', { token: state.token, ...draft });
+    app = r.app; slot = r.slot; at = r.at || '';
+  }
+  state.apps = [...state.apps, app];
+  state.placement.set(String(app.id), { slot, rank: null });
+  if (at && at > state.seen) state.seen = at;
+  state.notice = `${shortUniv(app.univ)} ${app.dept} 지원을 더했습니다.`
+    + (slot === 'tray' ? ' 「전문대 지원」에 있습니다.' : ' 「그 밖의 지원」에 있습니다 — 순위를 골라 주세요.');
+  // 새 대학의 작년 숫자를 받으려면 입결 조각을 다시 고른다
+  if (app.univType !== '전문대' && state.src) { state.src = null; summaryCache.clear(); loadIpgyeol(); }
+  render();
+}
+
+/** 제가 더하고 선생님이 아직 확인 안 한 지원만 뺀다. 서버도 그렇게 막는다. */
+async function removeApp(app) {
+  if (!window.confirm(`${shortUniv(app.univ)} ${app.dept} 지원을 뺄까요?`)) return;
+  state.busy = true; render();
+  try {
+    if (!offline) await api.call('studentRemoveApp', { token: state.token, id: app.id });
+    state.apps = state.apps.filter((a) => a.id !== app.id);
+    state.placement.delete(String(app.id));
+    state.notice = `${shortUniv(app.univ)} ${app.dept} 지원을 뺐습니다.`;
+  } catch (err) {
+    state.notice = `오류: ${err.message}`;
+  } finally {
+    state.busy = false; render();
+  }
+}
+
+/** 더한 지원 표시 — 확인 전이면 뺄 수 있다. */
+function manualTag(app) {
+  const line = el('div', 'manual-tag');
+  const mine = app.addedStatus === 'student';
+  line.appendChild(el('span', mine ? 'pill mark' : 'pill', mine ? '내가 더한 지원 · 선생님 확인 전' : '더한 지원'));
+  if (mine) {
+    const drop = el('button', 'btn aside', '빼기');
+    drop.type = 'button';
+    drop.disabled = state.busy;
+    drop.onclick = () => removeApp(app);
+    line.appendChild(drop);
+  }
+  return line;
 }
 
 /** 원서 마감 · 1단계 발표 · 최종 발표 — 두 일정 자료를 합친 값. */
@@ -508,6 +604,7 @@ function render() {
     main.appendChild(group('전문대 지원', tray, `${tray.length}곳`,
       '수시 6회 제한 밖이라 순위는 없지만, 원서를 내기로 한 곳입니다.'));
   }
+  main.appendChild(addBar());
 
   /*
    * 숫자를 처음 만나는 자리에 읽는 법을 둔다.
@@ -1360,7 +1457,8 @@ function marks(app) {
         : (ivYes && force ? '면접 있음' : share != null ? `면접 ${share}%` : '');
     if (txt) {
       const p = add(txt);
-      const line = methodLine(s.mojip);
+      // 요약이 없을 수 있다 — 「면접 있음」을 고른, 자료에 안 붙은 지원(손으로 더한 전문대 등)
+      const line = methodLine(s && s.mojip);
       p.title = [force ? `면접 ${force} (선생님 확인)` : '', line].filter(Boolean).join(' · ');
     }
   }
@@ -1434,6 +1532,7 @@ function card(app) {
   head.appendChild(more);
   box.appendChild(head);
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
+  if (app.manual) box.appendChild(manualTag(app));
 
   const committed = committedOf(app);
   if (committed) box.classList.add('committed');
@@ -1851,7 +1950,7 @@ function resultRow(app, open = false) {
   const staged = isStaged(s && s.stages, interviewForce(app));
   const step = stepOf(row, staged);
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
-  const ctx = { interview: hasInterviewOf(app), cat };
+  const ctx = { interview: hasInterviewOf(app), cat, college: app.univType === '전문대' };
   const told = outcomeText(row);
 
   if (open) wrap.appendChild(el('label', '', '결과'));

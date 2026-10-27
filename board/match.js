@@ -2394,17 +2394,26 @@ const md = (iso) => iso.slice(5).replace('-', '/');
  * @return {{stage1: ?Hit, final: ?Hit, why: string}}  Hit = {from, to, fixed, clock, scope, note, why}
  *         고르지 못했으면(대학 없음·근거 없음·갈림) 그 자리가 null 이고 `why` 에 까닭.
  */
+/**
+ * 전문대의 차수 줄(수시1차·2차) — 전형 이름에 「1차/2차」가 있으면 그것, 없으면 입결의 차수(opt.phase).
+ * 둘 다 없으면 hit 이 null 이다(대학에 차수가 하나뿐이어도 고르지 않는다 — 2차를 낸 학생에게
+ * 1차 날을 주면 안 된다).
+ */
+export function collegeRound(app, idx, opt = {}) {
+  const list = (idx && idx.college.get(univStem(app.univ))) || [];
+  const text = `${app.typeSub || ''} ${app.typeName || ''} ${app.period || ''}`;
+  const round = /2\s*차/.test(text) ? '수시2차' : /1\s*차/.test(text) ? '수시1차' : opt.phase || null;
+  return { list, round, hit: (round && list.find((c) => c.period === round)) || null };
+}
+
 export function announceDates(app, idx, opt = {}) {
   const none = { stage1: null, final: null, why: '' };
   if (!idx) return none;
 
   // 전문대 — 대학 하나에 수시1차·2차 발표 두 날. 어느 차수인지 모르면 안 고른다.
   if (app.univType === '전문대') {
-    const list = idx.college.get(univStem(app.univ)) || [];
+    const { list, hit } = collegeRound(app, idx, opt);
     if (!list.length) return { ...none, why: '전문대 일정에 이 대학이 없습니다' };
-    const text = `${app.typeSub || ''} ${app.typeName || ''} ${app.period || ''}`;
-    const round = /2\s*차/.test(text) ? '수시2차' : /1\s*차/.test(text) ? '수시1차' : opt.phase || null;
-    const hit = round && list.find((c) => c.period === round);
     if (!hit) {
       return { ...none, why: `수시1차·2차 중 어느 차수인지 몰라 고르지 않았습니다 (${list.map((c) => `${c.period} ${md(c.final)}`).join(' · ')})` };
     }
@@ -2475,12 +2484,76 @@ export function paperFor(app, sched, ann, opt = {}) {
 export function examFor(app, kind, sched, ann, opt = {}) {
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
   const expects = kind === '면접' ? Boolean(opt.interview) : cat === kind;
+  /*
+   * 전문대 — 전형일정 시트가 대학·차수마다 면접·실기 **기간**을 준다. 학과마다 다르고 면접이
+   * 없는 학과도 같은 줄을 보니, 이 지원에 그 고사가 있다고 알 때(선생님·학생이 「면접 있음」,
+   * 실기 전형)만 쓴다. 대학 전체 기간이라 하루로 굳히지 않는다 — 하루짜리면 그 날.
+   */
+  if (app.univType === '전문대') {
+    if (!expects || !['면접', '실기'].includes(kind)) return null;
+    const { hit } = collegeRound(app, ann, opt);
+    const d = hit && hit[kind];
+    if (!d) return null;
+    return { from: d.from, to: d.to, fixed: d.from === d.to, clock: '', scope: hit.period, note: '',
+      score: 1, why: `전문대 ${hit.period} ${kind}${d.from === d.to ? '' : ' 기간'} (대학 전체 일정)` };
+  }
   const found = examDate(app, sched);
   const old = found && !found.loose && found.kind === kind && examKindFits(app, kind) ? found : null;
   const nw = announceExam(app, ann, kind, { ...opt, expects });
   const oldWhy = old ? `전형일정표 · ${old.type || old.kind}` : '';
   if (!expects && !old) return null;
   return blend(nw, old, false, oldWhy);
+}
+
+/**
+ * **일정 추천** — 지원을 손으로 더할 때 「이 지원은 이렇게 갑니다」를 미리 보여 준다.
+ * 카드가 실제로 쓰는 것과 **같은 함수**(paperFor·examFor)로 고르므로 미리 본 날이 그대로
+ * 카드에 「예정」으로 붙는다. 고사는 있는지 모르면 `maybe` 로 따로 낸다 — 「면접이 있는
+ * 학과라면 이 기간」. 고른 쪽이 「면접 있음」을 누르면 그때 정식 일정이 된다.
+ *
+ * @param keyDates  keydates.js KEY_DATES — 일반대 원서접수·등록은 학년 공통 일정
+ * @return {Array<{kind, label, from, to, fixed, why, maybe?:boolean}>} 날짜순
+ */
+export function recommendSchedule(app, sched, ann, opt = {}, keyDates = []) {
+  const out = [];
+  const put = (kind, label, d, why, maybe) => {
+    if (d && d.from) out.push({ kind, label, from: d.from, to: d.to || d.from, fixed: d.from === (d.to || d.from), why: why || d.why || '', maybe: Boolean(maybe) });
+  };
+  const common = (name) => keyDates.find((k) => k.name === name);
+  if (app.univType === '전문대') {
+    const { list, hit, round } = collegeRound(app, ann, opt);
+    if (!hit) {
+      return list.length
+        ? [{ kind: '', label: '차수', from: '', to: '', why: `${round ? `${round} 일정이 없습니다` : '수시1차·2차 중 어느 차수인지 골라 주세요'} — ${list.map((c) => `${c.period} 발표 ${md(c.final)}`).join(' · ')}` }]
+        : [{ kind: '', label: '자료 없음', from: '', to: '', why: '전문대 전형일정에 이 대학이 없습니다' }];
+    }
+    put('', '원서접수', hit.apply, `${hit.period} 원서접수`);
+    for (const kind of ['면접', '실기']) {
+      const real = examFor(app, kind, sched, ann, opt);
+      if (real) put(kind, kind, real);
+      else if (hit[kind]) put(kind, kind, hit[kind], `${hit.period} ${kind} 기간 — ${kind}이 있는 학과라면`, true);
+    }
+    put('최종발표', '합격자 발표', { from: hit.final, to: hit.final }, `${hit.period} 합격자 발표`);
+    put('', '등록', hit.register, '합격자 등록');
+  } else {
+    const a = common('원서접수');
+    put('', '원서접수', a, '수시 원서접수(대학마다 이 기간 안 3일 이상)');
+    const paper = paperFor(app, sched, ann, opt);
+    put('1단계발표', '1단계 발표', paper.stage1);
+    for (const kind of ['면접', '논술', '실기']) {
+      const real = examFor(app, kind, sched, ann, opt);
+      if (real) { put(kind, kind, real); continue; }
+      if (kind !== '면접' || opt.interview) continue;
+      // 면접이 있는지 모르는 전형 — 있다면 언제인지 보이기만
+      const maybe = examFor(app, kind, sched, ann, { ...opt, interview: true });
+      if (maybe) put(kind, kind, maybe, `${maybe.why || '일정 자료'} — 면접이 있는 전형이라면`, true);
+    }
+    put('최종발표', '최종 발표', paper.final);
+    const r = common('수시 등록');
+    put('', '등록', r, '수시 합격자 등록');
+    if (paper.why) out.push({ kind: '', label: '참고', from: '', to: '', why: paper.why });
+  }
+  return out.sort((x, y) => (!x.from ? 1 : !y.from ? -1 : x.from < y.from ? -1 : x.from > y.from ? 1 : 0));
 }
 
 /** 시험용 — 발표 고르기의 속 함수들. 화면은 쓰지 않는다. */

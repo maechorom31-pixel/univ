@@ -56,7 +56,8 @@ export function examsOf(ctx) {
 }
 
 /**
- * 최종 칸의 갈래. ctx = {interview: 면접이 있나, cat: '교과'|'종합'|'논술'|'실기'}
+ * 최종 칸의 갈래. ctx = {interview: 면접이 있나, cat: '교과'|'종합'|'논술'|'실기', college: 전문대인가}
+ * 전문대 수시는 수능최저를 거의 안 걸어서 「최저」 갈래를 안 보인다(고르면 틀린 말이 남는다).
  */
 export function finalChoices(ctx = {}) {
   return [
@@ -65,7 +66,7 @@ export function finalChoices(ctx = {}) {
     { value: '예비', label: '예비 — 기다리는 중', wait: true },
     { value: '충원합격', label: '충원합격(예비에서 붙음)', wait: true },
     { value: '불합격', label: '불합격' },
-    { value: '최저', label: '불합격 — 수능최저 미충족' },
+    ...(ctx.college ? [] : [{ value: '최저', label: '불합격 — 수능최저 미충족' }]),
     ...examsOf(ctx).map((k) => ({ value: `미응시:${k}`, label: `${k} 미응시(시험에 안 감)` })),
   ];
 }

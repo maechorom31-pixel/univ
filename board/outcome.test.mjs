@@ -33,6 +33,7 @@ eq(examsOf({ interview: true, cat: '종합' }), ['면접'], '면접 있는 종�
 eq(examsOf({ interview: false, cat: '논술' }), ['논술'], '논술 → 논술 미응시');
 eq(examsOf({ interview: false, cat: '교과' }), [], '면접 없는 교과 → 미응시 갈래 없음');
 eq(finalChoices({ interview: true, cat: '종합' }).some((c) => c.value === '미응시:면접'), true, '선택지에 「면접 미응시」');
+eq(finalChoices({ interview: true, college: true }).map((c) => c.value).join(','), ',최초합격,예비,충원합격,불합격,미응시:면접', '전문대 — 최저 갈래 없음, 면접 있으면 미응시');
 
 console.log('1단계를 지우지 않는다 — 최종을 적어도 남는다');
 {

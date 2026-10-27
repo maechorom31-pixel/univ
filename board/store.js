@@ -19,7 +19,10 @@ import {
   similarUnivs as nearUnivs,
   indexIpgyeol, indexMojip, indexCollege, indexSchedule, indexAnnounce, paperFor, examFor,
   splitDepts, referenceLine, resolveUniv, catOf, predecessor,
+  recommendSchedule,
 } from './match.js';
+import { KEY_DATES } from './keydates.js';
+import { draftApp } from './addapp.js';
 import { isoDay, hasInterview, forcedInterview } from './text.js';
 import { indexRatio, rateOf } from './ratio.js';
 import * as fix from './fix.js';
@@ -168,6 +171,14 @@ function apply(data) {
    */
   state.dupes = (data.dupes && data.dupes.length) ? data.dupes : found;
   state.apps = new Map((data.apps || []).map((a) => [a.id, a]));
+  /*
+   * 손으로 더한 지원(추가지원 탭)은 즐겨찾기에서 읽은 학생의 지원 목록(student.apps)에 없다 —
+   * 서버는 지원만 붙여 보낸다. 여기서 학생에게 이어 준다. 안 그러면 카드가 안 선다.
+   */
+  for (const a of state.apps.values()) {
+    const st = state.students.get(a.hak);
+    if (st && !st.apps.includes(a.id)) state.students.set(a.hak, { ...st, apps: [...st.apps, a.id] });
+  }
   /*
    * 「성적」 탭 — 학년 전체의 전교과 일반등급 명단 (Code.gs gradeRows_).
    *
@@ -880,12 +891,18 @@ function scheduleOpt(app) {
   // 최저가 있나 — 고침 · 즐겨찾기 · 모집요강 차례(minReqOf). 화면들과 같은 판단을 쓴다
   const hasMin = minReqOf(app).has;
   const force = interviewForce(app);
-  const college = s && s.kind === 'college' && s.rows && s.rows[0];
+  /*
+   * 전문대 차수 — 선생님이 카드에서 고친 「모집시기」(수시1차·2차)로만 안다. 예전에는 입결의
+   * 차수를 보려 했는데(경로가 틀려 늘 비었다) 그건 **작년 입결이 어느 차수 것인가**라서,
+   * 2차에 낸 학생에게 1차 발표일을 줄 수 있다. 전형 이름에 「1차/2차」가 있으면 그쪽이
+   * 먼저다(match.js collegeRound).
+   */
+  const when = String(((fixesOf(app))['모집시기'] || {}).value || '');
   return {
     hasMin,
     stages: force === '없음' ? 1 : (s && s.stages) || null,
     interview: hasInterview(mo, s && s.stages, force),
-    phase: college && college.ipgyeol ? college.ipgyeol.phase || null : null,
+    phase: /2\s*차/.test(when) ? '수시2차' : /1\s*차/.test(when) ? '수시1차' : null,
   };
 }
 
@@ -1090,6 +1107,73 @@ export function fieldOf(app, field) {
   return state.fields.get(fieldKey(hak, id, field)) || null;
 }
 
+/* ── 손으로 더한 지원 (추가지원 탭 · board/addapp.js) ──────────────
+ * 즐겨찾기에 없는 지원 — 대개 전문대. 서버가 자리(전문대는 「지원」, 일반대는 후보)까지
+ * 잡아서 돌려준다. 다시 다 불러오지 않고 받은 것을 그대로 꽂는다.
+ */
+let draftSeq = 0;
+
+/** 고르는 중인 지원의 일정 추천 — 카드가 쓰는 것과 같은 고르기(scheduleOpt · recommendSchedule). */
+export function previewSchedule(app) {
+  const tmp = { ...app, id: `draft-${draftSeq += 1}` };
+  try {
+    return recommendSchedule(tmp, sched, announce, scheduleOpt(tmp), KEY_DATES);
+  } finally {
+    linkCache.delete(tmp.id);
+  }
+}
+
+/** 지원 더하기 창의 목록 자료 — 공개 자료 색인 */
+export function catalog() {
+  return { college, mojip };
+}
+
+export async function addApp(hak, draft) {
+  let app; let slot; let at = '';
+  if (offline) {
+    // 보기용 자료 — 서버 없이 같은 모양으로
+    app = { ...draftApp(hak, {}), ...draft, typeName: draft.typeSub, id: `local-${Date.now()}`,
+      hak, manual: true, addedStatus: 'confirmed', addedBy: state.who || '' };
+    slot = app.univType === '일반대' ? 'pool' : 'tray';
+  } else {
+    const r = await api.addApp({ hak, ...draft });
+    app = r.app; slot = r.slot; at = r.at || '';
+  }
+  state.apps.set(app.id, app);
+  const st = state.students.get(hak);
+  if (st) state.students.set(hak, { ...st, apps: [...st.apps, app.id] });
+  state.placement.set(String(app.id), { slot, rank: null });
+  if (at) state.seen.set(String(hak), String(at));
+  emit('change', 'state');
+  return app;
+}
+
+/** 손으로 더한 지원을 뺀다. 적어 둔 결과·날짜는 시트에 남는다(다시 더하면 같은 id 로 붙는다). */
+export async function removeApp(app) {
+  if (!offline) await api.removeApp(app.id);
+  state.apps.delete(app.id);
+  const st = state.students.get(app.hak);
+  if (st) state.students.set(app.hak, { ...st, apps: st.apps.filter((id) => id !== app.id) });
+  state.placement.delete(String(app.id));
+  emit('change', 'state');
+}
+
+/** 학생이 더한 지원을 확인한다. */
+export async function approveApp(app) {
+  if (!offline) await api.approveApp(app.id);
+  state.apps.set(app.id, { ...app, addedStatus: 'confirmed' });
+  emit('change', 'state');
+}
+
+/** 학생이 더하고 선생님이 아직 확인 안 한 지원. */
+export function pendingApps(cls) {
+  const out = [];
+  for (const student of studentsOf(cls || '')) {
+    for (const app of appsOf(student.hak)) if (app.manual && app.addedStatus === 'student') out.push({ app, student });
+  }
+  return out;
+}
+
 /* ── 마감(★) — 카드마다 ────────────────────────────────────────
  * 원서는 카드 단위로 낸다. 낸 카드에 마감을 걸면(입력 탭 `마감 = ★`, 수험번호처럼
  * id 가 붙는 칸) 서버가 그 카드를 옮기거나 밀어내거나 옆에 같이 고민을 거는 요청을
@@ -1135,7 +1219,8 @@ export function lockCount(hak) {
  */
 export function interviewForce(app) {
   const row = fieldOf(app, INTERVIEW_FIELD);
-  return forcedInterview(row && row.value);
+  // 손으로 더한 지원은 더할 때 고른 「면접 있음/없음」을 같이 갖고 온다(추가지원 탭). 선생님 칸이 먼저다.
+  return forcedInterview(row && row.value) || forcedInterview(app && app.interview);
 }
 
 /**

@@ -17,6 +17,7 @@
  */
 import * as store from './store.js';
 import { detailPanel } from './card.js';
+import { openAddApp, lists as addLists } from './addapp.js';
 import { normType, outsideLimit, isGuessedFit, catOf } from './match.js';
 import {
   isStaged, stepOf, STAGE1_CHOICES, finalChoices, finalOf, outcomeText, withChoice,
@@ -459,6 +460,7 @@ function render() {
    * 여기 선다.
    */
   const trayApps = others.filter((a) => store.placementOf(a.id).slot === 'tray');
+  main.appendChild(addBar(student));
   if (trayApps.length) {
     main.appendChild(label('전문대 지원 — 6회 밖'));
     const trayRow = el('div', 'slots');
@@ -576,6 +578,85 @@ function waitingDates() {
   }
   return { label: '넣은 날짜', rows,
     why: '확인해야 겹침 판정에 쓰입니다. 확인 전에는 「겹칠 수 있음」까지만 봅니다.' };
+}
+
+/** 학생이 더한 지원 — 즐겨찾기에 없는 전문대 등. 맞으면 「맞습니다」, 아니면 카드에서 뺀다. */
+function waitingApps() {
+  const list = store.pendingApps(store.selection.cls);
+  if (!list.length) return null;
+  const rows = [];
+  for (const x of list) {
+    const row = el('div', 'row todo-row');
+    const txt = el('div', 'txt');
+    txt.appendChild(el('div', 'univ', `${x.student.hak} ${tidy(x.student.name)} — ${shortName(x.app)}`));
+    txt.appendChild(el('div', 'dept', [x.app.univType, x.app.typeSub, String(x.app.addedAt || '').slice(0, 10)]
+      .filter(Boolean).join(' · ')));
+    row.appendChild(txt);
+    const ok = el('button', 'btn', '맞습니다');
+    ok.type = 'button';
+    ok.onclick = async () => {
+      ok.disabled = true;
+      try {
+        await store.approveApp(x.app);
+        notice = `${x.student.hak} ${tidy(x.student.name)} — ${shortName(x.app)} 지원을 확인했습니다.`;
+      } catch (err) {
+        ok.disabled = false;
+        notice = `확인하지 못했습니다 — ${err.message}`;
+      }
+      render();
+    };
+    row.appendChild(ok);
+    rows.push(row);
+  }
+  return { label: '더한 지원', rows,
+    why: '학생이 관심대학 목록에 없던 지원(대개 전문대)을 더했습니다. 아니면 카드의 「빼기」로 뺍니다.' };
+}
+
+/** 손으로 더한 지원 표시 — 누가 더했는지, 그리고 빼기(즐겨찾기 지원은 시트에서 정리한다). */
+function manualTag(app) {
+  const line = el('div', 'manual-tag');
+  const mine = app.addedStatus === 'student';
+  line.appendChild(el('span', mine ? 'pill mark' : 'pill', mine ? '학생이 더함 · 확인 전' : '직접 더한 지원'));
+  const drop = el('button', 'btn aside', '빼기');
+  drop.type = 'button';
+  drop.title = '이 지원을 보드에서 뺍니다. 적어 둔 결과·날짜는 시트에 남습니다.';
+  drop.onclick = async () => {
+    if (!window.confirm(`${shortName(app)} 지원을 뺄까요?`)) return;
+    drop.disabled = true;
+    try {
+      await store.removeApp(app);
+      notice = `${shortName(app)} 지원을 뺐습니다.`;
+    } catch (err) {
+      notice = `빼지 못했습니다 — ${err.message}`;
+      drop.disabled = false;
+    }
+    render();
+  };
+  line.appendChild(drop);
+  return line;
+}
+
+/**
+ * 「지원 더하기」 — 즐겨찾기에 없는 지원(대개 전문대). 일정 추천을 보고 더한다(addapp.js).
+ */
+function addBar(student) {
+  const bar = el('div', 'add-bar');
+  const btn = el('button', 'btn', '+ 지원 더하기');
+  btn.type = 'button';
+  btn.title = '즐겨찾기에 없는 지원(전문대 등)을 더합니다. 일정을 추천해 줍니다.';
+  btn.onclick = () => openAddApp({
+    title: `${student.hak} ${tidy(student.name)}`,
+    list: addLists(store.catalog()),
+    preview: (app) => store.previewSchedule({ ...app, hak: student.hak }),
+    submit: async (draft) => {
+      const app = await store.addApp(student.hak, draft);
+      notice = `${shortName(app)} 지원을 더했습니다 — ${app.univType === '일반대' ? '아래 후보에' : '「전문대 지원」 칸에'} 있습니다.`;
+      render();
+    },
+  });
+  bar.appendChild(btn);
+  bar.appendChild(el('span', 'hint', '즐겨찾기에 없는 지원(전문대 등)'));
+  return bar;
 }
 
 /** 학생이 적고 아직 확인 안 된 칸 — 수험번호·최종경쟁률·생년월일. */
@@ -699,7 +780,7 @@ function waitingResults() {
  */
 function waitingPanel() {
   const wrap = el('div');
-  const groups = [waitingDates(), waitingFields(), waitingNotes(), waitingResults()]
+  const groups = [waitingApps(), waitingDates(), waitingFields(), waitingNotes(), waitingResults()]
     .filter(Boolean);
   if (!groups.length) return wrap;
 
@@ -843,6 +924,7 @@ function card(app, rank, student) {
   else if (rank) box.appendChild(el('div', 'rank', `${rank}순위${star}`));
   box.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
+  if (app.manual) box.appendChild(manualTag(app));
   /*
    * **원서를 낸 카드에서 할 일은 결과 모으기 하나다.** 단계가 「지원 확정」이거나 이
    * 카드에 ★ 를 걸었으면 숫자 표·꼬리표 대신 수험번호와 지금 물을 결과 칸만 둔다.
@@ -906,7 +988,7 @@ function resultBox(app) {
   const step = stepOf(r, staged);
   const ask = step === 'out' ? 'stage1' : step;
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
-  const choices = ask === 'stage1' ? STAGE1_CHOICES : finalChoices({ interview: iv.yes, cat });
+  const choices = ask === 'stage1' ? STAGE1_CHOICES : finalChoices({ interview: iv.yes, cat, college: app.univType === '전문대' });
 
   /*
    * 대학별고사 — **지난 것도 남긴다.** 확정 카드는 꼬리표를 걷어 내서 면접 날이 안
@@ -1587,6 +1669,7 @@ function cardRow(app, student) {
   const txt = el('div', 'txt');
   txt.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
   txt.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
+  if (app.manual) txt.appendChild(manualTag(app));
   txt.appendChild(figures(app, student));
   txt.appendChild(pills(app));
   row.appendChild(txt);

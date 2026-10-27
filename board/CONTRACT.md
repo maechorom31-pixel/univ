@@ -302,6 +302,25 @@ state.dupes  // [{ hak, univ, dept, type, n, row }]  n 은 그 지원이 적힌 
 
 ---
 
+## 2.7 손으로 더한 지원 (`추가지원` 탭 · `board/addapp.js`)
+
+```
+추가지원: id · hak · univType · univ · dept · typeCat · typeSub · track · region · interview · status · by · at
+  status   student(학생이 더함) · confirmed(선생님이 더했거나 확인) · removed(뺌 — 줄은 남긴다)
+  interview '있음' · '없음' · ''   — 화면의 면접 판정에서 선생님 「면접여부」 칸 다음으로 본다
+```
+
+- 서버는 즐겨찾기 지원 뒤에 이 줄들을 `Application` 모양으로 붙여 보낸다(`appsWith_`) —
+  `manual: true`, `addedStatus`, `addedBy`, `addedAt` 이 더 붙는다. **같은 id 면 즐겨찾기가 이긴다.**
+- id 는 `appId_({hak, univ, typeSub, dept})` — §3 의 안정키와 같은 식이다.
+- 학생 경로 `studentAddApp`(학번은 토큰에서) · `studentRemoveApp`(제가 더한 확인 전 것만).
+  선생님 경로 `addApp`(hak 필요, 명단에 있는 학번만) · `removeApp` · `approveApp`.
+- 더하면 서버가 자리를 잡는다 — 전문대·특수대 `tray`, 일반대 `pool`. 응답의 `at` 으로
+  화면이 「마지막으로 본 배치 시각」을 올린다(안 그러면 다음 순위 옮기기가 stale 로 거절).
+- 소유 검사(`ownsApp_`)는 더한 지원도 본다 — 더한 지원에 결과·날짜를 적을 수 있다.
+- 전문대 차수는 `typeSub` 끝의 「(수시1차)」·「(수시2차)」로 적는다. 일정 고르기
+  (`match.js collegeRound`)가 그 말을 읽는다.
+
 ## 3. 안정키 — `Application.id`
 
 원본 엑셀은 계속 바뀐다. 그 위에 쌓은 메모·순위·결과가 살아남아야 한다.

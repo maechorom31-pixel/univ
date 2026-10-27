@@ -16,6 +16,7 @@ import {
   normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
   normType, pickIpgyeol, typeGroups, univKind, summarize, predecessor, fillTrend, outsideLimit, indexAnnounce, announceDates, paperFor, indexSchedule,
+  recommendSchedule, collegeRound, examFor,
 } from './match.js';
 import { josa, minReqShort, methodLine, interviewShare, methodHasInterview,
   hasInterview, forcedInterview } from './text.js';
@@ -770,6 +771,29 @@ console.log('이름으로 못 맞춘 모집요강 줄의 숫자는 쓰지 않는
   const on = summarize(mk(true), app);
   eq(on.quotaPrev, 15, '이름이 맞은 줄이면 그대로 쓴다');
   eq(on.mojipOff, false, '표시도 서지 않는다');
+}
+
+console.log('\n전문대 일정 — 차수 줄의 면접·실기 기간, 일정 추천');
+{
+  // 지어낸 대학 두 곳 — 실제 자료 아님
+  const ann = indexAnnounce({ rows: [], college: [
+    { univ: '가나보건대', period: '수시1차', final: '2026-10-22', apply: { from: '2026-09-07', to: '2026-09-30' },
+      면접: { from: '2026-10-10', to: '2026-10-17' }, register: { from: '2026-12-21', to: '2026-12-23' } },
+    { univ: '가나보건대', period: '수시2차', final: '2026-12-10', apply: { from: '2026-11-11', to: '2026-11-25' },
+      면접: { from: '2026-12-05', to: '2026-12-05' } },
+  ] });
+  const app = (sub) => ({ univType: '전문대', univ: '가나보건대학교', dept: '간호학과', typeSub: sub, typeCat: '' });
+  eq(collegeRound(app('일반전형(수시2차)'), ann).hit.final, '2026-12-10', '전형 이름의 「2차」로 차수를 고른다');
+  eq(collegeRound(app('일반전형'), ann).hit, null, '차수를 모르면 안 고른다');
+  eq(collegeRound(app('일반전형'), ann, { phase: '수시1차' }).hit.final, '2026-10-22', '입결 차수(phase)로 고른다');
+  eq(examFor(app('일반전형(수시1차)'), '면접', null, ann, {}), null, '면접이 있는지 모르면 대학 전체 면접 기간을 붙이지 않는다');
+  const iv = examFor(app('일반전형(수시1차)'), '면접', null, ann, { interview: true });
+  eq([iv.from, iv.to, iv.fixed], ['2026-10-10', '2026-10-17', false], '면접 있음이면 차수의 면접 기간(예정)');
+  eq(examFor(app('일반전형(수시2차)'), '면접', null, ann, { interview: true }).fixed, true, '하루짜리면 그 날');
+  const rec = recommendSchedule(app('일반전형(수시1차)'), null, ann, {}, []);
+  eq(rec.map((r) => `${r.label}${r.maybe ? '?' : ''}`), ['원서접수', '면접?', '합격자 발표', '등록'], '추천 — 접수·(있다면)면접·발표·등록 차례');
+  eq(recommendSchedule(app('일반전형'), null, ann, {}, [])[0].label, '차수', '차수를 모르면 고르라고 말한다');
+  eq(recommendSchedule({ ...app('일반전형'), univ: '없는전문대학교' }, null, ann, {}, [])[0].label, '자료 없음', '없는 대학');
 }
 
 if (!files.length) {

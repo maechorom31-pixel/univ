@@ -630,6 +630,46 @@ console.log('\n탭 읽기 캐시');
   cacheStore.clear();
 }
 
+/*
+ * **손으로 더한 지원(추가지원 탭).** 즐겨찾기에 없는 전문대 지원을 학생·선생님이 더한다.
+ * 학번은 토큰에서만 — 남의 학번으로 못 더하고, 남이 더한 것은 못 뺀다.
+ */
+console.log('\n손으로 더한 지원');
+sheets['설정'] = mkSheet([G.HEADERS['설정']]);
+sheets['공유'] = mkSheet([G.HEADERS['공유'], ['3101', 'tokA', '2099-01-01', ''], ['3102', 'tokB', '2099-01-01', '']]);
+sheets['추가지원'] = mkSheet([G.HEADERS['추가지원']]);
+sheets['배치'] = mkSheet([G.HEADERS['배치']]);
+sheets['결과'] = mkSheet([G.HEADERS['결과']]);
+{
+  const before = G.handle_({ action: 'student', token: 'tokA' }).apps.length;
+  const add = G.handle_({ action: 'studentAddApp', token: 'tokA', hak: '3102', univType: '전문대',
+    univ: '가나보건대학교', dept: '간호학과', typeSub: '일반전형(수시1차)', interview: '있음' });
+  eq([add.ok, add.app && add.app.hak, add.slot], [true, '3101', 'tray'], '학생이 더한다 — 보낸 hak 이 아니라 토큰의 학번, 전문대는 「지원」 자리');
+  const v = G.handle_({ action: 'student', token: 'tokA' });
+  eq(v.apps.length, before + 1, '학생 화면에 더한 지원이 온다');
+  const mine = v.apps.find((a) => a.manual);
+  eq([mine.univType, mine.interview, mine.addedStatus], ['전문대', '있음', 'student'], '더한 값이 그대로');
+  eq(v.state.some((r) => r.id === mine.id && r.slot === 'tray'), true, '자리도 잡혀 온다');
+  eq(G.handle_({ action: 'student', token: 'tokB' }).apps.some((a) => a.id === mine.id), false, '다른 학생에게는 안 보인다');
+  eq(G.handle_({ action: 'studentAddApp', token: 'tokA', univType: '전문대', univ: '가나보건대학교',
+    dept: '간호학과', typeSub: '일반전형(수시1차)' }).ok, false, '같은 지원을 두 번 더하지 못한다');
+  eq(G.handle_({ action: 'studentResult', token: 'tokA', id: mine.id, final: '최초합격' }).ok, true, '더한 지원에 결과를 적는다');
+  eq(G.handle_({ action: 'studentRemoveApp', token: 'tokB', id: mine.id }).ok, false, '남이 더한 지원은 못 뺀다');
+  eq(G.handle_({ action: 'students', key: '84348434' }).apps.some((a) => a.id === mine.id), true, '선생님 보드에도 온다');
+  eq(G.handle_({ action: 'approveApp', key: '84348434', id: mine.id }).ok, true, '선생님이 확인한다');
+  eq(G.handle_({ action: 'studentRemoveApp', token: 'tokA', id: mine.id }).ok, false, '확인된 지원은 학생이 못 뺀다');
+  eq(G.handle_({ action: 'removeApp', key: '84348434', id: mine.id }).ok, true, '선생님은 뺀다');
+  eq(G.handle_({ action: 'student', token: 'tokA' }).apps.some((a) => a.id === mine.id), false, '뺀 지원은 안 온다');
+  eq(G.handle_({ action: 'addApp', key: '84348434', hak: '9999', univ: 'x', dept: 'y' }).ok, false, '명단에 없는 학번은 막는다');
+  const t = G.handle_({ action: 'addApp', key: '84348434', hak: '3102', univType: '일반대', univ: '가나대학교', dept: '경영학과', typeSub: '교과(일반)' });
+  eq([t.ok, t.slot, t.app.addedStatus], [true, 'pool', 'confirmed'], '선생님이 일반대를 더하면 후보 자리, 확인된 상태');
+  // 즐겨찾기에 같은 지원이 들어오면 한 장 — id 가 같다
+  const fav = G.handle_({ action: 'students', key: '84348434' }).apps.find((a) => !a.manual && a.hak === '3101');
+  sheets['추가지원'].getDataRange().getValues().push([fav.id, fav.hak, '일반대', fav.univ, fav.dept, '', fav.typeSub, '', '', '', 'confirmed', 'x', 'y']);
+  const all = G.handle_({ action: 'students', key: '84348434', fresh: '1' }).apps.filter((a) => a.id === fav.id);
+  eq([all.length, all[0].manual || false], [1, false], '즐겨찾기와 겹치면 즐겨찾기 한 장만');
+}
+
 {
   // 보드가 연결할 때 서버 판을 견준다 — 둘이 어긋나면 늘 「재배포 필요」가 뜨거나 안 뜬다
   const gs = readFileSync(resolve(HERE, 'apps-script/Code.gs'), 'utf8').match(/var CODE_VER = '([^']+)'/);

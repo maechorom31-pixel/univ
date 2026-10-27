@@ -39,6 +39,7 @@ const DEFAULT_KEY = '84348434';
 const STUDENT_ACTION = new Set([
   'student', 'studentDate', 'studentApplyNo', 'studentField', 'studentResult',
   'studentNote', 'studentNoteRemove', 'studentAsk', 'studentRank', 'studentLock', 'studentRest',
+  'studentAddApp', 'studentRemoveApp',
 ]);
 let apiUrl = '';
 let teacherKey = '';
@@ -199,7 +200,7 @@ export async function call(action, params, opts = {}) {
  * Code.gs 를 고치면 둘을 함께 올린다. 보드가 연결할 때 ping 의 ver 와 견줘
  * 「Apps Script 를 새로 배포해야 합니다」를 알려 준다(배포를 감으로 확인하지 않게).
  */
-export const SERVER_VER = '2026-10-27';
+export const SERVER_VER = '2026-10-28';
 export const ping = () => call('ping', {});
 
 // fresh 가 참이면 서버가 원본 파싱 캐시를 건너뛴다 (Code.gs sourceParsed_)
@@ -213,4 +214,8 @@ export const addNote = (n) => call('addNote', n);
 export const removeNote = (noteId) => call('removeNote', { noteId });
 export const setResult = (r) => call('setResult', r);
 export const setDate = (d) => call('setDate', d);
+// 손으로 더한 지원(추가지원 탭) — 즐겨찾기에 없는 지원, 대개 전문대
+export const addApp = (a) => call('addApp', a);
+export const removeApp = (id) => call('removeApp', { id });
+export const approveApp = (id) => call('approveApp', { id });
 

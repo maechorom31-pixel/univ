@@ -14,7 +14,8 @@
 간호학과」, 「수능 미적용 학과」, 비고의 「간호학과 제외(12.16 발표)」. 그 글을 그대로
 남기고, 고르는 일은 board/match.js 의 announceDates 가 한다.
 
-전문대는 같은 파일의 「전형일정」 시트가 대학별 수시1차·2차 합격자 발표를 준다.
+전문대는 같은 파일의 「전형일정」 시트가 대학별 수시1차·2차의 원서접수·면접·실기 기간,
+합격자 발표, 등록·충원 기간을 준다.
 
 쓰는 법
 -------
@@ -90,14 +91,48 @@ def read_list(ws):
     return out
 
 
+def md_range(v, year):
+    """「9/7~30」「12/23~31」「10/1~10/5」 같은 글 칸 → {'from','to'}. 못 읽으면 None."""
+    import re
+    if isinstance(v, (dt.datetime, dt.date)):
+        d = v.strftime('%Y-%m-%d')
+        return {'from': d, 'to': d}
+    m = re.match(r'\s*(\d{1,2})/(\d{1,2})\s*(?:~\s*(?:(\d{1,2})/)?(\d{1,2}))?', text(v))
+    if not m:
+        return None
+    m1, d1 = int(m.group(1)), int(m.group(2))
+    m2 = int(m.group(3) or m1)
+    d2 = int(m.group(4) or d1)
+    return {'from': f'{year}-{m1:02d}-{d1:02d}', 'to': f'{year}-{m2:02d}-{d2:02d}'}
+
+
+def span(a, b):
+    """시작·마감 두 칸 → {'from','to'}. 한쪽만 있으면 그 하루. 둘 다 없으면 None."""
+    x, y = day(a), day(b)
+    if not x and not y:
+        return None
+    return {'from': x or y, 'to': y or x}
+
+
 def read_college(ws):
-    """전형일정(전문대) — 대학명·모집시기·…·합격자 발표. 수시만 남긴다."""
+    """전형일정(전문대) — 대학명·모집시기·원서접수·면접(시작·마감)·실기(시작·마감)·
+    합격자 발표·등록·충원. 수시만 남긴다.
+
+    면접·실기는 **대학 전체의 기간**이다 — 학과마다 다르고, 면접이 없는 학과도 같은 줄을
+    본다. 화면은 이것을 확정일이 아니라 「예정」으로만 쓴다(match.js collegeExam)."""
     out = []
     for r in ws.iter_rows(min_row=4, values_only=True):
         univ, period, final = text(r[3]), text(r[4]), day(r[10])
         if not univ or not period.startswith('수시') or not final:
             continue
-        out.append({'univ': univ, 'period': period, 'final': final})
+        year = final[:4]
+        row = {'univ': univ, 'period': period, 'final': final}
+        for key, val in (('apply', md_range(r[5], year)), ('면접', span(r[6], r[7])),
+                         ('실기', span(r[8], r[9])), ('register', md_range(r[11], year)),
+                         ('refill', md_range(r[12], year))):
+            if val:
+                row[key] = val
+        out.append(row)
     return out
 
 
@@ -124,7 +159,7 @@ def main():
     doc = {
         'year': 2027,
         'source': '2027학년도 수시모집 일정 달력(각 대학 2027 수시모집요강 전형일정 표, 2026년 6월 수집)'
-                  ' · 전문대 전형일정(수시1·2차 합격자 발표)',
+                  ' · 전문대 전형일정(수시1·2차 원서접수·면접·실기·합격자 발표·등록)',
         'rows': sorted(rows, key=lambda r: (r['date'], r['univ'], r['kind'])),
         'college': college or [],
     }
