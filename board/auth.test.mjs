@@ -630,5 +630,14 @@ console.log('\n탭 읽기 캐시');
   cacheStore.clear();
 }
 
+{
+  // 보드가 연결할 때 서버 판을 견준다 — 둘이 어긋나면 늘 「재배포 필요」가 뜨거나 안 뜬다
+  const gs = readFileSync(resolve(HERE, 'apps-script/Code.gs'), 'utf8').match(/var CODE_VER = '([^']+)'/);
+  const js = readFileSync(resolve(HERE, 'api.js'), 'utf8').match(/SERVER_VER = '([^']+)'/);
+  const same = gs && js && gs[1] === js[1];
+  if (!same) fails += 1;
+  console.log(`${same ? '  ✓' : '  ✗'} api.js SERVER_VER 가 Code.gs CODE_VER 와 같다 (${js && js[1]} / ${gs && gs[1]})`);
+}
+
 console.log(fails ? `\n${fails}건 실패` : '\n모두 통과');
 process.exit(fails ? 1 : 0);

@@ -173,10 +173,27 @@ async function connect(fresh) {
     await store.load({ fresh });
     setConn('연결됨', 'on');
     who.textContent = store.state.who ? `${store.state.who} 로 연결` : '연결됨';
+    checkServer();
   } catch (err) {
     setConn('연결 실패', 'off');
     who.textContent = `오류: ${err.message}`;
   }
+}
+
+/* 서버 코드가 새 판인가 — Apps Script 는 저장만 하면 안 바뀌고 「새 배포」를 해야
+   바뀐다. ping 의 ver 를 이 화면이 기대하는 판(api.SERVER_VER)과 견줘 연결 줄에 적는다. */
+async function checkServer() {
+  try {
+    const p = await api.ping();
+    const ver = (p && p.ver) || '';
+    if (ver && ver >= api.SERVER_VER) {
+      who.textContent += ` · 서버 ${ver}`;
+    } else {
+      who.textContent += ` · 서버 코드가 옛 판입니다(${ver || '판 표시 없음'}, 필요 ${api.SERVER_VER})`
+        + ' — Apps Script 에서 배포 관리 → 새 버전으로 다시 배포해 주세요.';
+      setConn('재배포 필요', 'off');
+    }
+  } catch (err) { /* ping 이 안 돼도 자료는 이미 왔다 — 연결 표시는 그대로 둔다 */ }
 }
 
 // 화면 셋은 같은 선택(반·학생)을 보고 서로 다른 칸에 그린다
