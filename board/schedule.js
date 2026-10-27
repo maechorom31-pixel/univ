@@ -309,7 +309,7 @@ function calendars(events, withName) {
 
   if (withName) {
     box.appendChild(el('p', 'section-label',
-      '모의면접이 한 날에 몰리면 여기서 보입니다. 칩을 누르면 그 지원의 카드가 열립니다.'));
+      '모의면접이 한 날에 몰리면 여기서 보입니다. 칩을 누르면 날짜를 바꾸거나 지울 수 있고, 끌어서 다른 날로 옮길 수도 있습니다.'));
   }
 
   // 공통 일정의 달은 지원 일정이 없어도 선다 — 수능이 안 보이는 달력은 축이 없다
@@ -409,10 +409,31 @@ function month(ym, events, withName) {
       tag.appendChild(el('i', 'd', withName ? `${e.hak} ${tidy(e.name)}` : tidy(e.app.dept)));
       const src = e.status === 'sched' ? ' · 전형일정표'
         : e.status === 'pending' ? ' · 학생 입력, 확인 대기' : '';
-      tag.title = `${e.name} · ${e.app.dept} · ${span(e)}${src} — 누르면 카드가 열립니다`;
-      tag.onclick = () => store.select({ appId: e.app.id });
+      tag.title = `${e.name} · ${e.app.dept} · ${span(e)}${src} — 누르면 바꾸기·지우기, 끌어서 다른 날로 옮기기`;
+      /*
+       * **달력에서 바로 고친다.** 예전에는 칩을 누르면 카드 상세가 열리고, 날짜는 그
+       * 안 깊숙한 데서 고쳐야 했다. 이제 칩을 누르면 작은 창(바꾸기 · 지우기 · 카드 열기),
+       * 칩을 다른 날 칸으로 끌어다 놓으면 그 날로 옮긴다(넓은 화면).
+       */
+      tag.onclick = () => calEditor(e, withName);
+      tag.draggable = true;
+      tag.addEventListener('dragstart', (ev) => {
+        ev.dataTransfer.setData('text/plain', `${e.app.id}|${e.kind}`);
+        ev.dataTransfer.effectAllowed = 'move';
+      });
       cell.appendChild(tag);
     }
+    cell.addEventListener('dragover', (ev) => { ev.preventDefault(); cell.classList.add('drop'); });
+    cell.addEventListener('dragleave', () => cell.classList.remove('drop'));
+    cell.addEventListener('drop', (ev) => {
+      ev.preventDefault();
+      cell.classList.remove('drop');
+      const key = ev.dataTransfer.getData('text/plain');
+      const e = events.find((x) => `${x.app.id}|${x.kind}` === key);
+      if (!e || (e.fixed && e.from === iso)) return;
+      if (!window.confirm(`${chipUniv(e.app.univ)} ${e.kind}을(를) ${span(e)} → ${label(iso)} 로 옮길까요?`)) return;
+      saveDate(e.app, e.kind, iso);
+    });
     grid.appendChild(cell);
   }
   // 마지막 날 뒤도 빈 칸으로 채운다 — 안 채우면 격자 바탕(선 색)이 그대로 드러나
@@ -428,6 +449,102 @@ function month(ym, events, withName) {
   mw.appendChild(grid);
   box.appendChild(mw);
   return box;
+}
+
+/**
+ * 달력 칩을 눌렀을 때 — 그 자리에서 바꾸기 · 지우기.
+ *
+ * 지우기는 카드 상세와 같은 규칙(store.clearDate): 사람이 넣은 날은 지우고, 자료
+ * (전형일정표·수시 일정 달력·즐겨찾기)에서 온 날은 **이 카드에서만** 안 쓴다 — 카드 상세의
+ * 「되살리기」로 돌아온다. 모의면접은 사람이 잡은 날이라 그냥 지운다.
+ */
+function calEditor(e, withName) {
+  const old = document.querySelector('.overlay.cal-edit-wrap');
+  if (old) old.remove();
+  const back = el('div', 'overlay cal-edit-wrap');
+  const box = el('section', 'panel cal-edit');
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.setAttribute('aria-label', `${shortUniv(e.app.univ)} ${e.kind} 일정`);
+  const prevFocus = document.activeElement;
+  const close = () => {
+    back.remove();
+    document.removeEventListener('keydown', onKey);
+    if (prevFocus && prevFocus.isConnected) prevFocus.focus();
+  };
+  const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  back.addEventListener('click', (ev) => { if (ev.target === back) close(); });
+
+  const head = el('div', 'panel-head');
+  const title = el('div');
+  title.appendChild(el('div', 'univ', `${shortUniv(e.app.univ)} ${e.kind}`));
+  title.appendChild(el('div', 'dept', [withName ? `${e.hak} ${tidy(e.name)}` : '', tidy(e.app.dept)]
+    .filter(Boolean).join(' · ')));
+  head.appendChild(title);
+  const x = el('button', 'btn', '닫기');
+  x.type = 'button';
+  x.onclick = close;
+  head.appendChild(x);
+  box.appendChild(head);
+
+  const from = e.status === 'confirmed' ? '확정'
+    : e.status === 'pending' ? '학생이 넣음 · 확인 대기'
+      : e.status === 'sched' ? '일정 자료의 예정일' : '즐겨찾기';
+  box.appendChild(el('p', 'hint', `${span(e)} — ${from}`));
+  const say = el('p', 'note error');
+  say.hidden = true;
+  box.appendChild(say);
+  const run = async (btn, job) => {
+    btn.disabled = true;
+    try { await job(); close(); } catch (err) {
+      say.textContent = `오류: ${err.message}`;
+      say.hidden = false;
+      btn.disabled = false;
+    }
+  };
+
+  const line = el('div', 'field-in');
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.value = e.fixed ? e.from : '';
+  input.setAttribute('aria-label', `${shortUniv(e.app.univ)} ${e.kind} 새 날짜`);
+  line.appendChild(input);
+  const save = el('button', 'btn btn-primary', '이 날로 바꾸기');
+  save.type = 'button';
+  save.onclick = () => {
+    if (!input.value) { input.focus(); return; }
+    run(save, () => store.setDate(e.app, e.kind, input.value, input.value));
+  };
+  line.appendChild(save);
+  box.appendChild(line);
+
+  const bar = el('div', 'cal-edit-bar');
+  if (e.status === 'pending') {
+    const ok = el('button', 'btn', '맞습니다');
+    ok.type = 'button';
+    ok.onclick = () => run(ok, () => store.approveDate(e.app, e.kind));
+    bar.appendChild(ok);
+  }
+  const drop = el('button', 'btn', '이 일정 지우기');
+  drop.type = 'button';
+  drop.onclick = () => run(drop, () => (isMock(e.kind)
+    ? store.setDate(e.app, e.kind, '')
+    : store.clearDate(e.app, e.kind)));
+  bar.appendChild(drop);
+  const open = el('button', 'btn', '카드 열기');
+  open.type = 'button';
+  open.onclick = () => { close(); store.select({ appId: e.app.id }); };
+  bar.appendChild(open);
+  box.appendChild(bar);
+  if (e.status === 'sched' || e.status === 'source') {
+    box.appendChild(el('p', 'hint',
+      '자료에서 온 날짜는 지워도 이 카드에서만 안 씁니다. 카드 상세의 날짜 칸에서 되살릴 수 있습니다.'));
+  }
+
+  back.appendChild(box);
+  document.body.appendChild(back);
+  input.focus();
 }
 
 /* 준비 일정 */

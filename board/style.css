@@ -1426,3 +1426,15 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
 .res-mini .exam.미응시 select { color: var(--err); border-color: var(--err); }
 .res-mini .exam.응시 .num, .res-mini .exam.대상아님 .num { color: var(--muted); }
 .exam-in { grid-template-columns: auto minmax(0, 1fr); }
+
+/* 달력 칩을 눌렀을 때의 작은 창 — 바꾸기 · 지우기 · 카드 열기 */
+.cal-edit { max-width: 420px; margin: 12vh auto 0; display: grid; gap: var(--s3);
+  box-shadow: 0 12px 32px rgba(26, 26, 26, 0.18); }
+.cal-edit .panel-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); align-items: start; }
+.cal-edit .univ { font-weight: 700; }
+.cal-edit .dept { font-size: var(--t-xs); color: var(--muted); }
+.cal-edit .hint, .cal-edit .note { margin: 0; }
+.cal-edit-bar { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.cal-edit [hidden] { display: none; }
+/* 칩을 끌어 다른 날 위에 올렸을 때 */
+.cal .day.drop { outline: 2px dashed var(--amber); outline-offset: -2px; background: var(--amber-face); }
