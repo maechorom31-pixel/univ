@@ -23,7 +23,7 @@ import {
 } from './match.js';
 import { josa, rate1, typedRateText, isoDay, minReqShort, methodLine, interviewShare, hasInterview, forcedInterview } from './text.js';
 import { suneungDday } from './keydates.js';
-import { applyFixes, fixesOf, minReqOf, minReqPill, myScoreOf } from './fix.js';
+import { applyFixes, fixesOf, minReqOf, minReqPill, myScoreOf, excludedKinds } from './fix.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';
@@ -320,6 +320,8 @@ function dateOf(app, kind) {
   if (mine && mine.from) {
     return { from: mine.from, to: mine.to || mine.from, fixed: true, status: mine.status };
   }
+  // 선생님이 카드에서 지운 자료 날짜(고침 `날짜제외`) — 선생님 화면과 같은 규칙
+  if (excludedKinds(fixesOf(app, (id, hak, field) => state.fields.get(`${id}|${field}`) || null)).has(kind)) return null;
   const d = (app.dates && app.dates[kind]) || null;
   if (d && d.fixed) return { ...d, status: 'source' };
   // 선생님이 「면접 없음」이라고 정해 두면 일정표에서 면접일을 끌어오지 않는다 —
@@ -343,9 +345,7 @@ function dateOf(app, kind) {
 function scheduleOpt(app) {
   const s = summaryOf(app);
   const mo = s && s.mojip;
-  const hasMin = app.minReqText || app.minReq === true ? true
-    : app.minReq === false ? false
-      : mo ? Boolean(mo.minReq && String(mo.minReq).trim()) : null;
+  const hasMin = minReqOf(app, s).has;   // 고침 · 즐겨찾기 · 모집요강 — 선생님 화면과 같은 판단
   const force = interviewForce(app);
   const college = s && s.kind === 'college' && s.rows && s.rows[0];
   return {
@@ -1721,6 +1721,14 @@ function dateRow(app, kind, d) {
   btn.disabled = state.busy;
   btn.onclick = () => saveDate(app, kind, input.value);
   row.appendChild(btn);
+  // 제가 넣고 아직 확인 대기인 날은 지울 수 있다 — 잘못 적었을 때 되돌릴 길
+  if (d && d.status === 'pending') {
+    const del = el('button', 'btn', '지우기');
+    del.type = 'button';
+    del.disabled = state.busy;
+    del.onclick = () => removeDate(app, kind);
+    row.appendChild(del);
+  }
   wrap.appendChild(row);
 
   const word = !d ? ' 적기'
@@ -2022,6 +2030,20 @@ async function saveDate(app, kind, value) {
     if (!offline) await api.call('studentDate', { token: state.token, id: app.id, kind, from: value, to: value });
     state.dates.set(`${app.id}|${kind}`, { from: value, to: value, status: 'pending' });
     state.notice = `${shortUniv(app.univ)} ${kind}일을 ${label(value)} 로 보냈습니다. 선생님이 확인하면 확정됩니다.`;
+  } catch (err) {
+    state.notice = `오류: ${err.message}`;
+  } finally {
+    state.busy = false; render();
+  }
+}
+
+/** 제가 넣고 아직 확인 안 된 날짜를 지운다. 확정된 날은 서버가 막는다. */
+async function removeDate(app, kind) {
+  state.busy = true; state.notice = ''; render();
+  try {
+    if (!offline) await api.call('studentDate', { token: state.token, id: app.id, kind, from: '', to: '' });
+    state.dates.delete(`${app.id}|${kind}`);
+    state.notice = `${shortUniv(app.univ)} ${kind}일을 지웠습니다.`;
   } catch (err) {
     state.notice = `오류: ${err.message}`;
   } finally {

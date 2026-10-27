@@ -689,17 +689,60 @@ export function detailPanel(app, student, onClose) {
         kind = empty;
       }
       try {
-        await store.setDate(app, kind, input.value, input.value);
+        if (input.value) await store.setDate(app, kind, input.value, input.value);
+        else await store.clearDate(app, kind);
         sum.textContent = `${kind}일을 ${input.value ? '저장' : '지웠'}습니다 — 면접·실기·발표 날짜 넣기 · 고치기`;
       } catch (err) {
         window.alert(`저장하지 못했습니다 — ${err.message}`);
       }
       save.disabled = false;
     };
+    /*
+     * **지우기.** 여태는 날짜 칸을 비우고 저장해야 지워졌고, 지워도 자료(일정표·즐겨찾기)의
+     * 날이 다시 튀어나왔다. 이제 단추가 따로 있고, 자료의 날까지 이 카드에서는 안 쓰게
+     * 적어 둔다(store.clearDate). 아래 「되살리기」로 되돌린다.
+     */
+    const drop = el('button', 'btn', '이 날짜 지우기');
+    drop.type = 'button';
+    drop.onclick = async () => {
+      const kind = kindSel.value;
+      if (kind === '모의면접') {
+        window.alert('모의면접은 일정 탭의 각 차수 줄에서 지웁니다.');
+        return;
+      }
+      if (!store.dateOf(app, kind)) { window.alert(`${kind} 날짜가 없습니다.`); return; }
+      drop.disabled = true;
+      try {
+        await store.clearDate(app, kind);
+        input.value = '';
+        sum.textContent = `${kind}일을 지웠습니다 — 면접·실기·발표 날짜 넣기 · 고치기`;
+      } catch (err) {
+        window.alert(`지우지 못했습니다 — ${err.message}`);
+      }
+      drop.disabled = false;
+    };
     line.appendChild(kindSel);
     line.appendChild(input);
     line.appendChild(save);
+    line.appendChild(drop);
     fix.appendChild(line);
+    // 지운 자료 날짜 — 되살릴 길
+    const gone = [...store.excludedDates(app)];
+    if (gone.length) {
+      const back = el('div', 'field-in');
+      back.appendChild(el('span', 'hint', `지운 자료 날짜: ${gone.join(' · ')}`));
+      for (const k of gone) {
+        const b = el('button', 'btn', `${k} 되살리기`);
+        b.type = 'button';
+        b.onclick = async () => {
+          b.disabled = true;
+          try { await store.restoreDate(app, k); } catch (err) { window.alert(`되살리지 못했습니다 — ${err.message}`); }
+          b.disabled = false;
+        };
+        back.appendChild(b);
+      }
+      fix.appendChild(back);
+    }
     body.appendChild(fix);
   }
 
@@ -824,7 +867,7 @@ export function detailPanel(app, student, onClose) {
    * 7.5 **카드의 모든 항목을 고친다.** 위 표에 보이는 값이 틀렸으면 여기서 적는다.
    * 전문대·일반대에만 있는 항목은 각자 것만 보인다.
    */
-  const keys = ITEMS.map((x) => x.key).filter((k) => (isCollege
+  const keys = ITEMS.filter((x) => !x.hidden).map((x) => x.key).filter((k) => (isCollege
     ? !['50컷'].includes(k)
     : !['평균등급', '충원율'].includes(k)));
   body.appendChild(fixPanel(app, keys, now, '카드 항목 고치기'));

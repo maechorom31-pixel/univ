@@ -802,6 +802,8 @@ export function dateOf(app, kind) {
       status: saved.status,
     };
   }
+  // 선생님이 카드에서 「이 날짜 지우기」를 한 종류 — 자료(즐겨찾기·일정표)의 날을 안 쓴다
+  if (fix.excludedKinds(fixesOf(app)).has(kind)) return null;
   const d = (app.dates && app.dates[kind]) || null;
   if (d && d.fixed) return { from: d.from, to: d.to, fixed: true, status: 'source' };
 
@@ -835,6 +837,32 @@ export function dateOf(app, kind) {
   return d ? { from: d.from, to: d.to, fixed: d.fixed, status: 'source' } : null;
 }
 
+/**
+ * **날짜를 지운다.** 사람이 넣은 날이면 지우고, 그래도 자료(즐겨찾기·일정표)의 날이
+ * 남아 보이면 이 카드에서는 그 종류를 안 쓰게 적어 둔다(고침 `날짜제외`). 「지우기」를
+ * 눌렀는데 다른 날이 튀어나오면 지워지지 않은 것과 같다.
+ */
+export async function clearDate(app, kind) {
+  if (state.dates.has(`${app.id}|${kind}`)) await setDate(app, kind, '');
+  if (dateOf(app, kind)) {
+    const set = fix.excludedKinds(fixesOf(app));
+    set.add(kind);
+    await setFix(app, '날짜제외', [...set].join(','));
+  }
+}
+
+/** 지운 자료 날짜를 되살린다. */
+export async function restoreDate(app, kind) {
+  const set = fix.excludedKinds(fixesOf(app));
+  if (!set.delete(kind)) return;
+  await setFix(app, '날짜제외', [...set].join(','));
+}
+
+/** 이 카드에서 자료 날짜를 지운 종류들 — 화면이 「되살리기」를 세울 때 쓴다. */
+export function excludedDates(app) {
+  return fix.excludedKinds(fixesOf(app));
+}
+
 /** 고른 날의 출처 — 다른 자료가 다른 날을 말하면 그것도 같이 적는다. */
 function altWhy(hit) {
   const md = (iso) => iso.slice(5).replace('-', '/');
@@ -849,9 +877,8 @@ function altWhy(hit) {
 function scheduleOpt(app) {
   const s = summary(app);
   const mo = s && s.mojip;
-  const hasMin = app.minReqText || app.minReq === true ? true
-    : app.minReq === false ? false
-      : mo ? Boolean(mo.minReq && String(mo.minReq).trim()) : null;
+  // 최저가 있나 — 고침 · 즐겨찾기 · 모집요강 차례(minReqOf). 화면들과 같은 판단을 쓴다
+  const hasMin = minReqOf(app).has;
   const force = interviewForce(app);
   const college = s && s.kind === 'college' && s.rows && s.rows[0];
   return {

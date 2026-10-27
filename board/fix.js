@@ -60,7 +60,19 @@ export const ITEMS = [
   { key: '반영교과', group: '반영 교과', scope: 'type', kind: 'long', ph: '공통·일반선택 반영 교과' },
   { key: '진로선택', group: '반영 교과', scope: 'type', kind: 'long', ph: '진로선택 반영 방법' },
   { key: '지원자격', group: '지원 자격', scope: 'type', kind: 'long' },
+  /*
+   * 자료(일정표·즐겨찾기)에서 온 날짜를 **이 카드에서는 지운다** — 「최종발표,면접」처럼
+   * 종류를 쉼표로. 사람이 넣은 날짜는 이것과 상관없이 언제나 보인다(지우면 그냥 지워진다).
+   * 카드 항목 고치기 목록에는 안 나온다(hidden) — 날짜 넣기·고치기의 「지우기」가 적는다.
+   */
+  { key: '날짜제외', group: '일정', scope: 'app', kind: 'text', hidden: true },
 ];
+
+/** 이 카드에서 지운 자료 날짜의 종류들. */
+export function excludedKinds(fx) {
+  const v = fx && fx['날짜제외'] ? fx['날짜제외'].value : '';
+  return new Set(String(v || '').split(/[,\s]+/).map((x) => x.trim()).filter(Boolean));
+}
 
 export const ITEM = Object.fromEntries(ITEMS.map((x) => [x.key, x]));
 

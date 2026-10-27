@@ -37,7 +37,7 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-09-16a';
+var CODE_VER = '2026-10-27';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
@@ -1597,6 +1597,18 @@ function studentAction_(action, p) {
    * 클라이언트가 보낸 hak 은 쓰지 않는다 — 남의 학번을 적어 보낼 수 있다.
    */
   if (action === 'studentDate') {
+    /*
+     * 빈 날짜는 지우기다 — 그런데 학생은 **제가 넣고 아직 확인 안 된 것만** 지운다.
+     * 선생님이 확정한 날을 학생 링크로 지울 수 있으면 확정이 확정이 아니다.
+     */
+    if (!String(p.from || '').trim()) {
+      var mine = rows_(SHEET.date, true).filter(function (r) {
+        return String(r.id) === String(p.id) && String(r.kind) === String(p.kind);
+      })[0];
+      if (mine && String(mine.status) !== 'pending') {
+        return { ok: false, error: '선생님이 확정한 날짜는 선생님께 말씀드려 지워 주세요.' };
+      }
+    }
     return setDate_({ id: p.id, hak: hak, kind: p.kind, from: p.from, to: p.to }, who, 'pending');
   }
   if (action === 'studentApplyNo') {

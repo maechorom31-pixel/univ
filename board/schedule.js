@@ -659,7 +659,7 @@ function fixedRow(app, kind, d) {
     const fix = document.createElement('details');
     fix.className = 'date-add';
     const sum = document.createElement('summary');
-    sum.textContent = '날짜 고치기';
+    sum.textContent = '날짜 고치기 · 지우기';
     fix.appendChild(sum);
     const line = el('div', 'field-in');
     const input = document.createElement('input');
@@ -671,6 +671,20 @@ function fixedRow(app, kind, d) {
     save.type = 'button';
     save.onclick = () => saveDate(app, kind, input.value);
     line.appendChild(save);
+    // 지우기 — 넣은 날은 지우고, 자료(일정표·즐겨찾기)의 날은 이 카드에서 안 쓰게 적는다
+    const drop = el('button', 'btn', '지우기');
+    drop.type = 'button';
+    drop.onclick = async () => {
+      drop.disabled = true;
+      try {
+        await store.clearDate(app, kind);
+      } catch (err) {
+        const main = $('#schedule');
+        if (main) main.prepend(el('p', 'note error', `오류: ${err.message}`));
+      }
+      drop.disabled = false;
+    };
+    line.appendChild(drop);
     fix.appendChild(line);
     txt.appendChild(fix);
   }
@@ -712,6 +726,20 @@ function fixedRow(app, kind, d) {
       }
     };
     row.appendChild(ok);
+    // 학생이 잘못 넣었으면 지운다 — 확인 대기가 영영 남지 않게 「아닙니다」도 둔다
+    const no = el('button', 'btn', '아닙니다');
+    no.type = 'button';
+    no.title = '학생이 넣은 날짜를 지웁니다.';
+    no.onclick = async () => {
+      no.disabled = true;
+      try {
+        await store.setDate(app, kind, '');
+      } catch (err) {
+        no.disabled = false;
+        window.alert(`지우지 못했습니다 — ${err.message}`);
+      }
+    };
+    row.appendChild(no);
   }
   return row;
 }

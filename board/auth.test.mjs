@@ -311,6 +311,16 @@ sheets['일정'] = mkSheet([G.HEADERS['일정']]);   // 앞 블록의 행을 안
   eq(v2.dates.length, 1, '확정된 날짜가 학생에게 돌아온다');
   eq(v2.dates[0].status, 'confirmed', '확정 상태 그대로');
 
+  // 지우기 — 학생 링크로는 확정된 날을 못 지운다. 제가 넣은 확인 대기만 지운다.
+  eq(G.handle_({ action: 'studentDate', token: 'tokA', id, kind: '면접', from: '', to: '' }).ok,
+    false, '학생은 선생님이 확정한 날짜를 못 지운다');
+  eq(G.handle_({ action: 'student', token: 'tokA' }).dates.length, 1, '확정된 날은 그대로 남는다');
+  eq(G.handle_({ action: 'studentDate', token: 'tokA', id, kind: '논술', from: '2026-11-28', to: '2026-11-28' }).ok,
+    true, '학생이 다른 날을 넣는다(확인 대기)');
+  eq(G.handle_({ action: 'studentDate', token: 'tokA', id, kind: '논술', from: '', to: '' }).ok,
+    true, '제가 넣은 확인 대기는 지운다');
+  eq(G.handle_({ action: 'student', token: 'tokA' }).dates.length, 1, '지운 날은 사라진다');
+
   // 예전 코드가 남긴, 학번이 빈 일정 행도 학생이 받는다 — id 가 내 지원이면 내 것이다
   sheets['일정'].getDataRange().getValues().push(
     [id, '', '실기', '2026-12-01', '2026-12-01', 'pending', '3101 학생', '2026-09-01T01:00:00+09:00']);
