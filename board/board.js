@@ -223,9 +223,12 @@ function renderRoster() {
     const cards = [...locks.values()].reduce((n, k) => n + k.locked, 0);
     // 낱말 안은 NBSP 로 묶는다 — 좁은 명단 폭에서 「아직 / 2명」이 갈려 「2명」만 한 줄에 남았다
     const nb = (t) => t.replace(/ /g, String.fromCharCode(160));
+    // 셋은 서로 겹치지 않는다 — 「아직」은 하나도 안 잠근 학생. 예전에는 일부 마감한 학생까지
+    // 「아직」에 또 세어 두 명인 반이 「일부 1명 · 아직 2명」으로 나왔다. 아래 단추는 둘을 합쳐 본다.
+    const none = open.length - part.length;
     meta.appendChild(el('span', '', [nb(`★ 마감 ${cards}장`), nb(`다 마감 ${done.length}명`),
-      nb(`일부 ${part.length}명`), nb(`아직 ${open.length}명`)].join(' · ')));
-    const btn = el('button', `btn${onlyOpen ? ' on' : ''}`, onlyOpen ? '전체 보기' : '아직인 학생만');
+      nb(`일부 ${part.length}명`), nb(`아직 ${none}명`)].join(' · ')));
+    const btn = el('button', `btn${onlyOpen ? ' on' : ''}`, onlyOpen ? '전체 보기' : '마감 안 끝난 학생만');
     btn.type = 'button';
     btn.setAttribute('aria-pressed', String(onlyOpen));
     btn.onclick = () => { onlyOpen = !onlyOpen; renderRoster(); };
@@ -662,12 +665,10 @@ function waitingResults() {
      * 최종이 비어 있고 1단계만 적힌 건이 있다(1단계 발표만 난 자리).
      * `final` 만 찍으면 그 줄이 빈칸으로 보여서 무엇을 확인하라는 건지 알 수 없다.
      */
-    const said = x.result.final
-      || (x.result.stage1 ? `1단계 ${x.result.stage1}` : '')
-      || '결과 지움';
+    // 사유까지 한 줄로 — 「불합격」만 찍으면 면접 미응시인지 최저 미충족인지 카드를 열어야 안다
+    const said = outcomeText(x.result) || '결과 지움';
     txt.appendChild(el('div', 'dept', [
       said,
-      x.result.waitNo ? `예비 ${x.result.waitNo}번` : '',
       String(x.result.at || '').slice(0, 10),
     ].filter(Boolean).join(' · ')));
     row.appendChild(txt);
@@ -937,7 +938,7 @@ function resultBox(app) {
       if (miss && !window.confirm(`${kind} 미응시로 적으면 결과가 「불합격 · ${kind} 미응시」로 들어갑니다.`)) {
         pick.value = ''; return;
       }
-      try { await store.setResult(app, withMissed(r, kind, miss)); } catch (err) { fail('저장하지 못했습니다', err); }
+      try { await store.setResult(app, withMissed(r, kind, miss, staged)); } catch (err) { fail('저장하지 못했습니다', err); }
     };
     ex.appendChild(pick);
     wrap.appendChild(ex);
@@ -1015,7 +1016,7 @@ function resultBox(app) {
     say.hidden = true;
     try {
       await store.setResult(app, withChoice(r, ask, sel.value, {
-        waitNo: wait.value, enrolled: go.hidden ? '' : go.value,
+        waitNo: wait.value, enrolled: go.hidden ? '' : go.value, staged,
       }));
     } catch (err) {
       fail('결과를 저장하지 못했습니다', err);

@@ -109,5 +109,16 @@ console.log('대학별고사 — 응시·미응시·예정');
   eq([keep.final, keep.enrolled], ['최초합격', '등록'], '미응시가 아니었으면 되돌려도 그대로');
 }
 
+console.log('단계별 — 2단계에서만 나오는 값이면 1단계 합격을 채운다');
+{
+  eq(withMissed({}, '면접', true, true).stage1, '합격', '면접 미응시 — 면접 통보를 받았으니 1단계 합격');
+  eq(withChoice({}, 'final', '예비', { waitNo: '3', staged: true }).stage1, '합격', '예비도');
+  eq(withChoice({}, 'final', '최초합격', { staged: true }).stage1, '합격', '최초합격도');
+  eq(withChoice({}, 'final', '불합격', { staged: true }).stage1, '', '불합격은 1단계에서 떨어졌을 수도 — 안 채운다');
+  eq(withChoice({}, 'final', '최저', { staged: true }).stage1, '', '최저도 안 채운다');
+  eq(withChoice({}, 'final', '최초합격').stage1, '', '일괄 전형은 1단계가 없다');
+  eq(withChoice({ stage1: '불합격' }, 'final', '최초합격', { staged: true }).stage1, '불합격', '적힌 1단계는 건드리지 않는다');
+}
+
 console.log(fail ? `\n${fail}개 실패` : '\n모두 통과');
 process.exitCode = fail ? 1 : 0;

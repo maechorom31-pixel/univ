@@ -1571,6 +1571,8 @@ function statusText(app) {
   const r = store.resultOf(app) || {};
   // 곁가지는 괄호에 — 「충원합격 · 예비 7」이 좁은 칸에서 숫자만 아랫줄로 떨어졌다
   const notes = [];
+  // 불합격 사유(최저 미충족·면접 미응시)도 — 진학 대장·최종 결과 보고서(resultText)와 같은 말
+  if (r.final && r.reason) notes.push(String(r.reason).replace(/^수능/, ''));
   if (r.waitNo) notes.push(`예비${r.waitNo}`);
   if (r.enrolled) notes.push(String(r.enrolled));
   if (r.final) {

@@ -160,7 +160,13 @@ function apply(data) {
 /** 날짜·결과·메모 — `studentRest` 또는 전체 응답에서. */
 function applyRest(data) {
   state.notes = data.notes || [];
-  state.results = new Map((data.results || []).map((r) => [String(r.id), {
+  /*
+   * **다 빈 줄은 없는 줄이다.** 선생님이 결과를 지우거나(「발표 전」으로 되돌리기) 미응시를
+   * 되돌리면 시트에 빈 줄이 남는다. 그 줄을 「적힌 결과」로 받으면 즐겨찾기가 준 결과를
+   * 가린다 — 선생님 화면(store.resultOf)은 즐겨찾기로 돌아가는데 학생 화면만 빈칸이 된다.
+   */
+  const filled = (r) => ['stage1', 'final', 'reason', 'waitNo', 'enrolled'].some((k) => String(r[k] || '').trim());
+  state.results = new Map((data.results || []).filter(filled).map((r) => [String(r.id), {
     stage1: String(r.stage1 || ''), final: String(r.final || ''),
     reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
     enrolled: String(r.enrolled || ''), status: String(r.status || 'confirmed'),
@@ -1799,7 +1805,7 @@ function dateRow(app, kind, d, committed = false) {
       if (miss && !window.confirm(`${kind} 미응시로 적으면 결과가 「불합격 · ${kind} 미응시」로 선생님께 갑니다.`)) {
         pick.value = ''; return;
       }
-      saveResult(app, withMissed(r, kind, miss));
+      saveResult(app, withMissed(r, kind, miss, isStaged(s && s.stages, interviewForce(app))));
     };
     line.appendChild(el('span', 'hint', '응시'));
     line.appendChild(pick);
@@ -1915,7 +1921,7 @@ function resultRow(app, open = false) {
       return;
     }
     saveResult(app, withChoice(row, askStep, sel.value, {
-      waitNo: wait.value, enrolled: go.hidden ? '' : go.value,
+      waitNo: wait.value, enrolled: go.hidden ? '' : go.value, staged,
     }));
   };
   line.appendChild(btn);

@@ -111,13 +111,19 @@ export function outcomeText(r) {
  * @param r       지금 줄
  * @param step    'stage1' | 'final'
  * @param value   STAGE1_CHOICES / finalChoices 의 value
- * @param extra   {waitNo, enrolled: '등록'|'미등록'|''}
+ * @param extra   {waitNo, enrolled: '등록'|'미등록'|'', staged}
+ *
+ * `staged`(단계별 전형)이고 1단계가 비었는데 **2단계에 가야만 나오는 값**(최초·예비·충원
+ * 합격, 고사 미응시)을 고르면 1단계를 「합격」으로 채운다. 면접 통보를 받았거나 최종에
+ * 붙었으면 1단계는 붙은 것이다. 불합격·최저는 1단계에서 떨어진 것일 수도 있어 안 채운다.
  */
 export function withChoice(r, step, value, extra = {}) {
   const cur = {
     stage1: (r && r.stage1) || '', final: (r && r.final) || '', reason: (r && r.reason) || '',
     waitNo: (r && r.waitNo) || '', enrolled: (r && r.enrolled) || '',
   };
+  const past1 = ['최초합격', '예비', '충원합격'].includes(value) || String(value).startsWith('미응시:');
+  if (step === 'final' && extra.staged && !cur.stage1 && past1) cur.stage1 = '합격';
   if (step === 'stage1') {
     const next = { ...cur, stage1: value };
     // 1단계 불합격이면 그 뒤는 없다 — 남은 최종·예비가 있으면 지운다(서로 어긋난 줄이 남지 않게)
@@ -182,7 +188,7 @@ export function examStatus(kind, d, r, opt = {}) {
 }
 
 /** 이 고사를 미응시로 적은 줄 / 되돌린 줄. 되돌리면 최종을 비운다(발표 전으로). */
-export function withMissed(r, kind, missed) {
-  if (missed) return withChoice(r, 'final', `미응시:${kind}`);
+export function withMissed(r, kind, missed, staged = false) {
+  if (missed) return withChoice(r, 'final', `미응시:${kind}`, { staged });
   return finalOf(r) === `미응시:${kind}` ? withChoice(r, 'final', '') : withChoice(r, 'final', finalOf(r));
 }
