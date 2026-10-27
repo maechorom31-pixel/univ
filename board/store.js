@@ -13,11 +13,11 @@
  */
 import * as api from './api.js';
 import {
-  link as makeLink, summarize, examDate, examKindFits, paperDates,
+  link as makeLink, summarize, examDate,
   candidates as similarDepts,
   deptsOf as allDepts,
   similarUnivs as nearUnivs,
-  indexIpgyeol, indexMojip, indexCollege, indexSchedule,
+  indexIpgyeol, indexMojip, indexCollege, indexSchedule, indexAnnounce, paperFor, examFor,
   splitDepts, referenceLine, resolveUniv, catOf, predecessor,
 } from './match.js';
 import { isoDay, hasInterview, forcedInterview } from './text.js';
@@ -58,6 +58,7 @@ let ipgyeol = null;
 let mojip = null;
 let college = null;
 let sched = null;         // 전형일정표(PDF에서 뽑은 것)
+let announce = null;      // 수시 일정 달력 — 발표일·고사일을 학과까지 보고 고른다(announce2027.json)
 let ratio = null;         // 올해 대학이 발표한 경쟁률(ratio.html 이 긁어 둔 것)
 let offline = false;      // 보기용 자료로 열었는가. 그때는 서버를 부르지 않는다
 const linkCache = new Map();
@@ -257,6 +258,7 @@ const SOURCES = [
   ['mojip', 'data/mojip2027.json', indexMojip, '모집요강'],
   ['college', '../College/data/departments.json', indexCollege, '전문대 자료'],
   ['sched', 'data/schedule2027.json', indexSchedule, '전형일정표'],
+  ['announce', 'data/announce2027.json', indexAnnounce, '수시 일정 달력'],
   /* 접수 기간 전에는 아직 없는 파일이다. 없다고 알릴 것이 아니라 조용히 넘긴다
      — 「불러오지 못한 자료」에 늘 적혀 있으면 진짜 빠진 것을 못 알아본다. */
   ['ratio', 'data/ratio/board.json', indexRatio, ''],
@@ -286,6 +288,7 @@ const setSource = (name, value) => {
   else if (name === 'mojip') mojip = value;
   else if (name === 'college') college = value;
   else if (name === 'sched') sched = value;
+  else if (name === 'announce') announce = value;
   else if (name === 'ratio') ratio = value;
 };
 
@@ -813,21 +816,56 @@ export function dateOf(app, kind) {
    * 사람이 넣은 날짜와 즐겨찾기가 준 확정일은 그대로 둔다. 그건 추정이 아니라
    * 자료에 적힌 날이고, 아니면 지우면 된다.
    */
-  if (examKindFits(app, kind) && !(kind === '면접' && interviewForce(app) === '없음')) {
-    const found = examDate(app, sched);
-    if (found && !found.loose) {
-      return {
-        from: found.from, to: found.to, fixed: found.fixed, status: 'sched',
-        why: `전형일정표 · ${found.type || found.kind}`,
-      };
+  /*
+   * 대학별고사(면접·논술·실기)와 발표일은 **두 일정 자료를 합친 값**이다(match.js paperFor·examFor —
+   * 학생 화면도 같은 함수를 부른다). 새 자료(수시 일정 달력)가 학과·전형까지 보고 고르고,
+   * 못 고르면 옛 전형일정표가 전형 이름이 맞을 때만 메운다. 둘 다 「예정」(sched)이다.
+   */
+  if (['면접', '논술', '실기'].includes(kind) && !(kind === '면접' && interviewForce(app) === '없음')) {
+    const found = examFor(app, kind, sched, announce, scheduleOpt(app));
+    if (found) {
+      return { from: found.from, to: found.to, fixed: found.fixed, status: 'sched', why: altWhy(found) };
     }
+  }
+  if (kind === '1단계발표' || kind === '최종발표') {
+    const paper = paperOf(app);
+    const hit = paper && (kind === '1단계발표' ? paper.stage1 : paper.final);
+    if (hit) return { from: hit.from, to: hit.to, fixed: hit.fixed, status: 'sched', why: altWhy(hit) };
   }
   return d ? { from: d.from, to: d.to, fixed: d.fixed, status: 'source' } : null;
 }
 
-/** 원서 마감 · 1단계 발표 · 최종 발표. 전형일정표에서 온다. */
+/** 고른 날의 출처 — 다른 자료가 다른 날을 말하면 그것도 같이 적는다. */
+function altWhy(hit) {
+  const md = (iso) => iso.slice(5).replace('-', '/');
+  const alt = hit.alt ? ` (다른 자료: ${md(hit.alt.from)}${hit.alt.to && hit.alt.to !== hit.alt.from ? `~${md(hit.alt.to)}` : ''})` : '';
+  return `${hit.why || ''}${hit.tentative ? ' · 예정' : ''}${alt}`;
+}
+
+/**
+ * 일정을 고를 때 쓰는 이 지원의 사정 — 최저가 있나, 단계가 몇인가, 면접이 있나,
+ * 전문대면 어느 차수 자료인가. 선생님이 「면접 없음」으로 못박았으면 단계도 1로 본다.
+ */
+function scheduleOpt(app) {
+  const s = summary(app);
+  const mo = s && s.mojip;
+  const hasMin = app.minReqText || app.minReq === true ? true
+    : app.minReq === false ? false
+      : mo ? Boolean(mo.minReq && String(mo.minReq).trim()) : null;
+  const force = interviewForce(app);
+  const college = s && s.kind === 'college' && s.rows && s.rows[0];
+  return {
+    hasMin,
+    stages: force === '없음' ? 1 : (s && s.stages) || null,
+    interview: hasInterview(mo, s && s.stages, force),
+    phase: college && college.ipgyeol ? college.ipgyeol.phase || null : null,
+  };
+}
+
+/** 원서 마감 · 1단계 발표 · 최종 발표. 두 일정 자료를 합친 값이다(paperFor). */
 export function paperOf(app) {
-  return paperDates(app, sched);
+  if (!sched && !announce) return null;
+  return paperFor(app, sched, announce, scheduleOpt(app));
 }
 
 /**

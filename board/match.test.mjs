@@ -15,7 +15,7 @@ import {
   univStem, campusOf, resolveUniv, buildUnivIndex,
   normDept, key, isUmbrella, link, indexIpgyeol, indexMojip, indexCollege,
   splitDepts, catOf, realRate, referenceLine, similarity, candidates,
-  normType, pickIpgyeol, typeGroups, univKind, summarize, predecessor, fillTrend, outsideLimit,
+  normType, pickIpgyeol, typeGroups, univKind, summarize, predecessor, fillTrend, outsideLimit, indexAnnounce, announceDates, paperFor, indexSchedule,
 } from './match.js';
 import { josa, minReqShort, methodLine, interviewShare, methodHasInterview,
   hasInterview, forcedInterview } from './text.js';
@@ -549,6 +549,77 @@ eq(univStem('명지전문대학'), univStem('명지전문대'), '즐겨찾기 �
 eq(univStem('인하공업전문대학'), univStem('인하공업전문대'), '인하공전');
 eq(univStem('한양여자대학'), univStem('한양여대'), '대학 꼬리를 턴 뒤에도 축약 규칙이 이어진다');
 eq(univStem('강원도립대학') === univStem('강원대'), false, '다른 학교가 합쳐지면 안 된다');
+
+console.log('발표일 — 학과·전형까지 보고 고른다 (announceDates)');
+{
+  const R = (kind, date, univ, scope, note = '') => ({ date, to: date, kind, univ, scope, clock: '', note });
+  const idx = indexAnnounce({ rows: [
+    R('final', '2026-10-29', '광주대', '전 모집단위(수능최저 미적용)', '학생부교과(일반학생) 간호학과 제외(12.16 발표)'),
+    R('final', '2026-12-16', '광주대', '학생부교과(일반학생) 간호학과'),
+    R('final', '2026-10-15', '한림대', '학생부교과(교과우수자 간호 제외)·외국어/체육특기자'),
+    R('final', '2026-12-17', '한림대', '교과우수자(간호)·학생부종합 전 모집단위'),
+    R('stage1', '2026-12-03', '한림대', '학생부종합(전 모집단위)'),
+    R('final', '2026-10-26', '건양대', '학생부교과·실기/실적·의학과(수능최저미적용)'),
+    R('final', '2026-12-16', '건양대', '의학과(수능최저적용)·군사학전형'),
+    R('final', '2026-11-20', '원광대', '학생부교과/지역인재교과/실기·특기/일부전형', '최종합격, 2년제학과 최종합격은 10.23'),
+    R('final', '2026-12-18', '원광대', '학생부종합/지역인재(종합/기회균형)/의치한의예과 등'),
+    R('final', '2026-10-29', '호남대', '수능 미적용학과(면접중심[일반학생A]/교과중심[일반학생B·일반고])'),
+    R('final', '2026-12-16', '호남대', '수능 적용학과(교과중심[일반고·지역인재])'),
+    R('final', '2026-11-13', '경북대', '실기전형(미술·디자인 제외)·특기자(체육)'),
+    R('final', '2026-12-18', '경북대', '위 전형 외 모든 전형'),
+    R('final', '2026-11-18', '한경국립대', '일반전형_안성·잠재력우수자·사회통합 외 전체전형'),
+    R('final', '2026-12-17', '한경국립대', '[안성캠]일반전형_안성·잠재력우수자·사회통합'),
+    R('final', '2026-11-06', '한성대', '수능최저 미적용(한성인재·실기우수자·지역균형·기회균형 등)'),
+    R('final', '2026-12-16', '한성대', '교과우수(수능최저학력기준 적용)'),
+    R('final', '2026-11-13', '우송대', ''),
+    R('final', '2026-11-13', '한양대(ERICA)', '재능우수자(체육특기/무용)'),
+    R('final', '2026-12-18', '한양대(ERICA)', '학생부종합(서류형·면접형·고른기회)'),
+    R('final', '2026-12-18', '한양대', '학생부종합 전 전형'),
+    R('final', '2026-11-20', '국민대', '학생부교과(가)'),
+    R('final', '2026-12-18', '국민대', '학생부교과(나)'),
+  ], college: [{ univ: '명지전문대', period: '수시1차', final: '2026-11-06' }, { univ: '명지전문대', period: '수시2차', final: '2026-12-18' }] });
+  const fin = (univ, dept, type, hasMin, stages = 1, extra = {}) => {
+    const r = announceDates({ univ, dept, typeSub: type, typeName: type, typeCat: type, univType: '일반대', ...extra }, idx, { hasMin, stages });
+    return r.final ? r.final.from.slice(5) : null;
+  };
+  eq(fin('광주대학교', '간호학과', '학생부교과(일반학생)', true), '12-16', '학과가 적힌 줄이 이긴다');
+  eq(fin('광주대학교', '경찰행정학과', '학생부교과(일반학생)', false), '10-29', '「간호학과」는 괄호 밖이라도 학과 제한이다');
+  eq(fin('한림대학교', '언어병리학과', '학생부교과(교과우수자전형)', false), '10-15', '「교과우수자 간호 제외」는 간호만 뺀다');
+  eq(fin('한림대학교', '간호학과', '학생부교과(교과우수자전형)', true), '12-17', '「교과우수자(간호)」의 (간호)는 학과 목록');
+  eq(fin('건양대학교', '간호학과', '학생부교과(일반학생)', true), '10-26', '최저 조건은 덩이마다 — 의학과(…)에만 걸린다');
+  eq(fin('건양대학교', '의학과', '학생부교과(일반학생)', true), '12-16', '최저 있는 의학과');
+  eq(fin('건양대학교', '의학과', '학생부교과(일반학생)', false), '10-26', '최저 없는 의학과');
+  eq(fin('건양대학교', '의학과', '학생부교과(일반학생)', null), null, '최저를 모르면 조건 줄에 안 붙인다 — 갈려서 안 고른다');
+  eq(fin('원광대학교', '부사관과(2년제)', '학생부교과(일반)', false), '10-23', '비고의 「2년제학과 …은 10.23」');
+  eq(fin('원광대학교', '경영학부', '학생부교과(일반)', false), '11-20', '나머지는 줄의 날');
+  eq(fin('원광대학교', '치위생학과', '학생부교과(지역인재교과-전북)', false), '11-20', '「지역인재교과」는 교과의 것');
+  eq(fin('원광대학교', '치위생학과', '학생부종합(지역인재)', true, 2), '12-18', '「지역인재(종합/…)」는 종합의 것');
+  eq(fin('호남대학교', '간호학과', '학생부교과(일반고)', true), '12-16', '겹친 괄호 — 「교과중심[일반고…]」');
+  eq(fin('호남대학교', '경영학과', '학생부교과(일반학생A)', false), '10-29', '최저 없는 쪽');
+  eq(fin('호남대학교', '간호학과', '학생부종합(일반)', true), null, '괄호 안 유형 제한(교과중심)에 종합은 안 든다');
+  eq(fin('경북대학교', '미술학과', '실기/실적(실기전형)', false), '12-18', '제외된 학과는 「위 전형 외」로 간다');
+  eq(fin('한경국립대학교', '경영학과', '학생부교과(일반전형-안성)', false), '12-17', '「X 외 전체」의 X 는 빠진다 — 「-」와 「_」는 같다');
+  eq(fin('한성대학교', '경영학부', '학생부종합(한성인재전형)', false), '11-06', '목록 속 「실기우수자」가 종합을 쫓아내지 않는다');
+  eq(fin('우송대학교', '경영학과', '학생부교과(교과중심전형)', false), '11-13', '범위 칸이 비면 대학 전체');
+  eq(fin('한양대학교(ERICA)', '경영학부', '학생부종합(면접형)', false, 2), '12-18', 'ERICA 는 ERICA 줄로');
+  eq(fin('한양대학교(서울)', '경영학부', '학생부종합(서류형)', false), '12-18', '본교는 본교 줄로');
+  eq(fin('국민대학교', '경영학부', '학생부교과(다)', false), null, '같은 점수의 줄이 다른 날을 말하면 고르지 않는다');
+  {
+    const r = announceDates({ univ: '명지전문대학', dept: '항공서비스과', typeSub: '', typeName: '', typeCat: '', univType: '전문대' }, idx, {});
+    eq(r.final, null, '전문대 — 차수를 모르면 고르지 않는다');
+    const r1 = announceDates({ univ: '명지전문대학', dept: '항공서비스과', typeSub: '', typeName: '', typeCat: '', univType: '전문대' }, idx, { phase: '수시1차' });
+    eq(r1.final && r1.final.from, '2026-11-06', '전문대 — 학과 자료의 차수로');
+  }
+  // 두 자료 합치기 — 넓은 말(빈 범위)이 좁은 말(옛 표의 전형 이름 맞춤)을 못 이긴다
+  {
+    const one = indexAnnounce({ rows: [R('final', '2026-12-18', '가톨릭대', '')] });
+    const old = indexSchedule({ rows: [{ univ: '가톨릭대', kind: '종합', type: '잠재능력우수자서류', apply: null, stage1: null, final: { from: '2026-11-27', to: '2026-11-27', fixed: true }, notes: [] }] });
+    const app = { univ: '가톨릭대학교(성심)', dept: '경영학과', typeSub: '학생부종합(잠재능력우수자서류전형)', typeName: '학생부종합(잠재능력우수자서류전형)', typeCat: '학생부종합', univType: '일반대' };
+    const p = paperFor(app, old, one, { hasMin: false, stages: 1 });
+    eq(p.final.from, '2026-11-27', '빈 범위 줄보다 전형 이름이 맞는 옛 줄');
+    eq(p.final.alt && p.final.alt.from, '2026-12-18', '어긋난 다른 자료의 날은 남긴다');
+  }
+}
 
 console.log('수시 6회 제한 밖 (outsideLimit)');
 eq(outsideLimit({ univType: '전문대', univ: '광주보건대학교' }), true, '전문대');

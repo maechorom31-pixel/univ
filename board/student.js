@@ -17,8 +17,8 @@
  */
 import * as api from './api.js';
 import {
-  link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule,
-  summarize, catOf, examDate, examKindFits, paperDates, splitDepts, referenceLine, resolveUniv,
+  link as makeLink, indexIpgyeol, indexMojip, indexCollege, indexSchedule, indexAnnounce, paperFor, examFor,
+  summarize, catOf, examDate, splitDepts, referenceLine, resolveUniv,
   fillTrend, outsideLimit, isGuessedFit, buildUnivIndex,
 } from './match.js';
 import { josa, rate1, typedRateText, isoDay, minReqShort, methodLine, interviewShare, hasInterview, forcedInterview } from './text.js';
@@ -193,14 +193,16 @@ async function grab(url, build) {
 let pubBase = null;
 async function loadPublic() {
   pubBase = (async () => {
-    const [ipIndex, mojip, college, sched] = await Promise.all([
+    const [ipIndex, mojip, college, sched, announce] = await Promise.all([
       grab('data/ipgyeol/index.json', (j) => (j && j.univs && j.columns ? j : null)),
       grab('data/mojip2027.json', indexMojip),
       grab('../College/data/departments.json', indexCollege),
       grab('data/schedule2027.json', indexSchedule),
+      // 수시 일정 달력 — 발표일·고사일을 학과까지 보고 고른다. 선생님 화면과 같은 자료·같은 함수
+      grab('data/announce2027.json', indexAnnounce),
     ]);
     state.ipIndex = ipIndex;
-    const parts = { mojip, college, sched, related: new Map() };
+    const parts = { mojip, college, sched, announce, related: new Map() };
     if (!ipIndex) {
       // 옛 길 — 표가 없으면 정본을 통째로
       parts.ipgyeol = await grab('data/ipgyeol.json', indexIpgyeol);
@@ -323,14 +325,42 @@ function dateOf(app, kind) {
   // 선생님이 「면접 없음」이라고 정해 두면 일정표에서 면접일을 끌어오지 않는다 —
   // 교사 화면(store.dateOf)과 같은 규칙이다.
   const noIv = kind === '면접' && interviewForce(app) === '없음';
-  if (state.src && state.src.sched && examKindFits(app, kind) && !noIv) {
-    const found = examDate(app, state.src.sched);
-    // 전형 이름을 못 맞춘 값(loose)은 이 지원의 날짜가 아니다 — 상세에서 참고로만
-    if (found && !found.loose) {
-      return { from: found.from, to: found.to, fixed: found.fixed, status: 'sched' };
-    }
+  const src = state.src;
+  // 고사일·발표일은 두 일정 자료를 합친 값 — 선생님 화면과 같은 함수(match.js examFor·paperFor)
+  if (src && ['면접', '논술', '실기'].includes(kind) && !noIv) {
+    const found = examFor(app, kind, src.sched, src.announce, scheduleOpt(app));
+    if (found) return { from: found.from, to: found.to, fixed: found.fixed, status: 'sched' };
+  }
+  if (src && (kind === '1단계발표' || kind === '최종발표')) {
+    const paper = paperOf(app);
+    const hit = paper && (kind === '1단계발표' ? paper.stage1 : paper.final);
+    if (hit) return { from: hit.from, to: hit.to, fixed: hit.fixed, status: 'sched' };
   }
   return d ? { ...d, status: 'source' } : null;
+}
+
+/** 일정을 고를 때 쓰는 이 지원의 사정 — 선생님 화면(store.scheduleOpt)과 같은 규칙. */
+function scheduleOpt(app) {
+  const s = summaryOf(app);
+  const mo = s && s.mojip;
+  const hasMin = app.minReqText || app.minReq === true ? true
+    : app.minReq === false ? false
+      : mo ? Boolean(mo.minReq && String(mo.minReq).trim()) : null;
+  const force = interviewForce(app);
+  const college = s && s.kind === 'college' && s.rows && s.rows[0];
+  return {
+    hasMin,
+    stages: force === '없음' ? 1 : (s && s.stages) || null,
+    interview: hasInterview(mo, s && s.stages, force),
+    phase: college && college.ipgyeol ? college.ipgyeol.phase || null : null,
+  };
+}
+
+/** 원서 마감 · 1단계 발표 · 최종 발표 — 두 일정 자료를 합친 값. */
+function paperOf(app) {
+  const src = state.src;
+  if (!src || (!src.sched && !src.announce)) return null;
+  return paperFor(app, src.sched, src.announce, scheduleOpt(app));
 }
 
 /* ── 그리기 ───────────────────────────────────────────────────── */
@@ -589,7 +619,6 @@ const todayISO = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slic
 function announcePanel() {
   const wrap = el('div');
   const today = todayISO();
-  const paperOf = (app) => (state.src && state.src.sched ? paperDates(app, state.src.sched) : null);
   const resOf = (app) => {
     const saved = state.results.get(String(app.id)) || {};
     const src = app.result || {};
@@ -2259,13 +2288,15 @@ function openDetail(app) {
     }
     const mocks = MOCKS.map((k) => dateOf(app, k)).filter(Boolean);
     if (mocks.length) list.push(['모의면접', mocks.map((m, i) => `${i + 1}차 ${label(m.from)}`).join(' · ')]);
-    const paper = state.src && state.src.sched ? paperDates(app, state.src.sched) : null;
+    // 발표일은 사람이 넣은 값이 먼저다(dateOf) — 없으면 두 일정 자료를 합친 값
+    const paper = paperOf(app);
     if (paper) {
       const when = (x) => (x ? (x.from === x.to ? label(x.from) : `${label(x.from)}~${label(x.to)}`) : null);
       list.push(['원서 접수 마감', paper.apply ? when(paper.apply) : null]);
       // 「면접 없음」으로 정한 지원은 일괄로 본다 — 1단계 발표 줄을 세우지 않는다
-      if (interviewForce(app) !== '없음') list.push(['1단계 발표', when(paper.stage1)]);
-      list.push(['최종 발표', when(paper.final)]);
+      const mineOf = (k) => { const v = state.dates.get(`${app.id}|${k}`); return v && v.from ? v : null; };
+      if (interviewForce(app) !== '없음') list.push(['1단계 발표', when(mineOf('1단계발표') || paper.stage1)]);
+      list.push(['최종 발표', when(mineOf('최종발표') || paper.final)]);
     }
     if (mo && mo.exam) list.push(['대학별 고사', mo.exam]);
     // 전형 이름을 못 맞춰 카드 날짜로는 안 쓴 고사일 — 참고로만 (교사 상세와 같은 규칙)

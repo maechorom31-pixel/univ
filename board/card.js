@@ -533,7 +533,7 @@ export function detailPanel(app, student, onClose) {
       : d.status === 'confirmed' ? '선생님 확정'
         : d.status === 'sched' || d.status === 'sched-loose' ? (d.why || '전형일정표')
           : d.fixed ? '즐겨찾기' : '즐겨찾기 · 기간';
-    sched.push([kind, span(d), from]);
+    sched.push([kind === '1단계발표' ? '1단계 발표' : kind === '최종발표' ? '최종 발표' : kind, span(d), from]);
   }
   if (mo && mo.exam) {
     sched.push(R('대학별고사', '대학별 고사', mo.exam + (mo.examWhen ? ` ${MID} ${mo.examWhen}` : ''), '모집요강'));
@@ -543,18 +543,18 @@ export function detailPanel(app, student, onClose) {
   const paper = store.paperOf(app);
   const when = (x) => (x ? span(x) : null);
   if (paper || fixed['원서접수마감']) {
-    const tag = !paper ? '' : paper.loose ? `전형일정표 · ${paper.type} (전형 추정)` : '전형일정표';
+    const tag = paper && paper.apply ? '전형일정표' : '';
     sched.push(R('원서접수마감', '원서 접수 마감', pick('원서접수마감',
       paper && paper.apply ? when(paper.apply) + (paper.applyClock ? ` ${paper.applyClock}` : '') : null), tag));
   }
-  if (paper) {
-    const tag = paper.loose ? `전형일정표 · ${paper.type} (전형 추정)` : '전형일정표';
-    // 「면접 없음」으로 정한 지원은 일괄로 본다 — 1단계 발표 줄을 세우지 않는다.
-    // 선생님이 날짜를 넣어 두었으면 위(DATE_KINDS)에 이미 섰다 — 겹쳐 세우지 않는다.
-    if (paper.stage1 && store.interviewForce(app) !== '없음' && !store.state.dates.has(`${app.id}|1단계발표`)) {
-      sched.push(['1단계 발표', when(paper.stage1), tag]);
-    }
-    if (paper.final && !store.state.dates.has(`${app.id}|최종발표`)) sched.push(['최종 발표', when(paper.final), tag]);
+  /*
+   * 1단계·최종 발표는 위 줄(DATE_KINDS — store.dateOf)이 이미 세웠다: 사람이 넣은 날이
+   * 먼저, 없으면 두 일정 자료를 합친 날(paperFor)이 「예정」으로. 여기서 다시 세우면
+   * 같은 날이 두 줄로 선다. 고르지 못했으면(학과·전형에 따라 갈림) **그 까닭을** 적는다 —
+   * 빈칸이 「발표가 없다」로 읽히면 안 된다.
+   */
+  if (paper && !store.dateOf(app, '최종발표') && paper.why) {
+    sched.push(['최종 발표', '자료가 갈림 — 확인해 넣어 주세요', paper.why]);
   }
   sched.push(R('등록마감', '등록 마감', pick('등록마감', null), '모집요강 확인'));
   sched.push(R('미등록충원발표', '미등록 충원 발표', pick('미등록충원발표', null), '모집요강 확인'));

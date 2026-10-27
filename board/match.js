@@ -2034,6 +2034,471 @@ export function paperDates(app, sched) {
   };
 }
 
+/* ── 발표일 (data/announce2027.json) ──────────────────────────────── */
+
+/**
+ * 1단계·최종 발표일 — **학과까지 보고 고른다.**
+ * =====================================================================
+ * 예전에는 전형일정표(schedule2027)의 대학·전형 한 줄에서 왔고, 전형 이름이 안
+ * 맞으면 **같은 유형의 첫 줄**을 집었다. 그런데 발표는 학과로 갈리는 일이 흔하다 —
+ * 광주대 교과는 「간호학과만 12.16, 나머지는 10.29」, 건양대 의학과는 최저 적용이면
+ * 12.16·미적용이면 10.26. 첫 줄 하나로는 이걸 못 가른다.
+ *
+ * 새 자료(2027 수시 일정 달력)는 발표마다 대상을 **글로** 적는다. 그 글을 읽어
+ * 줄마다 이 지원에 맞는지 본다.
+ *
+ *   맞는 근거(점수)   학과 이름 4 · 전형 이름 3 · 전형 유형(교과·종합·논술·실기) 1 ·
+ *                    「전체·전 전형·공통」 0 · 「위 전형 외 모든」 같은 나머지 −1
+ *   거르는 것        「간호 제외」「실기 외 전체」(비고의 제외까지) ·
+ *                    「수능최저 적용/미적용」「수능일 이전/이후」가 이 지원과 반대일 때
+ *
+ * 근거가 하나도 없는 줄은 **안 맞는 것**이다(다른 학과·전형 이야기다). 가장 높은
+ * 점수의 줄들이 **서로 다른 날을 말하면 고르지 않는다** — 오표기가 미표기보다 나쁘다.
+ * 1단계 발표는 단계별 전형(stages > 1)에만 본다. 서류형에 면접형의 1단계 날이
+ * 붙으면 안 된다.
+ */
+const CAMPUS_EQ = { 원주: '미래', 미래: '미래' };
+const campusKey = (t) => CAMPUS_EQ[t] || t;
+
+/** 발표 자료의 대학 목록에서 이 지원의 대학을 고른다. 캠퍼스를 못 가리면 null. */
+function announceUniv(app, byStem) {
+  const stem = univStem(app.univ);
+  const tries = [stem, stem.startsWith('국립') ? stem.slice(2) : `국립${stem}`];
+  for (const t of tries) {
+    const list = byStem.get(t);
+    if (!list || !list.length) continue;
+    const mine = campusTokens(app.univ).map(campusKey);
+    const marked = list.filter((n) => campusTokens(n).length);
+    // 캠퍼스 표시가 서로 닿는 것 — 「강릉」↔「강릉원주」처럼 앞부분이 같아도 같다
+    const hit = marked.find((n) => {
+      const c = campusKey(campusTokens(n)[0]);
+      return mine.some((m) => m === c || m.startsWith(c) || c.startsWith(m));
+    });
+    if (hit) return hit;
+    // 못 가리면 본교로. 본교가 없으면(강원대는 두 캠퍼스뿐) 고르지 않는다.
+    return list.find((n) => !campusTokens(n).length) || null;
+  }
+  return null;
+}
+
+export function indexAnnounce(doc) {
+  const byStem = new Map();
+  const rows = new Map();
+  for (const r of (doc && doc.rows) || []) {
+    const k = univStem(r.univ);
+    if (!byStem.has(k)) byStem.set(k, []);
+    if (!byStem.get(k).includes(r.univ)) byStem.get(k).push(r.univ);
+    if (!rows.has(r.univ)) rows.set(r.univ, []);
+    rows.get(r.univ).push(r);
+  }
+  const college = new Map();
+  for (const c of (doc && doc.college) || []) {
+    const k = univStem(c.univ);
+    if (!college.has(k)) college.set(k, []);
+    college.get(k).push(c);
+  }
+  return { byStem, rows, college, source: (doc && doc.source) || '' };
+}
+
+/*
+ * 유형 낱말은 **낱말째로만** 본다. 「교과성적우수자」「교과우수자」는 전형 이름이지
+ * 「교과 전체」가 아니다 — 앞글자만 보고 유형으로 치면 용인대 자율전공이
+ * 「교과성적우수자」 줄의 날을 받는다.
+ */
+const CAT_TOKEN = {
+  교과: /^(학생부)?교과(위주|전형|전체|중심)?$|^학생부교과/,
+  종합: /^(학생부종합|학종|종합)(위주|전형|전체)?$|^학생부종합|^학종/,
+  논술: /^논술(위주|전형|우수자|고사)?$/,
+  실기: /^(실기|실적|실기\/실적|예체능|예·체능|특기자?|실기우수자)(위주|전형|전체)?$/,
+};
+const GENERAL = /전체|전\s*전형|모든|공통|전\s*모집단위|^수시$|^수시\s*전체|합격자\s*발표|최초합격/;
+const REST = /^(위|그\s*밖의?|이외|나머지)|기타/;
+const SPLIT = /[·/,()[\]{}\s+]+/;
+const norm = (t) => String(t || '').replace(/[\s\-_·]|전형$|특별$/g, '');
+const DEPT_SHORT = /^(간호|의예|의학|약학|한의예|치의예|수의예|물리치료|작업치료|임상병리|방사선|치위생|응급구조|군사학?|항공운항|유아교육|특수교육|체육교육|미술|디자인|음악|무용|연기|연극)$/;
+
+/** 학과 이름의 줄기 — 「간호학과」→「간호」, 「의예과」→「의예」. */
+function deptCore(name) {
+  return String(name || '').replace(/\(.*$/, '').replace(/\s/g, '')
+    .replace(/(학과|학부|전공|계열|과)$/, '');
+}
+/** 글 조각을 학과 줄기로 — 「간호학과제외」→「간호」 */
+function tokenCore(t) {
+  return t.replace(/(전형|특별)$/, '').replace(/제외$/, '').replace(/(학과|학부|전공|계열|과)$/, '');
+}
+// 「학생부교과」도 「과」로 끝난다 — 유형 낱말·「~교과」는 학과가 아니다
+const deptLike = (t) => !/교과$/.test(t) && !Object.values(CAT_TOKEN).some((re) => re.test(t))
+  && (/(학과|학부|전공|계열|과)$/.test(t) || DEPT_SHORT.test(t));
+
+/** 이 지원의 전형 이름 조각 — 「학생부종합(SSU미래인재전형)(면접형)」→ [SSU미래인재, 면접형] */
+function typeTokens(app) {
+  const raw = `${app.typeSub || ''} ${app.typeName || ''}`;
+  const out = new Set();
+  for (const m of raw.matchAll(/\(([^()]+)\)/g)) out.add(m[1]);
+  /*
+   * 자료는 전형 이름을 줄여 적는다 — 「광운참빛인재I·II」(즐겨찾기 「광운참빛인재전형Ⅰ-면접」),
+   * 「바롬인재서류·면접」(「바롬인재면접전형」). 그래서 「-」·로마숫자·전형·면접/서류 꼬리를
+   * 떼어 낸 조각도 함께 둔다. 즐겨찾기 이름은 괄호가 안 닫혀 오기도 한다.
+   */
+  for (const t of raw.split(/[()\s\-]+/)) {
+    out.add(t);
+    const bare = t.replace(/전형/g, '').replace(/[ⅠⅡⅢⅣIV]+$/, '').replace(/(면접|서류)(형)?$/, '');
+    if (bare !== t) out.add(bare);
+  }
+  return [...out]
+    .map((t) => t.replace(/전형$/, '').replace(/^(학생부교과|학생부종합|교과|종합|논술|실기|실기\/실적)$/, '').trim())
+    .filter((t) => t.length >= 2 && !/^(학생부|위주|특별|면접|서류|일반|면접형|서류형)$/.test(t) || /^(면접형|서류형)$/.test(t));
+}
+
+/** 괄호 깊이 0 에서만 「·/,」로 자른다 — 「학생부교과(일반·지역)」은 한 덩이다. */
+function splitTop(text) {
+  const out = [];
+  let depth = 0; let cur = '';
+  for (const ch of String(text || '')) {
+    if (ch === '(' || ch === '[') depth += 1;
+    if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1);
+    if (depth === 0 && /[·/,]/.test(ch)) { if (cur.trim()) out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/**
+ * 「X 제외」의 X — **바로 앞 낱말 덩이만.** 「교과우수자 간호 제외」는 교과우수자 가운데
+ * 간호를 뺀다는 말이지 교과우수자를 뺀다는 말이 아니다(한림대).
+ * 「X·Y·Z 외 전체」는 앞 목록 통째로가 X 다.
+ */
+function exclusions(text) {
+  const out = [];
+  for (const m of String(text || '').matchAll(/([^()[\],\s]+)\s*제외/g)) out.push(...m[1].split(/[·/]/));
+  // 「특기형 일부 제외」 — 일부라도 빠지면 이 전형 전체를 이 날로 볼 수 없다
+  for (const m of String(text || '').matchAll(/([^()[\],\s]+)\s+일부\s*제외/g)) out.push(...m[1].split(/[·/]/));
+  for (const m of String(text || '').matchAll(/([^()[\],]+?)\s*외\s*(?:전체|모든)/g)) out.push(...m[1].split(/[·/]/));
+  return out.map((t) => t.trim()).filter((t) => t && !/^(위|전형|그|모든|전체)$/.test(t));
+}
+
+function hitsExclusion(x, ctx) {
+  const n = norm(tokenCore(x));
+  if (!n) return false;
+  if (ctx.dept && n === norm(ctx.dept)) return true;
+  if (ctx.types.some((t) => { const nt = norm(t); return nt && (nt === n || (n.length >= 3 && nt.includes(n)) || (nt.length >= 3 && n.includes(nt))); })) return true;
+  return Boolean(ctx.cat && CAT_TOKEN[ctx.cat] && CAT_TOKEN[ctx.cat].test(x.replace(/\s/g, '')));
+}
+
+const roman = (t) => t.replace(/Ⅰ/g, 'I').replace(/Ⅱ/g, 'II').replace(/Ⅲ/g, 'III');
+const GENERIC = /^(전형|면접|서류|일반|교과|종합|논술|실기|실적|특기자?|기타|등|우수자|인재)$/;
+const typeHit = (text, ctx) => {
+  const f = roman(norm(text));
+  if (f.length < 2) return false;
+  return ctx.types.some((t) => {
+    const nt = roman(norm(t));
+    if (nt.length < 2) return false;
+    // 앱 이름이 자료 글 안에 — 또는 자료 쪽 조각(3자 이상, 두루뭉술한 말 아님)이 앱 이름 안에
+    // 유형 낱말(「학생부교과」)은 전형 이름 조각이 아니다 — 「CHA학생부교과」 안에 든다고 맞는 게 아니다
+    const isCat = Object.values(CAT_TOKEN).some((re) => re.test(f));
+    return f.includes(nt) || (f.length >= 3 && !GENERIC.test(f) && !isCat && nt.includes(f));
+  });
+};
+
+/** 한 덩이(「학생부교과(일반학생) 간호학과」)가 이 지원에 맞는가 — 점수 또는 null. */
+const UNKNOWN = 'unknown';     // 이 지원을 콕 집은 덩이인데 조건(최저)을 몰라 판단 못 함
+const NO_MIN = /(최저|수능)\s*(?:기준\s*)?미\s*적용|수능일?\s*이전|최저\s*없/;
+const YES_MIN = /(최저|수능)\s*(?:기준\s*)?적용|수능일?\s*이후|최저\s*있/;
+const COND_WORDS = /수능\s*최저|최저|수능일?|기준|미\s*적용|적용|이전|이후|학과$/g;
+
+function itemScore(item, ctx) {
+  /*
+   * **조건은 덩이마다 본다.** 「학생부교과·실기/실적·의학과(수능최저미적용)」의 미적용은
+   * 의학과 덩이 하나에만 걸린다 — 줄 전체에 걸면 최저 있는 간호학과가 이 줄에서
+   * 빠지고 엉뚱한 줄로 간다(건양대).
+   */
+  const noMin = NO_MIN.test(item);
+  const yesMin = YES_MIN.test(item.replace(/미\s*적용/g, ''));
+  if (noMin || yesMin) {
+    if (ctx.hasMin == null) {
+      /*
+       * 최저를 모르면 조건 덩이에 안 붙인다. 그런데 그 덩이가 **이 학과·전형을 콕 집어**
+       * 말하고 있었다면(「의학과(수능최저미적용)」), 같은 줄의 넓은 덩이(「학생부교과」)로
+       * 넘어가면 안 된다 — 모른다고 말해야 한다.
+       */
+      const named = (ctx.dept && item.split(SPLIT).some((t) => tokenCore(t) === ctx.dept)) || typeHit(item, ctx);
+      return named ? UNKNOWN : null;
+    }
+    if (noMin && !yesMin && ctx.hasMin) return null;
+    if (yesMin && !noMin && !ctx.hasMin) return null;
+  }
+  // 괄호는 겹쳐 온다 — 「수능 적용학과(교과중심[일반고·지역인재])」. 안쪽부터 벗긴다.
+  const quals = [];
+  let head = item;
+  for (let guard = 0; guard < 6 && /[([][^()[\]]*[)\]]/.test(head); guard += 1) {
+    head = head.replace(/[([]([^()[\]]*)[)\]]/g, (m0, inner) => { quals.push(inner); return ' '; });
+  }
+  head = head.replace(/[()[\]]/g, ' ').trim();
+  // 「수능최저 미적용」「수능 적용학과」처럼 조건만 적힌 머리는 조건 붙은 「전체」다
+  if ((noMin || yesMin) && !head.replace(COND_WORDS, '').replace(/[\s·]/g, '')) head = '전체';
+  const headTokens = head.split(SPLIT).filter(Boolean);
+  // 괄호 안 목록 — 제외·조건·두루뭉술한 말은 걸러 내고 학과 목록·전형 목록으로 가른다
+  // 「실기/실적 제외」는 통째로 지운다 — 「실적 제외」만 지우면 「실기」가 목록으로 남는다
+  const qualTokens = quals.flatMap((q) => q.replace(/[^()[\],\s]+(\s+일부)?\s*제외/g, ' ').split(/[·/,]+/))
+    .map((t) => t.trim()).filter(Boolean)
+    .filter((t) => !/최저|적용|수능|단계|예정|등$|^등|전\s*모집단위|전체|모든|배수|발표|이전|이후|^일반$|아래|위|\d+\s*차|\d+\.\d+|일부/.test(t));
+  const isCatTok = (t) => Object.values(CAT_TOKEN).some((re) => re.test(t.replace(/\s/g, '')));
+  const qCat = Object.keys(CAT_TOKEN).filter((c) => qualTokens.some((t) => CAT_TOKEN[c].test(t.replace(/\s/g, ''))));
+  const qDept = qualTokens.filter((t) => !isCatTok(t) && deptLike(t.replace(/\s/g, '')));
+  const qType = qualTokens.filter((t) => !isCatTok(t) && !deptLike(t.replace(/\s/g, '')));
+  /*
+   * 괄호 안이 **유형 낱말뿐**이면(「(교과중심)」) 유형 제한이다. 다른 이름과 섞여 있으면
+   * (「(한성인재·실기우수자·지역균형)」) 목록의 한 갈래일 뿐 — 거기 든 「실기우수자」가
+   * 종합 지원을 쫓아내면 안 된다(한성대).
+   */
+  const qCatOnly = qCat.length && !qDept.length && !qType.length;
+  if (qCatOnly && !(ctx.cat && qCat.includes(ctx.cat))) return null;
+  // 맨 유형 낱말(「종합」「교과」)이 섞여 있으면 그것은 갈래 제한이다 — 「지역인재(종합/기회균형)」은
+  // 종합의 지역인재다(원광대). 「실기우수자」 같은 전형 이름은 제한이 아니라 목록의 한 갈래다(한성대).
+  const PURE = { 교과: /^(학생부)?교과$/, 종합: /^(학생부종합|학종|종합)$/, 논술: /^논술$/, 실기: /^(실기|실적|실기\/실적)$/ };
+  const pure = Object.keys(PURE).filter((c) => qualTokens.some((t) => PURE[c].test(t.replace(/\s/g, ''))));
+  if (pure.length && !(ctx.cat && pure.includes(ctx.cat))) return null;
+  const qCatMember = Boolean(ctx.cat && qCat.includes(ctx.cat));
+
+  let score = null;
+  const up = (v) => { score = score == null ? v : Math.max(score, v); };
+  const myDept = ctx.dept && headTokens.some((t) => tokenCore(t) === ctx.dept);
+  if (myDept) up(4);
+  /*
+   * 전형 이름이 유형 꼬리를 달고 있으면(「지역인재교과」「지역인재종합」) 그 유형의 것이다 —
+   * 종합의 지역인재가 「지역인재교과」 덩이를 받으면 안 된다(원광대).
+   */
+  const suffixOk = (t) => {
+    const m = String(t).replace(/\s/g, '').match(/(교과|종합)$/);
+    return !m || !ctx.cat || m[1] === ctx.cat || /^(학생부)?(교과|종합)$/.test(String(t).trim());
+  };
+  if ((suffixOk(head) && typeHit(head, ctx)) || headTokens.some((t) => suffixOk(t) && typeHit(t, ctx))) up(3);
+  const cats = Object.keys(CAT_TOKEN).filter((c) => headTokens.some((t) => CAT_TOKEN[c].test(t)));
+  if (ctx.cat && cats.includes(ctx.cat)) up(1);
+  if (!cats.length && score == null) {
+    if (REST.test(head)) up(-1);
+    else if (GENERAL.test(head) || !head) up(0);
+  }
+  if (score == null) return null;
+  // 「전체」라도 최저·수능 조건이 붙었으면 맨 「전체」보다 한 걸음 좁다
+  if (score === 0 && (noMin || yesMin)) score = 0.5;
+  // 머리에 학과 이름이 있으면 그 학과 이야기다 — 「학생부교과(일반학생) 간호학과」는
+  // 일반학생 가운데 간호학과만이다(광주대). 이 지원의 학과가 아니면 이 덩이가 아니다.
+  const headDepts = headTokens.filter((t) => deptLike(t.replace(/전형$/, '')));
+  if (headDepts.length && !myDept) return null;
+
+  // 괄호 목록이 있으면 이 지원이 그 안에 들어야 한다
+  if (qDept.length) {
+    if (!(ctx.dept && qDept.some((t) => tokenCore(t.replace(/\s/g, '')) === ctx.dept))) return null;
+    up(4);
+  }
+  if (qType.length && score < 3) {
+    if (qType.some((t) => typeHit(t, ctx))) up(3);
+    else if (qCatMember) up(1);                          // 목록에 이 지원의 유형 낱말이 있다
+    else return null;
+  }
+  return score;
+}
+
+/**
+ * 한 줄이 이 지원에 맞는가 — 맞으면 점수, 아니면 null.
+ *   학과 이름 4 · 전형 이름 3 · 유형(교과·종합·논술·실기) 1 · 「전체」 0 · 「위 전형 외」 −1
+ * @param ctx {cat, dept, types, hasMin}
+ */
+function scopeScore(row, ctx) {
+  const scope = row.scope || '';
+  const all = `${scope} ${row.note || ''}`;
+
+  // 1) 제외 — 이 지원의 학과·전형·유형이 「제외」에 들면 이 줄이 아니다
+  if (exclusions(all).some((x) => hitsExclusion(x, ctx))) return null;
+
+  // 1-2) 면접형·서류형 — 반대쪽 표시만 붙은 줄은 이 지원이 아니다(pickIpgyeol 과 같은 가림)
+  const mine = ctx.types.join(' ');
+  if (/면접형/.test(mine) && /서류형/.test(scope) && !/면접형/.test(scope)) return null;
+  if (/서류형/.test(mine) && /면접형/.test(scope) && !/서류형/.test(scope)) return null;
+
+  // 1-3) 범위 칸이 비었으면 대학 전체다(우송대·한국외대·성균관대 — 발표가 한 날뿐인 곳)
+  if (!scope.trim()) return 0;
+
+  // 2) 덩이마다 본다(최저 조건도 덩이마다). 가장 잘 맞는 덩이가 줄의 점수다.
+  let best = null;
+  for (const item of splitTop(scope.replace(/[^·/,()]*?\s*외\s*(?:전체|모든)[^·/,()]*/g, ' 위 전형 외 ').trim())) {
+    const sc = itemScore(item, ctx);
+    if (sc === UNKNOWN) return UNKNOWN;
+    if (sc != null) best = best == null ? sc : Math.max(best, sc);
+  }
+  return best;
+}
+
+/**
+ * 비고의 학과별 다른 날 — 「2년제학과 최종합격은 10.23」. 이 지원의 학과가 그
+ * 앞말을 품으면 그 날이다. 연도는 줄의 날짜를 따른다.
+ */
+function noteOverride(row, app) {
+  const m = String(row.note || '').match(/([0-9가-힣A-Za-z]+?)(?:학과|학부)?\s*(?:최종합격|합격자\s*발표|발표)?\s*[은는]\s*(\d{1,2})\.(\d{1,2})/);
+  if (!m || m[1].length < 2) return null;
+  if (!String(app.dept || '').replace(/\s/g, '').includes(m[1])) return null;
+  return `${row.date.slice(0, 4)}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+}
+
+function ctxOf(app, opt) {
+  return {
+    app,
+    cat: catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName),
+    dept: deptCore(app.dept),
+    types: typeTokens(app),
+    hasMin: opt.hasMin == null ? null : Boolean(opt.hasMin),
+  };
+}
+
+/**
+ * 한 종류(stage1·final·면접·논술·실기)의 날을 고른다.
+ * @return Hit | {split:[row]} | null
+ */
+function pickKind(rows, kind, ctx, name) {
+  const all = rows.filter((r) => r.kind === kind).map((r) => ({ r, s: scopeScore(r, ctx) }));
+  // 이 지원을 콕 집은 줄이 조건을 몰라 판단 못 했으면 — 넓은 줄로 넘어가지 않고 멈춘다
+  const unknown = all.filter((x) => x.s === UNKNOWN).map((x) => x.r);
+  if (unknown.length) return { split: unknown };
+  const scored = all.filter((x) => x.s != null);
+  if (!scored.length) return null;
+  const top = Math.max(...scored.map((x) => x.s));
+  const best = scored.filter((x) => x.s === top);
+  const days = [...new Set(best.map((x) => `${x.r.date}~${x.r.to || x.r.date}`))];
+  if (days.length > 1) return { split: best.map((x) => x.r) };   // 갈림 — 안 고른다
+  const r = best[0].r;
+  const over = noteOverride(r, ctx.app);
+  if (over) {
+    return {
+      from: over, to: over, fixed: true, clock: '', scope: r.scope, note: r.note, score: top,
+      why: `수시 일정 달력 · ${name} 비고 「${r.note}」`, tentative: false,
+    };
+  }
+  const to = r.to || r.date;
+  return {
+    from: r.date, to, fixed: to === r.date, clock: r.clock || '',
+    scope: r.scope, note: r.note || '', score: top,
+    why: `수시 일정 달력 · ${name} 「${r.scope}」`,
+    // 「예정」「미확정」, 「까지」(그날까지 학과마다 다르게) — 확정된 하루가 아니다
+    tentative: /예정|미확정|까지/.test(r.note || ''),
+  };
+}
+
+const md = (iso) => iso.slice(5).replace('-', '/');
+
+/**
+ * @param app
+ * @param idx    indexAnnounce 결과
+ * @param opt    {hasMin: ?boolean, stages: ?number, phase: ?string(전문대 수시1차·2차)}
+ * @return {{stage1: ?Hit, final: ?Hit, why: string}}  Hit = {from, to, fixed, clock, scope, note, why}
+ *         고르지 못했으면(대학 없음·근거 없음·갈림) 그 자리가 null 이고 `why` 에 까닭.
+ */
+export function announceDates(app, idx, opt = {}) {
+  const none = { stage1: null, final: null, why: '' };
+  if (!idx) return none;
+
+  // 전문대 — 대학 하나에 수시1차·2차 발표 두 날. 어느 차수인지 모르면 안 고른다.
+  if (app.univType === '전문대') {
+    const list = idx.college.get(univStem(app.univ)) || [];
+    if (!list.length) return { ...none, why: '전문대 일정에 이 대학이 없습니다' };
+    const text = `${app.typeSub || ''} ${app.typeName || ''} ${app.period || ''}`;
+    const round = /2\s*차/.test(text) ? '수시2차' : /1\s*차/.test(text) ? '수시1차' : opt.phase || null;
+    const hit = round && list.find((c) => c.period === round);
+    if (!hit) {
+      return { ...none, why: `수시1차·2차 중 어느 차수인지 몰라 고르지 않았습니다 (${list.map((c) => `${c.period} ${md(c.final)}`).join(' · ')})` };
+    }
+    return { ...none, final: { from: hit.final, to: hit.final, fixed: true, clock: '', scope: hit.period, note: '', score: 2, why: `전문대 ${hit.period} 합격자 발표` } };
+  }
+
+  const name = announceUniv(app, idx.byStem);
+  if (!name) return { ...none, why: '수시 일정 달력에 이 대학이 없습니다' };
+  const rows = idx.rows.get(name) || [];
+  const ctx = ctxOf(app, opt);
+  // 1단계 발표는 단계별 전형만 — 서류형에 면접형의 1단계 날이 붙으면 안 된다
+  const s1 = opt.stages > 1 ? pickKind(rows, 'stage1', ctx, name) : null;
+  const fi = pickKind(rows, 'final', ctx, name);
+  const splitWhy = (x, w) => (x && x.split
+    ? `${w}이 학과·전형에 따라 갈려 고르지 않았습니다 (${x.split.map((r) => `${md(r.date)} ${r.scope}`).join(' / ')})`
+    : '');
+  return {
+    stage1: s1 && !s1.split ? s1 : null,
+    final: fi && !fi.split ? fi : null,
+    split: { stage1: Boolean(s1 && s1.split), final: Boolean(fi && fi.split) },
+    why: [splitWhy(s1, '1단계 발표'), splitWhy(fi, '최종 발표')].filter(Boolean).join(' · '),
+  };
+}
+
+/**
+ * 두 일정 자료를 **한 차례로** 합친다 — 선생님·학생 화면이 같이 부른다.
+ * =====================================================================
+ *   1. 새 자료(수시 일정 달력)가 학과·전형·유형으로 고른 날
+ *   2. 그런데 새 자료가 「전체」「위 전형 외」처럼 **두루뭉술한 줄로만** 맞았고(점수 ≤ 0),
+ *      옛 전형일정표가 **전형 이름까지 맞는** 다른 날을 말하면 옛 것 — 좁은 말이 넓은 말을 이긴다
+ *   3. 새 자료에 그 대학·종류가 아예 없으면 옛 전형일정표(이름이 맞을 때만)
+ *   4. 새 자료가 **갈려서** 안 고른 자리는 옛 것으로 메우지 않는다 — 옛 표는 바로 그 갈림을
+ *      못 보고 한 날을 찍던 자리다
+ * 고른 날과 다른 쪽 자료의 날이 어긋나면 `alt` 에 그 날을 남긴다 — 화면이 제목에 적는다.
+ *
+ * @param opt {hasMin, stages, phase, interview(면접이 있나)}
+ */
+const sameDay = (a, b) => a && b && a.from === b.from && (a.to || a.from) === (b.to || b.from);
+
+function blend(nw, old, split, oldWhy) {
+  const oldOk = old && old.from ? { from: old.from, to: old.to || old.from, fixed: old.fixed !== false } : null;
+  if (nw) {
+    if (nw.score <= 0 && oldOk && !sameDay(nw, oldOk)) {
+      return { ...oldOk, why: oldWhy, alt: { from: nw.from, to: nw.to, why: nw.why } };
+    }
+    return { ...nw, alt: oldOk && !sameDay(nw, oldOk) ? { ...oldOk, why: oldWhy } : null };
+  }
+  if (split || !oldOk) return null;
+  return { ...oldOk, why: oldWhy, alt: null };
+}
+
+export function paperFor(app, sched, ann, opt = {}) {
+  const old = paperDates(app, sched);
+  const oldExact = old && !old.loose ? old : null;
+  const nw = announceDates(app, ann, opt);
+  const oldWhy = oldExact ? `전형일정표 · ${oldExact.type || ''}` : '';
+  const stage1 = opt.stages > 1
+    ? blend(nw.stage1, oldExact && oldExact.stage1, nw.split && nw.split.stage1, oldWhy) : null;
+  const final = blend(nw.final, oldExact && oldExact.final, nw.split && nw.split.final, oldWhy);
+  return {
+    apply: old ? old.apply : null, applyClock: old ? old.applyClock : null,
+    notes: old ? old.notes : [], type: old ? old.type : '',
+    stage1, final, why: nw.why || '',
+  };
+}
+
+/** 대학별고사(면접·논술·실기) 날 — 새 자료 먼저, 없으면 옛 전형일정표(이름이 맞을 때만). */
+export function examFor(app, kind, sched, ann, opt = {}) {
+  const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
+  const expects = kind === '면접' ? Boolean(opt.interview) : cat === kind;
+  const found = examDate(app, sched);
+  const old = found && !found.loose && found.kind === kind && examKindFits(app, kind) ? found : null;
+  const nw = announceExam(app, ann, kind, { ...opt, expects });
+  const oldWhy = old ? `전형일정표 · ${old.type || old.kind}` : '';
+  if (!expects && !old) return null;
+  return blend(nw, old, false, oldWhy);
+}
+
+/** 시험용 — 발표 고르기의 속 함수들. 화면은 쓰지 않는다. */
+export const announceInternals = { itemScore, scopeScore, typeTokens, splitTop, exclusions, ctxOf };
+
+/**
+ * 대학별고사(면접·논술·실기) 날 — 같은 자료, 같은 고르기.
+ * **이 지원에 그 고사가 있을 때만 부른다**(opt.expects). 「전체」 줄 하나로 면접 없는
+ * 교과전형에 면접일이 생기면, 있지도 않은 겹침 경고가 뜬다.
+ */
+export function announceExam(app, idx, kind, opt = {}) {
+  if (!idx || !opt.expects || app.univType === '전문대') return null;
+  const name = announceUniv(app, idx.byStem);
+  if (!name) return null;
+  const hit = pickKind(idx.rows.get(name) || [], kind, ctxOf(app, opt), name);
+  return hit && !hit.split ? hit : null;
+}
+
 /* ── 색인 만들기 ──────────────────────────────────────────────────── */
 
 /**
