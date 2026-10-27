@@ -1409,3 +1409,15 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
 .dupe-list > li { margin-bottom: var(--s2); }
 .dupe-list ul { margin: var(--s1) 0 0; padding-left: var(--s4); list-style: disc; }
 .dupe-list ul li { margin: 2px 0; }
+
+/* 지원 확정 카드의 결과 칸 — 수험번호 한 줄, 결과 한 줄(board.js resultBox) */
+.res-mini { display: grid; gap: 4px; font-size: var(--t-xs); }
+.res-mini .res-line { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.res-mini .res-line[hidden] { display: none; }
+.res-mini .k { color: var(--muted); min-width: 3.6em; }
+.res-mini input { width: 7.5em; min-height: 32px; font-size: 14px; }
+.res-mini select { flex: 1 1 8em; min-width: 0; }
+.res-mini .res-told { margin: 0; color: var(--text); font-weight: 600; line-height: 1.4; }
+.res-mini .res-told b { color: var(--amber-ink); font-weight: 600; }
+.res-mini .res-err { margin: 0; color: var(--err); }
+.res-mini [hidden] { display: none; }

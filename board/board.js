@@ -17,7 +17,10 @@
  */
 import * as store from './store.js';
 import { detailPanel } from './card.js';
-import { normType, outsideLimit, isGuessedFit } from './match.js';
+import { normType, outsideLimit, isGuessedFit, catOf } from './match.js';
+import {
+  isStaged, stepOf, STAGE1_CHOICES, finalChoices, finalOf, outcomeText, withChoice,
+} from './outcome.js';
 import { josa, rate1, minReqShort, methodLine, interviewShare, isoDay } from './text.js';
 import { minReqPill, myScoreOf } from './fix.js';
 
@@ -838,10 +841,161 @@ function card(app, rank, student) {
   else if (rank) box.appendChild(el('div', 'rank', `${rank}순위${star}`));
   box.appendChild(el('div', 'univ', tidy(app.univ.replace(/\s*[-–—]\s*.*$/, ''))));
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
-  box.appendChild(figures(app, student));
-  box.appendChild(pills(app));
+  /*
+   * **원서를 낸 카드에서 할 일은 결과 모으기 하나다.** 단계가 「지원 확정」이거나 이
+   * 카드에 ★ 를 걸었으면 숫자 표·꼬리표 대신 수험번호와 지금 물을 결과 칸만 둔다.
+   * 컷과 꼬리표는 「자세히」에 그대로 있다.
+   */
+  if (rank && (document.body.dataset.stage === 'fixed' || store.lockOf(app))) {
+    box.classList.add('committed');
+    box.appendChild(resultBox(app));
+  } else {
+    box.appendChild(figures(app, student));
+    box.appendChild(pills(app));
+  }
   box.appendChild(mover(app));
   return box;
+}
+
+/**
+ * 지원 확정 카드의 결과 칸 — 수험번호 한 줄, 결과 한 줄.
+ *
+ * 결과는 **지금 물을 것 하나만** 묻는다(outcome.js — 학생 화면과 같은 규칙). 단계별이고
+ * 1단계가 아직이면 1단계를, 아니면 최종을. 최종에는 예비·충원합격·수능최저 미충족·
+ * 면접/논술/실기 미응시까지 이 전형에 맞는 갈래만 나온다. 고른 값은 지금 줄 위에 얹어
+ * 저장한다 — 시트가 한 줄을 통째로 덮어쓰므로 1단계 합격이 지워지지 않게.
+ * 사유를 손으로 적거나 지난 칸을 고칠 때는 「자세히」의 결과 칸을 쓴다.
+ */
+function resultBox(app) {
+  const wrap = el('div', 'res-mini');
+  const say = el('p', 'res-err');
+  say.hidden = true;
+  const fail = (what, err) => { say.textContent = `${what} — ${err.message}`; say.hidden = false; };
+
+  // 수험번호 — 바꾸고 나가면 저장한다. 학생이 적은 것이면 「맞습니다」 한 번으로 확인.
+  const no = store.fieldOf(app, '수험번호');
+  const noLine = el('div', 'res-line');
+  noLine.appendChild(el('span', 'k', '수험번호'));
+  const noIn = document.createElement('input');
+  noIn.type = 'text';
+  noIn.inputMode = 'numeric';
+  noIn.placeholder = '적기';
+  noIn.value = no ? no.value : '';
+  noIn.setAttribute('aria-label', `${app.univ} 수험번호`);
+  noIn.onchange = async () => {
+    try { await store.setField(app, '수험번호', noIn.value); } catch (err) { fail('수험번호를 저장하지 못했습니다', err); }
+  };
+  noLine.appendChild(noIn);
+  if (no && no.status === 'student') {
+    const ok = el('button', 'btn', '맞습니다');
+    ok.type = 'button';
+    ok.title = '학생이 적은 수험번호입니다';
+    ok.onclick = async () => {
+      try { await store.approveField(app, '수험번호'); } catch (err) { fail('확인하지 못했습니다', err); }
+    };
+    noLine.appendChild(ok);
+  }
+  wrap.appendChild(noLine);
+
+  const r = store.resultOf(app);
+  const s = store.summary(app);
+  const iv = store.interviewOf(app);
+  const step = stepOf(r, isStaged(s && s.stages, iv.force));
+  const ask = step === 'out' ? 'stage1' : step;
+  const choices = ask === 'stage1' ? STAGE1_CHOICES
+    : finalChoices({ interview: iv.yes, cat: catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName) });
+  const nowVal = ask === 'stage1' ? String(r.stage1 || '').replace(/탈락/, '불합격') : finalOf(r);
+
+  const told = outcomeText(r);
+  if (told) {
+    const t = el('p', 'res-told', told);
+    if (r.pending) t.appendChild(el('b', '', ' · 학생이 적음'));
+    wrap.appendChild(t);
+  }
+
+  const line = el('div', 'res-line');
+  line.appendChild(el('span', 'k', ask === 'stage1' ? '1단계' : '최종'));
+  const sel = document.createElement('select');
+  sel.setAttribute('aria-label', `${app.univ} ${ask === 'stage1' ? '1단계 결과' : '최종 결과'}`);
+  for (const c of choices) {
+    const o = document.createElement('option');
+    o.value = c.value; o.textContent = c.label;
+    if (c.value === nowVal) o.selected = true;
+    sel.appendChild(o);
+  }
+  if (nowVal && !choices.some((c) => c.value === nowVal)) {
+    const o = document.createElement('option');
+    o.value = nowVal; o.textContent = nowVal; o.selected = true;
+    sel.appendChild(o);
+  }
+  line.appendChild(sel);
+  wrap.appendChild(line);
+
+  const more = el('div', 'res-line');
+  const wait = document.createElement('input');
+  wait.type = 'text';
+  wait.inputMode = 'numeric';
+  wait.placeholder = '예비번호';
+  wait.value = r.waitNo || '';
+  wait.setAttribute('aria-label', `${app.univ} 예비번호`);
+  const go = document.createElement('select');
+  go.setAttribute('aria-label', `${app.univ} 등록`);
+  for (const [v, t] of [['', '등록 아직'], ['등록', '등록'], ['미등록', '등록 안 함']]) {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = t;
+    if (String(r.enrolled || '') === v) o.selected = true;
+    go.appendChild(o);
+  }
+  const save = el('button', 'btn', '저장');
+  save.type = 'button';
+  more.appendChild(wait);
+  more.appendChild(go);
+  more.appendChild(save);
+  wrap.appendChild(more);
+
+  const waits = (v) => Boolean((choices.find((c) => c.value === v) || {}).wait);
+  const passes = (v) => v === '최초합격' || v === '충원합격';
+  const sync = () => {
+    wait.hidden = !waits(sel.value);
+    go.hidden = !passes(sel.value);
+    // 고른 것이 지금과 같고 딸린 칸도 그대로면 저장 단추는 쉰다
+    save.hidden = sel.value === nowVal && wait.value === (r.waitNo || '') && go.value === String(r.enrolled || '');
+    more.hidden = wait.hidden && go.hidden && save.hidden;
+  };
+  sel.onchange = sync;
+  wait.oninput = sync;
+  go.onchange = sync;
+  sync();
+
+  save.onclick = async () => {
+    if (sel.value === '예비' && !wait.value.trim()) {
+      wait.setAttribute('aria-invalid', 'true');
+      wait.focus();
+      return;
+    }
+    save.disabled = true;
+    say.hidden = true;
+    try {
+      await store.setResult(app, withChoice(r, ask, sel.value, {
+        waitNo: wait.value, enrolled: go.hidden ? '' : go.value,
+      }));
+    } catch (err) {
+      fail('결과를 저장하지 못했습니다', err);
+      save.disabled = false;
+    }
+  };
+  // 학생이 적은 결과를 그대로 받을 때
+  if (r.pending && save.hidden) {
+    const ok = el('button', 'btn', '맞습니다');
+    ok.type = 'button';
+    ok.onclick = async () => {
+      try { await store.approveResult(app); } catch (err) { fail('확인하지 못했습니다', err); }
+    };
+    more.appendChild(ok);
+    more.hidden = false;
+  }
+  wrap.appendChild(say);
+  return wrap;
 }
 
 /**

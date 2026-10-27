@@ -22,7 +22,10 @@ import {
   fillTrend, outsideLimit, isGuessedFit, buildUnivIndex,
 } from './match.js';
 import { josa, rate1, typedRateText, isoDay, minReqShort, methodLine, interviewShare, hasInterview, forcedInterview } from './text.js';
-import { suneungDday } from './keydates.js';
+import { suneungDday, KEY_DATES } from './keydates.js';
+import {
+  isStaged, stepOf, STAGE1_CHOICES, finalChoices, finalOf, outcomeText, withChoice,
+} from './outcome.js';
 import { applyFixes, fixesOf, minReqOf, minReqPill, myScoreOf, excludedKinds } from './fix.js';
 
 const ATTEND = ['면접', '실기', '논술', '적성'];
@@ -379,6 +382,24 @@ function schedTarget(app) {
   return slot === 'rank';
 }
 
+/** 원서접수 마지막 날(keydates.js) — 이 날이 지나면 순위에 넣은 원서는 이미 낸 것이다. */
+const APPLY_END = (KEY_DATES.find((k) => k.name === '원서접수') || {}).to || '';
+
+/**
+ * **지원이 확정된 카드인가.** 그러면 카드에서 할 일은 결과 모으기 하나다 — 수험번호와
+ * 지금 물을 결과만 펴 두고, 숫자 표·순위 고르개·접수번호는 「다른 칸」으로 접는다.
+ *
+ * 선생님 보드의 「단계 · 지원 확정」 단추는 그 선생님 브라우저에만 있어 학생 화면은
+ * 모른다. 그래서 학생 화면은 **이 카드에 ★(마감)가 걸렸거나, 순위에 넣은 채 원서접수
+ * 기간이 지났을 때**로 본다.
+ */
+function committedOf(app, now = new Date()) {
+  if (!schedTarget(app)) return false;
+  if (lockOf(app)) return true;
+  return Boolean(APPLY_END) && isoToday(now) > APPLY_END;
+}
+const isoToday = (now) => new Date(now.getTime() + 9 * 3600000).toISOString().slice(0, 10);
+
 /* 접힘의 자리표 — 카드 id + 접힌 글줄의 첫 낱말. 값이 저장돼 글줄 뒤가 바뀌어도
    첫 낱말(면접일·접수번호·결과·메모…)은 그대로라 다시 찾을 수 있다. */
 function foldKeyOf(d) {
@@ -665,7 +686,8 @@ function announcePanel() {
         const fold = [...card.querySelectorAll('details.fold-row')]
           .find((f) => f.querySelector('summary').textContent.startsWith('결과'));
         if (fold) fold.open = true;
-        const sel = card.querySelector('.fold-row .res-in select');
+        // 지원 확정 카드에서는 결과 줄이 접히지 않고 펴져 있다
+        const sel = card.querySelector('.res-in select');
         if (sel) sel.focus({ preventScroll: true });
       }
     };
@@ -1406,8 +1428,13 @@ function card(app) {
   box.appendChild(head);
   box.appendChild(el('div', 'dept', `${tidy(app.dept)} · ${app.typeSub || app.typeName || ''}`));
 
-  box.appendChild(figures(app));
-  box.appendChild(marks(app));
+  const committed = committedOf(app);
+  if (committed) box.classList.add('committed');
+  // 확정 카드는 숫자 표·꼬리표·순위 고르개를 아래 「다른 칸」으로 접는다
+  const later = [];
+  const put = (node) => { if (committed) later.push(node); else box.appendChild(node); };
+  put(figures(app));
+  put(marks(app));
   /*
    * **전문대·특수대에는 순위 고르개를 안 단다.** 수시 6회 제한 밖이라 교사 보드도
    * 순위를 안 매긴다(tray). 여기서 달아 주면 학생이 전문대를 1순위에 넣을 수 있고,
@@ -1416,11 +1443,11 @@ function card(app) {
    */
   const outside = outsideLimit(app);
   if (!outside) {
-    box.appendChild(rankPicker(app));
-    dragify(box, app);
+    put(rankPicker(app));
+    if (!committed) dragify(box, app);
   } else {
     // 순위 대신 「후보 / 지원」 — 교사 보드의 전문대 고르개와 같은 두 갈래다.
-    box.appendChild(trayPicker(app));
+    put(trayPicker(app));
   }
   const lock = lockLine(app);
   if (lock) box.appendChild(lock);
@@ -1489,19 +1516,31 @@ function card(app) {
    * 접어 두어 평소에는 한 줄만 보인다.
    */
   if (!shown && schedTarget(app)) strip.appendChild(dateAdder(app));
-  strip.appendChild(applyNoRow(app));
+  if (committed) {
+    /*
+     * 지원 확정 — 수험번호와 결과를 **펴서** 둔다. 나머지(접수번호·최종경쟁률·숫자 표·
+     * 순위)는 「다른 칸」 하나로 접는다. 결과 줄은 `res-in` 그대로라 발표 알림의
+     * 「적으러 가기」가 찾아온다.
+     */
+    box.appendChild(fieldRow(app, CARD_FIELDS[0], true));
+    box.appendChild(resultRow(app, true));
+    const rest = [applyNoRow(app), ...CARD_FIELDS.slice(1).map((spec) => fieldRow(app, spec)), ...later];
+    strip.appendChild(foldRow('다른 칸 · 접수번호·경쟁률·성적', rest));
+  } else {
+    strip.appendChild(applyNoRow(app));
 
-  /*
-   * 수험번호·최종경쟁률 — **접힌 한 줄로 늘 둔다.**
-   *
-   * 여태는 접수번호를 적은 카드에만 나왔다. 그런데 경쟁률은 접수 기간에도
-   * 대학이 실시간으로 내걸고, 학생은 접수번호를 안 적고 넘어가기도 한다.
-   * 그러면 적을 자리가 어디에도 없어서 「경쟁률 적는 데가 없다」가 됐다.
-   * 접힌 줄은 카드 높이를 거의 안 늘리니 가리지 않는다. 생년월일만 여전히
-   * 원서를 낸 뒤(`afterApply`)에 묻는다.
-   */
-  for (const spec of CARD_FIELDS) strip.appendChild(fieldRow(app, spec));
-  strip.appendChild(resultRow(app));
+    /*
+     * 수험번호·최종경쟁률 — **접힌 한 줄로 늘 둔다.**
+     *
+     * 여태는 접수번호를 적은 카드에만 나왔다. 그런데 경쟁률은 접수 기간에도
+     * 대학이 실시간으로 내걸고, 학생은 접수번호를 안 적고 넘어가기도 한다.
+     * 그러면 적을 자리가 어디에도 없어서 「경쟁률 적는 데가 없다」가 됐다.
+     * 접힌 줄은 카드 높이를 거의 안 늘리니 가리지 않는다. 생년월일만 여전히
+     * 원서를 낸 뒤(`afterApply`)에 묻는다.
+     */
+    for (const spec of CARD_FIELDS) strip.appendChild(fieldRow(app, spec));
+    strip.appendChild(resultRow(app));
+  }
 
   /*
    * 메모는 두 얼굴 — 주고받은 목록이 있으면 제 블록으로 내용을 보이고,
@@ -1741,174 +1780,118 @@ function dateRow(app, kind, d) {
 
 /* ── 결과 ───────────────────────────────────────────────────────── */
 
-/*
- * 학생이 고르는 말 → 시트에 적히는 칸.
- * =====================================================================
- * **고르는 말을 그대로 `final` 에 넣으면 안 된다.**
- *
- * 「1단계 합격」을 final 에 넣으면 stats.js 의 `verdict()` 가 「합격」이라는 글자를 보고
- * 최종 합격으로 센다. 11월에 1단계 발표만 난 건들이 지원 결과 보고서와 진학 대장에
- * 최종 합격으로 부풀려 들어간다. 아무 데도 「틀렸다」고 안 적히는 자리다.
- *
- * 「미등록」은 반대다. final 에 넣으면 `passed=null` 이 되어 합격 통계에서 아예 빠지고,
- * 보고서에는 「알아보지 못한 표기 — 미등록」이라는 오경고까지 뜬다. 자기 화면이 준
- * 선택지인데도.
- *
- * 그래서 고르는 말마다 **어느 칸에 무엇을 넣을지**를 여기 한 곳에 적어 둔다.
- * `wait` 는 예비번호를 묻는가, `ask` 는 한 가지를 더 묻는가.
- */
-const CHOICE = [
-  { label: '', final: '', stage1: '', enrolled: '' },
-  // 1단계는 최종이 아니다. final 은 비워 둔다 — 최종 발표가 나면 그때 다시 고른다.
-  { label: '1단계 합격', final: '', stage1: '합격', enrolled: '' },
-  { label: '1단계 불합격', final: '', stage1: '불합격', enrolled: '' },
-  { label: '최초합격', final: '최초합격', stage1: '', enrolled: '' },
-  { label: '충원합격', final: '충원합격', stage1: '', enrolled: '', wait: true },
-  { label: '불합격', final: '불합격', stage1: '', enrolled: '' },
-  // 붙고 나서 안 간 것이다. **합격은 합격으로 세고**, 등록 여부만 따로 적는다.
-  { label: '합격했지만 등록 안 함', final: '최초합격', stage1: '', enrolled: '미등록' },
-];
 /**
- * 합격을 골랐을 때만 「여기로 갑니다」를 묻는다.
+ * 결과 — **지금 물을 것 하나만** 묻는다(board/outcome.js — 선생님 보드와 같은 규칙).
  *
- * **「불합격」이 「합격」을 품고 있다.** 글자로만 보면 떨어진 칸에도 등록 물음이 뜬다.
- * 아닌 것을 먼저 걸러 낸 뒤에 맞는 것을 본다 — stats.js 의 「미등록/등록」과 같은 자리다.
+ * 단계별 전형이고 1단계가 아직이면 1단계를, 아니면 최종을. 지난 칸은 위에 한 줄로
+ * 남는다(「1단계 합격 → 예비 12번 · 기다리는 중」). 최종에는 예비(기다리는 중)·
+ * 충원합격·수능최저 미충족·**면접/논술/실기 미응시**까지 이 전형에 맞는 갈래만 나온다.
+ *
+ * 고른 값은 **지금 줄 위에 얹어** 보낸다(`withChoice`). 시트는 한 줄을 통째로 덮어써서,
+ * 예전에는 최종을 적는 순간 1단계 합격이 지워졌다 — 보고서의 1단계 칸이 비었다.
+ *
+ * @param {boolean} open  지원 확정 카드에서는 접지 않고 펼쳐 둔다
  */
-const asksEnrolled = (label) => {
-  const c = choiceOf(label);
-  if (!c || !c.final || c.enrolled === '미등록') return false;
-  return !/불합격|탈락|미선발/.test(c.final) && /합격/.test(c.final);
-};
-const FINAL = CHOICE.map((c) => c.label);
-const choiceOf = (label) => CHOICE.find((c) => c.label === label) || null;
-
-/** 시트에 적힌 것 → 학생이 고른 말. 되돌려 화면에 표시한다. */
-function labelOf(r) {
-  if (!r) return '';
-  const final = String(r.final || '');
-  const enrolled = String(r.enrolled || '');
-  if (final && /합격/.test(final) && !/불합격/.test(final) && /미등록/.test(enrolled)) {
-    return '합격했지만 등록 안 함';
-  }
-  if (final) return CHOICE.some((c) => c.final === final) ? final : final;
-  const st = String(r.stage1 || '');
-  if (/불합격|탈락/.test(st)) return '1단계 불합격';
-  if (/합격|통과/.test(st)) return '1단계 합격';
-  return '';
-}
-
-/**
- * 합격·불합격을 **학생이 적는다.**
- *
- * 한 학년 121명 × 여섯 칸이면 700건이다. 담임이 다 칠 수 없고, 애초에 합격자 발표는
- * 학생이 대학 홈페이지에서 먼저 본다. 예비번호가 몇 번까지 돌았는지는 더 그렇다 —
- * 학생은 하루에도 몇 번씩 들여다본다.
- *
- * 그래서 학생이 적고 선생님은 확인만 한다. 적은 값은 바로 선생님 화면에 뜨되
- * 「학생이 적음」으로 표시된다.
- *
- * 칸을 셋으로 줄였다. 학생이 발표 화면에서 그대로 옮길 수 있는 것만 남긴다 —
- * 「불합격 사유」 같은 건 학생이 모르고, 알아도 적기 괴로운 칸이다.
- */
-function resultRow(app) {
+function resultRow(app, open = false) {
   const wrap = el('div', 'field');
-  const saved = state.results.get(String(app.id)) || {};
-  const base = app.result || {};
-  // 시트에 적힌 칸들(final·stage1·enrolled)을 학생이 고른 말로 되돌린다
-  const now = labelOf(state.results.has(String(app.id)) ? saved : base);
+  const id = String(app.id);
+  const saved = state.results.get(id) || null;
+  const row = saved || app.result || {};
+  const s = summaryOf(app);
+  const staged = isStaged(s && s.stages, interviewForce(app));
+  const step = stepOf(row, staged);
+  const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
+  const ctx = { interview: hasInterviewOf(app), cat };
+  const told = outcomeText(row);
 
-  const hint = el('p', 'hint');
-  if (!now) {
-    hint.textContent = '발표가 나면 여기에 적어 주세요. 선생님도 함께 봅니다.';
-  } else if (saved.status === 'student') {
-    hint.textContent = `${now}${saved.waitNo ? ` · 예비 ${saved.waitNo}번` : ''}`
-      + ' — 선생님 확인을 기다리는 중입니다.';
-  } else {
-    hint.textContent = `${now}${saved.waitNo || base.waitNo ? ` · 예비 ${saved.waitNo || base.waitNo}번` : ''}`
-      + (saved.status === 'confirmed' && saved.final ? ' 로 확인되었습니다.' : ' 입니다.');
-  }
-  wrap.appendChild(hint);
+  if (open) wrap.appendChild(el('label', '', '결과'));
+  wrap.appendChild(el('p', 'hint', told
+    ? `${told}${saved && saved.status === 'student' ? ' — 선생님 확인을 기다리는 중입니다.' : ''}`
+    : (step === 'stage1' ? '1단계 발표가 나면 적어 주세요. 선생님도 함께 봅니다.'
+      : '발표가 나면 적어 주세요. 선생님도 함께 봅니다.')));
 
-  const row = el('div', 'field-in res-in');
+  // 1단계에서 떨어졌으면 더 물을 것이 없다 — 잘못 골랐을 때 고칠 길만 1단계 칸으로 둔다
+  const askStep = step === 'out' ? 'stage1' : step;
+  const choices = askStep === 'stage1' ? STAGE1_CHOICES : finalChoices(ctx);
+  const nowVal = askStep === 'stage1' ? String(row.stage1 || '').replace(/탈락/, '불합격') : finalOf(row);
+
+  const line = el('div', 'field-in res-in');
   const sel = document.createElement('select');
-  sel.setAttribute('aria-label', `${app.univ} 결과`);
-  for (const o of FINAL) {
-    const opt = document.createElement('option');
-    opt.value = o;
-    opt.textContent = o || '아직 발표 전';
-    if (now === o) opt.selected = true;
-    sel.appendChild(opt);
+  sel.setAttribute('aria-label', `${app.univ} ${askStep === 'stage1' ? '1단계 결과' : '최종 결과'}`);
+  for (const c of choices) {
+    const o = document.createElement('option');
+    o.value = c.value; o.textContent = c.label;
+    if (c.value === nowVal) o.selected = true;
+    sel.appendChild(o);
   }
-  if (now && !FINAL.includes(now)) {
-    const opt = document.createElement('option');
-    opt.value = now; opt.textContent = now; opt.selected = true;
-    sel.appendChild(opt);
+  // 즐겨찾기가 준 모르는 말은 버리지 않는다
+  if (nowVal && !choices.some((c) => c.value === nowVal)) {
+    const o = document.createElement('option');
+    o.value = nowVal; o.textContent = nowVal; o.selected = true;
+    sel.appendChild(o);
   }
   sel.disabled = state.busy;
-  row.appendChild(sel);
+  line.appendChild(sel);
 
-  // 예비번호는 충원합격일 때만 묻는다. 늘 띄우면 여섯 칸이 다 예비번호 칸이 된다.
+  // 예비번호 — 예비·충원합격을 골랐을 때만
   const wait = document.createElement('input');
   wait.type = 'text';
   wait.inputMode = 'numeric';
   wait.placeholder = '예비번호';
   wait.setAttribute('aria-label', `${app.univ} 예비번호`);
-  wait.value = saved.waitNo || base.waitNo || '';
-  const asksWait = (label) => Boolean((choiceOf(label) || {}).wait);
-  wait.hidden = !asksWait(now);
-  sel.onchange = () => { wait.hidden = !asksWait(sel.value); };
-  row.appendChild(wait);
+  wait.value = row.waitNo || '';
+  const waitOf = (v) => Boolean((choices.find((c) => c.value === v) || {}).wait);
+  wait.hidden = !waitOf(sel.value);
+  line.appendChild(wait);
+
+  // 등록 — 붙었을 때만. 두 곳에 붙어도 가는 곳은 하나라, 12월에 담임의 첫 물음이다.
+  const go = document.createElement('select');
+  go.setAttribute('aria-label', `${app.univ} 등록`);
+  for (const [v, t] of [['', '등록은 아직'], ['등록', '이 학교로 갑니다(등록)'], ['미등록', '등록 안 함']]) {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = t;
+    if (String(row.enrolled || '') === v) o.selected = true;
+    go.appendChild(o);
+  }
+  const passes = (v) => v === '최초합격' || v === '충원합격';
+  go.hidden = !passes(sel.value);
+  go.disabled = state.busy;
+  line.appendChild(go);
+  sel.onchange = () => { wait.hidden = !waitOf(sel.value); go.hidden = !passes(sel.value); };
 
   const btn = el('button', 'btn btn-primary', '저장');
   btn.type = 'button';
   btn.disabled = state.busy;
-  row.appendChild(btn);
-  wrap.appendChild(row);
+  btn.onclick = () => {
+    // 「예비」는 번호가 곧 값이다(최종은 비어 있다). 다시 그리면 고른 것이 날아가니 제자리에서 묻는다.
+    if (sel.value === '예비' && !wait.value.trim()) {
+      wait.setAttribute('aria-invalid', 'true');
+      wait.placeholder = '예비번호를 적어 주세요';
+      wait.focus();
+      return;
+    }
+    saveResult(app, withChoice(row, askStep, sel.value, {
+      waitNo: wait.value, enrolled: go.hidden ? '' : go.value,
+    }));
+  };
+  line.appendChild(btn);
+  wrap.appendChild(line);
 
-  /*
-   * **등록은 합격과 다른 물음이다.**
-   * 두 곳에 붙어도 가는 곳은 하나다. 12월에 담임이 여섯 칸을 보면 첫 물음이
-   * 「어디로 갔나」인데, 그건 학생만 안다. 합격을 골랐을 때만 묻는다 —
-   * 늘 띄우면 여섯 칸이 다 체크칸이 된다.
-   */
-  const go = el('label', 'go-in');
-  const check = document.createElement('input');
-  check.type = 'checkbox';
-  check.checked = /^등록/.test(String(saved.enrolled || base.enrolled || ''));
-  check.disabled = state.busy;
-  go.appendChild(check);
-  go.appendChild(el('span', '', '이 학교로 갑니다 (등록)'));
-  go.hidden = !asksEnrolled(now);
-  sel.addEventListener('change', () => { go.hidden = !asksEnrolled(sel.value); });
-  wrap.appendChild(go);
-
-  btn.onclick = () => saveResult(app, sel.value, wait.value.trim(),
-    !go.hidden && check.checked);
-
-  const word = now
-    ? ` · ${now}${saved.waitNo || base.waitNo ? ` · 예비 ${saved.waitNo || base.waitNo}번` : ''}`
-      + (saved.status === 'student' ? ' · 확인 대기' : '')
-    : ' 적기';
-  return foldRow(`결과${word}`, [wrap]);
+  if (open) return wrap;
+  return foldRow(told ? `결과 · ${told}${saved && saved.status === 'student' ? ' · 확인 대기' : ''}`
+    : (step === 'stage1' ? '결과 · 1단계 적기' : '결과 적기'), [wrap]);
 }
 
-async function saveResult(app, label, waitNo, enrolled) {
-  // 고른 말을 어느 칸에 넣을지는 CHOICE 표가 정한다. 여기서 다시 짐작하지 않는다.
-  const c = choiceOf(label) || { final: label, stage1: '', enrolled: '' };
-  const row = {
-    final: c.final, stage1: c.stage1,
-    // 「합격했지만 등록 안 함」은 표가 이미 미등록이라 적어 두었다. 그건 그대로 둔다.
-    enrolled: c.enrolled || (asksEnrolled(label) && enrolled ? '등록' : ''),
-    reason: '',
-    waitNo: c.wait ? waitNo : '',
-  };
+async function saveResult(app, row) {
   state.busy = true; render();
   try {
     if (!offline) {
       await api.call('studentResult', { token: state.token, id: app.id, ...row });
     }
-    state.results.set(String(app.id), { ...row, status: 'student' });
-    state.notice = `${shortUniv(app.univ)} 결과를 ${label || '지움'} 으로 보냈습니다.`
+    const empty = !row.stage1 && !row.final && !row.reason && !row.waitNo && !row.enrolled;
+    if (empty) state.results.delete(String(app.id));
+    else state.results.set(String(app.id), { ...row, status: 'student' });
+    state.notice = `${shortUniv(app.univ)} 결과를 ${outcomeText(row) || '지움'} 으로 보냈습니다.`
       + ' 선생님도 함께 봅니다.';
   } catch (err) {
     state.notice = `오류: ${err.message}`;
@@ -1955,7 +1938,7 @@ function afterApply(app) {
     && String(n.text || '').startsWith('접수번호'));
 }
 
-function fieldRow(app, spec) {
+function fieldRow(app, spec, open = false) {
   const wrap = el('div', 'field');
   const id = `f-${app.id}-${spec.name}`;
 
@@ -1981,6 +1964,7 @@ function fieldRow(app, spec) {
   btn.onclick = () => saveField(app, spec.name, input.value);
   row.appendChild(btn);
   wrap.appendChild(row);
+  if (open) { wrap.insertBefore(el('label', '', spec.name), wrap.firstChild); return wrap; }
   return foldRow(saved
     ? `${spec.name} · ${saved.value}${saved.status === 'student' ? ' · 확인 대기' : ''}`
     : `${spec.name} 적기`, [wrap]);
