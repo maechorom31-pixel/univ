@@ -6,6 +6,7 @@
  */
 import {
   isStaged, stepOf, finalChoices, finalOf, outcomeText, withChoice, examsOf,
+  examStatus, withMissed,
 } from './outcome.js';
 import { verdict } from './stats.js';
 
@@ -82,6 +83,31 @@ console.log('즐겨찾기가 준 모르는 말은 버리지 않는다');
 eq(finalOf({ final: '합격' }), '최초합격', '「합격」은 최초합격 갈래');
 eq(finalOf({ final: '추가합격' }), '충원합격', '「추가합격」은 충원');
 eq(finalOf({ final: '보류' }), '보류', '모르는 말은 원문 그대로');
+
+console.log('대학별고사 — 응시·미응시·예정');
+{
+  const T = '2026-11-10';
+  const day = (iso) => ({ from: iso, to: iso, fixed: true });
+  const st = (d, r, staged = true) => examStatus('면접', d, r, { staged, today: T }).text;
+  eq(st(day('2026-11-14'), {}), '예정 D-4', '날이 남았으면 예정');
+  eq(st(day(T), {}), '오늘', '그날');
+  eq(st({ from: '2026-11-08', to: '2026-11-12', fixed: false }, {}), '기간 중', '기간 안');
+  eq(st(day('2026-11-08'), {}), '응시(날짜 지남)', '날이 지났으면 응시로 본다');
+  eq(st(null, {}), '날짜 미정', '날이 없으면 미정');
+  eq(st(null, { final: '최초합격' }), '응시(결과 나옴)', '날이 없어도 최종이 났으면 응시');
+  eq(st(day('2026-11-08'), { stage1: '불합격' }), '1단계 불합격 — 안 봄', '1단계 탈락이면 대상 아님');
+  eq(st(day('2026-11-08'), { stage1: '불합격' }, false), '응시(날짜 지남)', '일괄 전형에는 1단계 규칙이 없다');
+  eq(st(day('2026-11-14'), { final: '불합격', reason: '면접 미응시' }), '미응시', '적은 미응시가 날짜보다 먼저');
+  eq(examStatus('논술', day('2026-11-08'), { final: '불합격', reason: '면접 미응시' }, { today: T }).state, '응시',
+    '다른 고사의 미응시는 이 고사와 상관없다');
+
+  let r = withMissed({ stage1: '합격' }, '면접', true);
+  eq([r.stage1, r.final, r.reason], ['합격', '불합격', '면접 미응시'], '미응시로 — 1단계는 남고 불합격 + 사유');
+  r = withMissed(r, '면접', false);
+  eq([r.stage1, r.final, r.reason], ['합격', '', ''], '되돌리면 발표 전으로');
+  const keep = withMissed({ final: '최초합격', enrolled: '등록' }, '면접', false);
+  eq([keep.final, keep.enrolled], ['최초합격', '등록'], '미응시가 아니었으면 되돌려도 그대로');
+}
 
 console.log(fail ? `\n${fail}개 실패` : '\n모두 통과');
 process.exitCode = fail ? 1 : 0;

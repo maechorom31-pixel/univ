@@ -139,3 +139,50 @@ export function withChoice(r, step, value, extra = {}) {
   if (value.startsWith('미응시:')) return { ...base, final: '불합격', reason: `${value.slice(4)} 미응시`, waitNo: '' };
   return { ...base, final: value };
 }
+
+/* ── 대학별고사 — 봤나, 안 봤나, 아직인가 ─────────────────────────
+ * 원서를 낸 뒤에도 고사 일정은 카드에 남는다 — 지난 것도. 지난 고사는 「봤나」가
+ * 결과만큼 중요한 값이라서다(안 갔으면 그 원서는 끝났다).
+ *
+ * **응시는 따로 적게 하지 않는다 — 날과 결과에서 읽는다.** 날이 지났으면 응시로,
+ * 최종 결과가 났으면(미응시가 아니면) 응시로 본다. 사람이 적는 것은 예외인 「미응시」
+ * 하나뿐이고, 그건 결과 줄의 사유(「면접 미응시」)에 들어간다 — 따로 칸을 두면 결과와
+ * 서로 다른 말을 할 수 있다. 단계별에서 1단계에 떨어졌으면 고사는 「대상 아님」이다.
+ */
+
+/**
+ * @param kind   '면접' | '논술' | '실기' | '적성'
+ * @param d      날짜 {from, to, fixed} | null
+ * @param r      결과 줄
+ * @param opt    {staged, today: 'YYYY-MM-DD'}
+ * @return {{state: '미응시'|'대상아님'|'응시'|'오늘'|'예정'|'미정', auto: boolean, text: string}}
+ */
+export function examStatus(kind, d, r, opt = {}) {
+  const today = opt.today || '';
+  if (finalOf(r) === `미응시:${kind}`) return { state: '미응시', auto: false, text: '미응시' };
+  const s1 = String((r && r.stage1) || '');
+  if (opt.staged && /불합격|탈락/.test(s1)) {
+    return { state: '대상아님', auto: true, text: '1단계 불합격 — 안 봄' };
+  }
+  const fin = finalOf(r);
+  // 최종이 났다(최초·예비·충원·불합격·최저) — 고사를 본 것이다
+  const decided = fin && !fin.startsWith('미응시:');
+  if (d && d.from && today) {
+    if (d.to < today) return { state: '응시', auto: true, text: '응시(날짜 지남)' };
+    if (d.from <= today) {
+      return { state: '오늘', auto: true, text: d.fixed ? '오늘' : '기간 중' };
+    }
+    if (!decided) {
+      const days = Math.round((Date.parse(d.from) - Date.parse(today)) / 86400000);
+      return { state: '예정', auto: true, text: `예정 D-${days}` };
+    }
+  }
+  if (decided) return { state: '응시', auto: true, text: '응시(결과 나옴)' };
+  return { state: '미정', auto: true, text: '날짜 미정' };
+}
+
+/** 이 고사를 미응시로 적은 줄 / 되돌린 줄. 되돌리면 최종을 비운다(발표 전으로). */
+export function withMissed(r, kind, missed) {
+  if (missed) return withChoice(r, 'final', `미응시:${kind}`);
+  return finalOf(r) === `미응시:${kind}` ? withChoice(r, 'final', '') : withChoice(r, 'final', finalOf(r));
+}

@@ -1421,3 +1421,8 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
 .res-mini .res-told b { color: var(--amber-ink); font-weight: 600; }
 .res-mini .res-err { margin: 0; color: var(--err); }
 .res-mini [hidden] { display: none; }
+/* 대학별고사 줄 — 지난 것도 남는다. 미응시는 붉게, 지난 응시는 옅게. */
+.res-mini .exam .num { min-width: 3.4em; font-variant-numeric: tabular-nums; }
+.res-mini .exam.미응시 select { color: var(--err); border-color: var(--err); }
+.res-mini .exam.응시 .num, .res-mini .exam.대상아님 .num { color: var(--muted); }
+.exam-in { grid-template-columns: auto minmax(0, 1fr); }

@@ -20,6 +20,7 @@ import { detailPanel } from './card.js';
 import { normType, outsideLimit, isGuessedFit, catOf } from './match.js';
 import {
   isStaged, stepOf, STAGE1_CHOICES, finalChoices, finalOf, outcomeText, withChoice,
+  examStatus, withMissed,
 } from './outcome.js';
 import { josa, rate1, minReqShort, methodLine, interviewShare, isoDay } from './text.js';
 import { minReqPill, myScoreOf } from './fix.js';
@@ -900,10 +901,47 @@ function resultBox(app) {
   const r = store.resultOf(app);
   const s = store.summary(app);
   const iv = store.interviewOf(app);
-  const step = stepOf(r, isStaged(s && s.stages, iv.force));
+  const staged = isStaged(s && s.stages, iv.force);
+  const step = stepOf(r, staged);
   const ask = step === 'out' ? 'stage1' : step;
-  const choices = ask === 'stage1' ? STAGE1_CHOICES
-    : finalChoices({ interview: iv.yes, cat: catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName) });
+  const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
+  const choices = ask === 'stage1' ? STAGE1_CHOICES : finalChoices({ interview: iv.yes, cat });
+
+  /*
+   * 대학별고사 — **지난 것도 남긴다.** 확정 카드는 꼬리표를 걷어 내서 면접 날이 안
+   * 보였다. 고사마다 한 줄: 날짜 + 봤나(예정·오늘·응시·미응시·대상 아님). 응시는 날과
+   * 결과에서 읽고(outcome.js examStatus), 사람이 고르는 것은 「미응시」 하나다 —
+   * 고르면 결과가 「불합격 · 면접 미응시」로 들어간다.
+   */
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);   // 한국 날짜
+  for (const kind of ['면접', '논술', '실기', '적성']) {
+    const d = store.dateOf(app, kind);
+    const expected = kind === '면접' ? iv.yes : kind === cat;
+    if (!d && !expected) continue;
+    const st = examStatus(kind, d, r, { staged, today });
+    const ex = el('div', `res-line exam ${st.state}`);
+    ex.appendChild(el('span', 'k', kind));
+    const [, m, day] = d ? d.from.split('-') : [];
+    ex.appendChild(el('span', 'num', d ? `${+m}/${+day}${d.fixed ? '' : '~'}${d.status === 'sched' ? ' 예정일' : ''}` : '—'));
+    const pick = document.createElement('select');
+    pick.setAttribute('aria-label', `${app.univ} ${kind} 응시`);
+    for (const [v, t] of [['', st.state === '미응시' ? '응시함(되돌리기)' : st.text], ['미응시', '미응시']]) {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = t;
+      if ((st.state === '미응시') === (v === '미응시')) o.selected = true;
+      pick.appendChild(o);
+    }
+    pick.disabled = st.state === '대상아님';
+    pick.onchange = async () => {
+      const miss = pick.value === '미응시';
+      if (miss && !window.confirm(`${kind} 미응시로 적으면 결과가 「불합격 · ${kind} 미응시」로 들어갑니다.`)) {
+        pick.value = ''; return;
+      }
+      try { await store.setResult(app, withMissed(r, kind, miss)); } catch (err) { fail('저장하지 못했습니다', err); }
+    };
+    ex.appendChild(pick);
+    wrap.appendChild(ex);
+  }
   const nowVal = ask === 'stage1' ? String(r.stage1 || '').replace(/탈락/, '불합격') : finalOf(r);
 
   const told = outcomeText(r);

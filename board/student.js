@@ -25,6 +25,7 @@ import { josa, rate1, typedRateText, isoDay, minReqShort, methodLine, interviewS
 import { suneungDday, KEY_DATES } from './keydates.js';
 import {
   isStaged, stepOf, STAGE1_CHOICES, finalChoices, finalOf, outcomeText, withChoice,
+  examStatus, withMissed,
 } from './outcome.js';
 import { applyFixes, fixesOf, minReqOf, minReqPill, myScoreOf, excludedKinds } from './fix.js';
 
@@ -1506,7 +1507,7 @@ function card(app) {
     // 면접 날짜를 고민하게 하지 않는다.
     const human = d && d.status !== 'sched';
     if (!human && !(schedTarget(app) && (d || expects(kind)))) continue;
-    strip.appendChild(dateRow(app, kind, d));
+    strip.appendChild(dateRow(app, kind, d, committed));
     shown += 1;
   }
   /*
@@ -1714,7 +1715,10 @@ function foldRow(summaryText, nodes, open) {
 }
 
 /** 면접 확정일을 넣는 줄. 넣으면 확인 대기로 들어간다. */
-function dateRow(app, kind, d) {
+/**
+ * @param committed  지원 확정 카드 — 지난 고사도 남기고 「봤나」(응시·미응시·예정)를 같이 보인다
+ */
+function dateRow(app, kind, d, committed = false) {
   const wrap = el('div', 'field');
   const id = `d-${app.id}-${kind}`;
 
@@ -1770,12 +1774,52 @@ function dateRow(app, kind, d) {
   }
   wrap.appendChild(row);
 
+  /*
+   * **봤나 — 날과 결과에서 읽는다**(outcome.js examStatus, 선생님 보드와 같은 규칙).
+   * 날이 지났거나 최종이 났으면 응시, 남았으면 예정. 학생이 고르는 것은 「미응시」
+   * 하나다 — 고르면 결과가 「불합격 · 면접 미응시」로 선생님께 간다.
+   */
+  let st = null;
+  if (committed) {
+    const r = state.results.get(String(app.id)) || app.result || {};
+    const s = summaryOf(app);
+    st = examStatus(kind, d, r, { staged: isStaged(s && s.stages, interviewForce(app)), today: todayISO() });
+    const line = el('div', 'field-in exam-in');
+    const pick = document.createElement('select');
+    pick.setAttribute('aria-label', `${shortUniv(app.univ)} ${kind} 응시`);
+    for (const [v, t] of [['', st.state === '미응시' ? '봤어요(되돌리기)' : st.text], ['미응시', `${kind} 안 봤어요(미응시)`]]) {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = t;
+      if ((st.state === '미응시') === (v === '미응시')) o.selected = true;
+      pick.appendChild(o);
+    }
+    pick.disabled = state.busy || st.state === '대상아님';
+    pick.onchange = () => {
+      const miss = pick.value === '미응시';
+      if (miss && !window.confirm(`${kind} 미응시로 적으면 결과가 「불합격 · ${kind} 미응시」로 선생님께 갑니다.`)) {
+        pick.value = ''; return;
+      }
+      saveResult(app, withMissed(r, kind, miss));
+    };
+    line.appendChild(el('span', 'hint', '응시'));
+    line.appendChild(pick);
+    wrap.appendChild(line);
+  }
+
   const word = !d ? ' 적기'
     : d.status === 'confirmed' ? ` · ${label(d.from)} · 확정`
       : d.status === 'pending' ? ` · ${label(d.from)} · 확인 대기`
         : d.status === 'sched' ? (d.fixed ? ` · ${label(d.from)} · 일정표` : ' · 일정표 기간 · 적기')
           : (d.fixed ? ` · ${label(d.from)}` : ' · 기간 · 적기');
-  return foldRow(`${kind}일${word}`, [wrap]);
+  // 확정 카드는 봤는지를 접힌 줄에도 — 「적기」로 끝나는 할 일 표시는 그대로 둔다
+  // 지난 고사·미응시·대상 아님은 날을 더 적을 일이 없어 「적기」를 뗀다. 예정이면 그대로 둔다.
+  const seen = st && st.state !== '미정' ? st.text : '';
+  const todo = /적기$/.test(word);
+  const bare = word.replace(/ · 적기$| 적기$/, '');
+  const sum = !seen ? `${kind}일${word}`
+    : todo && (st.state === '예정' || st.state === '오늘') ? `${kind}일${bare} · ${seen} · 적기`
+      : `${kind}일${bare} · ${seen}`;
+  return foldRow(sum, [wrap]);
 }
 
 /* ── 결과 ───────────────────────────────────────────────────────── */
