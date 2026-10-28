@@ -124,7 +124,7 @@ const ContentService = { MimeType: {}, createTextOutput: (t) => ({ setMimeType: 
 
 const src = readFileSync(resolve(HERE, 'apps-script/Code.gs'), 'utf8');
 const G = new Function('Utilities', 'SpreadsheetApp', 'ContentService', 'LockService', 'Session', 'CacheService',
-  `${src}\nreturn { handle_, access_, HEADERS, SHEET, cachePut_, cacheGet_ };`
+  `${src}\nreturn { handle_, access_, HEADERS, SHEET, cachePut_, cacheGet_, onEdit };`
 )(Utilities, SpreadsheetApp, ContentService, { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) }, Session, CacheService);
 
 let fails = 0;
@@ -669,6 +669,32 @@ sheets['결과'] = mkSheet([G.HEADERS['결과']]);
   const all = G.handle_({ action: 'students', key: '84348434', fresh: '1' }).apps.filter((a) => a.id === fav.id);
   eq([all.length, all[0].manual || false], [1, false], '즐겨찾기와 겹치면 즐겨찾기 한 장만');
 }
+
+/*
+ * **시트를 손으로 고치면 바로 보인다.** 원본 파싱은 최대 10분 묵혀 쓰는데, 관심대학 리스트에
+ * 줄을 더해도 10분 동안 안 보였다. onEdit 가 캐시를 버린다. 못 읽은 줄은 몇 행·왜를 돌려준다.
+ */
+console.log('\n원본을 손으로 고치면');
+liveCache = true;
+cacheStore.clear();
+sheets['설정'] = mkSheet([G.HEADERS['설정']]);
+{
+  const first = G.handle_({ action: 'students', key: '84348434' });
+  const n0 = first.apps.length;
+  const src = sheets['다운로드 원본'].getDataRange().getValues();
+  src.push(['3', '1', '1', '김가나', '전문대', '광주', '서영대학교', '수시', '학생부위주(교과)', '일반전형', '자연', '간호학과', '30', '']);
+  src.push(['', '', '', '', '전문대', '광주', '동강대학교', '수시', '학생부위주(교과)', '일반전형', '자연', '간호학과', '30', '']);
+  eq(G.handle_({ action: 'students', key: '84348434' }).apps.length, n0, '고친 직후 — 캐시가 옛 것을 준다(예전 동작)');
+  G.onEdit({ range: { getSheet: () => ({ getName: () => '다운로드 원본' }) } });
+  const after = G.handle_({ action: 'students', key: '84348434' });
+  eq(after.apps.length, n0 + 1, 'onEdit 뒤 — 더한 줄이 바로 보인다');
+  eq(after.skippedRows.map((x) => [x.row, x.univ]), [[src.length, '동강대학교']], '학생 칸이 빈 줄은 몇 행인지 알린다');
+  eq(Array.isArray(after.goneIds), true, '뺀 지원 id 목록을 함께 준다(짝 잃은 기록 가르기)');
+  src.splice(src.length - 2, 2);
+  G.onEdit({ range: { getSheet: () => ({ getName: () => '다운로드 원본' }) } });
+}
+liveCache = false;
+cacheStore.clear();
 
 {
   // 보드가 연결할 때 서버 판을 견준다 — 둘이 어긋나면 늘 「재배포 필요」가 뜨거나 안 뜬다

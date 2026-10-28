@@ -302,6 +302,19 @@ state.dupes  // [{ hak, univ, dept, type, n, row }]  n 은 그 지원이 적힌 
 
 ---
 
+## 2.6b 못 읽은 줄 · 짝 잃은 기록 (`students` 응답)
+
+```
+skippedRows  [{row, why, univ, dept}]   못 읽은 줄 — row 는 시트 행 번호(1부터). 40줄까지.
+                                         대학·학과가 다 빈 줄(제목·합계)은 안 적는다.
+goneIds      [id]                       손으로 더했다 뺀 지원 — 그 id 의 기록은 짝 잃은 것이 아니다
+parsedAt · cached                       원본을 언제 읽었나, 캐시에서 왔나
+```
+
+학년·반·번호 칸은 끝의 「학년」「반」「번」을 떼고 숫자로 읽는다(`unitNum_`). 보드는 배치(rank·tray)·
+결과·날짜·메모 가운데 지원 목록에 없는 id 를 학번마다 세어 알린다(`store.orphansOf`).
+원본 파싱 캐시는 이 파일의 탭이 고쳐지면 `onEdit` 가 버린다.
+
 ## 2.7 손으로 더한 지원 (`추가지원` 탭 · `board/addapp.js`)
 
 ```

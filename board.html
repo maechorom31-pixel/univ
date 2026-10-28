@@ -173,6 +173,10 @@ async function connect(fresh) {
     await store.load({ fresh });
     setConn('연결됨', 'on');
     who.textContent = store.state.who ? `${store.state.who} 로 연결` : '연결됨';
+    /* 원본을 언제 읽었나 — 서버는 즐겨찾기 파싱을 최대 10분 묵혀 쓴다. 시트를 방금 고쳤는데
+       안 보이면 이 시각을 보고 「새로고침」(캐시를 건너뛰고 다시 읽는다)을 누르면 된다. */
+    const at = String(store.state.parsedAt || '').slice(11, 16);
+    if (at) who.textContent += ` · 원본 ${at} 읽음${store.state.cached ? '(저장해 둔 것 — 시트를 고쳤으면 새로고침)' : ''}`;
     checkServer();
   } catch (err) {
     setConn('연결 실패', 'off');

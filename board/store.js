@@ -50,6 +50,10 @@ export const state = {
   gradeProblem: '',       // 성적 탭이 있는데 머리글을 못 읽었으면 그 사유
   unknownCols: [],
   skipped: 0,
+  skippedRows: [],
+  orphans: new Map(),     // 학번 → {순위, 결과, 날짜, 메모} — 짝 카드를 잃은 기록 수
+  parsedAt: '',
+  cached: false,
   dropped: [],
   dupes: [],             // 같은 지원이 여러 줄이라 한 장으로 묶은 것
   parseProblem: '',
@@ -135,6 +139,11 @@ function apply(data) {
   // 대학·학과 칸이 비어 버린 줄. 명단에는 있는데 보드가 비는 학생이 여기 걸린다.
   state.skipped = Number(data.skipped) || 0;
   state.dropped = data.dropped || [];
+  // 못 읽은 줄 하나하나 — {row(시트 몇 행), why, univ, dept}. 옛 서버는 안 준다.
+  state.skippedRows = data.skippedRows || [];
+  // 원본을 언제 읽었나 — 캐시(최대 10분)에서 왔으면 시트를 방금 고친 것이 아직 안 보인다
+  state.parsedAt = data.parsedAt || '';
+  state.cached = Boolean(data.cached);
   // 파서가 머리글을 못 찾았으면 그 사유. 화면이 그대로 띄운다.
   state.parseProblem = data.parseProblem || '';
   // 교사 열쇠를 안 걸어 뒀나 — 지금 주소를 아는 사람은 누구나 볼 수 있다
@@ -255,7 +264,36 @@ function apply(data) {
       state.studentMoves.push({ id: String(row.id), hak, at: String(row.at || '') });
     }
   }
+  state.orphans = orphansOf(data);
   linkCache.clear();
+}
+
+/**
+ * **짝 카드를 잃은 기록.** 카드의 id 는 (학번·대학·세부유형·학과) 글자로 만든다(§3 안정키).
+ * 그래서 시트에서 대학 이름이나 세부유형 글자를 고치면 **새 카드가 생기고**, 예전 카드에
+ * 걸어 둔 순위·결과·날짜·메모는 붙을 데를 잃는다 — 지워지지는 않지만 화면에서 사라진다.
+ * 여태 아무 말이 없어 「고쳤더니 순위가 날아갔다」로만 보였다. 학번마다 세어 보드가 알린다.
+ * 손으로 더했다 뺀 지원(추가지원 removed)의 기록은 뺀 것이라 세지 않는다.
+ */
+function orphansOf(data) {
+  const live = new Set((data.apps || []).map((a) => String(a.id)));
+  for (const id of data.goneIds || []) live.add(String(id));
+  const out = new Map();
+  const bump = (hak, kind) => {
+    if (!hak) return;
+    if (!out.has(hak)) out.set(hak, { 순위: 0, 결과: 0, 날짜: 0, 메모: 0 });
+    out.get(hak)[kind] += 1;
+  };
+  for (const r of data.state || []) {
+    if (!live.has(String(r.id)) && (r.slot === 'rank' || r.slot === 'tray')) bump(String(r.hak || ''), '순위');
+  }
+  for (const r of data.results || []) {
+    const has = ['stage1', 'final', 'reason', 'waitNo', 'enrolled'].some((k) => String(r[k] || '').trim());
+    if (has && !live.has(String(r.id))) bump(String(r.hak || ''), '결과');
+  }
+  for (const r of data.dates || []) if (!live.has(String(r.id)) && r.from) bump(String(r.hak || ''), '날짜');
+  for (const n of data.notes || []) if (n.id && !live.has(String(n.id))) bump(String(n.hak || ''), '메모');
+  return out;
 }
 
 /**

@@ -200,7 +200,7 @@ export async function call(action, params, opts = {}) {
  * Code.gs 를 고치면 둘을 함께 올린다. 보드가 연결할 때 ping 의 ver 와 견줘
  * 「Apps Script 를 새로 배포해야 합니다」를 알려 준다(배포를 감으로 확인하지 않게).
  */
-export const SERVER_VER = '2026-10-28';
+export const SERVER_VER = '2026-10-29';
 export const ping = () => call('ping', {});
 
 // fresh 가 참이면 서버가 원본 파싱 캐시를 건너뛴다 (Code.gs sourceParsed_)

@@ -37,7 +37,7 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-10-28';
+var CODE_VER = '2026-10-29';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
@@ -446,7 +446,7 @@ function readHeader_(values) {
   // 자료 첫 줄 = 머리글 뒤에서 학년 칸이 숫자인 첫 줄
   var dataFrom = at + 1;
   for (var d = at + 1; d < values.length; d++) {
-    if (/^\d+$/.test(String((values[d] || [])[gradeCol] || '').trim())) { dataFrom = d; break; }
+    if (/^\d+$/.test(unitNum_((values[d] || [])[gradeCol]))) { dataFrom = d; break; }
   }
 
   var main = [], sub = [], carry = '';
@@ -561,6 +561,18 @@ function num_(v) {
  * `toISOString()` 을 안 쓴다 — 그건 UTC 로 옮기느라 한국 시간 0시가 전날이 된다.
  * 시트에 보이는 날짜 그대로 읽으려면 지역 시각 게터를 써야 한다.
  */
+/**
+ * 학년·반·번호 칸 — 손으로 넣은 줄의 「3학년」「1반」「7번」을 숫자로 읽는다.
+ *
+ * 내려받은 관심대학 리스트는 숫자만 준다. 그런데 선생님이 시트에 줄을 **손으로 더하면**
+ * 「1반」처럼 적기 쉽고, 그러면 학번이 「31반01」이 되어 **없는 학생 밑으로** 지원이
+ * 들어갔다(그 학생 카드에는 안 보인다). 「3학년」은 학년 칸이 숫자가 아니라 줄째 버려졌다.
+ * 끝에 붙은 「학년·반·번」만 뗀다 — 「3-1」 같은 것은 그대로 두어 못 읽은 줄로 알린다.
+ */
+function unitNum_(v) {
+  return txt_(v).replace(/\s*(학년|반|번)$/, '').trim();
+}
+
 function txt_(v) {
   if (v instanceof Date && !isNaN(v.getTime())) {
     return v.getFullYear() + '-' + pad2_(v.getMonth() + 1) + '-' + pad2_(v.getDate());
@@ -701,6 +713,7 @@ function parseFavorites_(values, opts) {
   opts = opts || {};
   var H = readHeader_(values);
   var students = {}, order = [], apps = [], unknownCols = {}, skipped = 0, dropped = {};
+  var skippedRows = [];         // 못 읽은 줄 — 몇 행, 왜, 어느 대학 (보드가 그대로 띄운다)
 
   /*
    * **머리글을 못 찾았으면 읽지 않는다.**
@@ -730,8 +743,15 @@ function parseFavorites_(values, opts) {
      * 관심대학 리스트의 첫 칸은 줄 번호(`No`)라 여태 우연히 맞았을 뿐이다.
      * 그 칸이 비거나 「A-1」 같은 글자면 그 줄이 통째로 사라졌다.
      */
-    var g = txt_(row[H.gradeCol]);
-    if (!/^\d+$/.test(g)) { if (row.join('')) skipped++; continue; }
+    var g = unitNum_(row[H.gradeCol]);
+    if (!/^\d+$/.test(g)) {
+      if (row.join('')) {
+        skipped++;
+        noteSkip_(skippedRows, r, row, H, g ? '학년 칸을 숫자로 못 읽었습니다(「' + g + '」)'
+          : (whoBlank_(row, H) ? '학년·반·번호·이름이 비어 어느 학생 줄인지 모릅니다' : '학년 칸이 비었습니다'));
+      }
+      continue;
+    }
 
     var f = {}, naesin = {}, suneung = {}, unknown = {}, dates = {};
 
@@ -774,15 +794,24 @@ function parseFavorites_(values, opts) {
     }
 
     // 학번은 4자리다 — 3217 = 3학년 2반 17번. 반은 한 자리, 번호는 두 자리로 채운다.
-    var hak = f.grade && f.cls && f.no
-      ? txt_(f.grade) + txt_(f.cls) + pad2_(parseInt(f.no, 10))
+    var gr = unitNum_(f.grade), cl = unitNum_(f.cls), no = unitNum_(f.no);
+    var hak = /^\d+$/.test(gr) && /^\d+$/.test(cl) && /^\d+$/.test(no)
+      ? gr + cl + pad2_(parseInt(no, 10))
       : '';
-    if (!hak || !f.name) { skipped++; continue; }
+    if (!hak || !f.name) {
+      skipped++;
+      var bad = [];
+      if (!/^\d+$/.test(cl)) bad.push(cl ? '반 칸을 숫자로 못 읽었습니다(「' + cl + '」)' : '반 칸이 비었습니다');
+      if (!/^\d+$/.test(no)) bad.push(no ? '번호 칸을 숫자로 못 읽었습니다(「' + no + '」)' : '번호 칸이 비었습니다');
+      if (!f.name) bad.push('이름 칸이 비었습니다');
+      noteSkip_(skippedRows, r, row, H, bad.join(' · '));
+      continue;
+    }
 
     // 학생 (첫 행에서 성적을 집는다)
     if (!students[hak]) {
       students[hak] = {
-        hak: hak, grade: parseInt(f.grade, 10), cls: txt_(f.cls), no: txt_(f.no),
+        hak: hak, grade: parseInt(gr, 10), cls: cl, no: no,
         name: f.name, naesin: naesin, suneung: suneung, apps: []
       };
       order.push(hak);
@@ -840,6 +869,7 @@ function parseFavorites_(values, opts) {
       var why = !app.univ ? '대학명이 비었습니다' : '모집단위가 비었습니다';
       if (!dropped[hak]) dropped[hak] = { hak: hak, n: 0, why: why, row: r + 1 };
       dropped[hak].n += 1;
+      noteSkip_(skippedRows, r, row, H, why);
       continue;
     }
     /*
@@ -877,12 +907,38 @@ function parseFavorites_(values, opts) {
   for (var k in dupes) twice.push(dupes[k]);
   return {
     students: list, apps: apps, unknownCols: cols, skipped: skipped,
+    skippedRows: skippedRows,     // 못 읽은 줄 하나하나 — 시트 몇 행인지까지
     dropped: lost,                // 어느 학생의 줄이 몇 개 왜 빠졌나
     dupes: twice                  // 같은 지원이 여러 줄 — 한 장으로 묶은 것
   };
 }
 
 /** 안정키 — 원본을 갈아끼워도 메모·순위가 붙어 있게 한다. CONTRACT.md §3 */
+/**
+ * 못 읽은 줄을 적어 둔다 — **시트 몇 행인지, 왜, 어느 대학·학과인지.**
+ * 예전에는 개수만 세서 보드가 「대학이나 학과 칸이 비어 1줄을 못 읽었습니다」라고만 했다.
+ * 실제로는 학년·이름이 빈 줄이었고, 어느 줄인지도 몰라 선생님이 시트를 다 뒤져야 했다.
+ * 대학 칸도 빈 줄(제목·합계 줄)은 지원 줄이 아니라 적지 않는다. 40줄까지만.
+ */
+/** 반·번호·이름 칸이 다 비었나 — 학년만 빈 줄과 학생 칸을 통째로 안 채운 줄을 가른다. */
+function whoBlank_(row, H) {
+  for (var c = 0; c < H.main.length; c++) {
+    var f = FIELD[H.main[c]];
+    if ((f === 'cls' || f === 'no' || f === 'name') && txt_(row[c])) return false;
+  }
+  return true;
+}
+
+function noteSkip_(list, r, row, H, why) {
+  var univ = '', dept = '';
+  for (var c = 0; c < H.main.length; c++) {
+    if (FIELD[H.main[c]] === 'univ') univ = txt_(row[c]);
+    if (FIELD[H.main[c]] === 'dept') dept = txt_(row[c]);
+  }
+  if (!univ && !dept) return;
+  if (list.length < 40) list.push({ row: r + 1, why: why, univ: univ, dept: dept });
+}
+
 function appId_(app) {
   // 구분자는 학과명·전형명에 절대 나오지 않는 문자여야 한다. 공백으로 이으면
   // `가 나` + `다` 와 `가` + `나 다` 가 같은 씨앗이 되어 메모가 뒤섞인다.
@@ -1166,7 +1222,7 @@ function log_(who, action, detail) {
  * **파싱 결과의 모양이 바뀌면 SRC_CACHE_KEY 의 판을 올린다.** 안 올리면 새 코드가
  * 옛 모양의 캐시를 5분 동안 그대로 내보낸다.
  */
-var SRC_CACHE_KEY = 'src:v1';
+var SRC_CACHE_KEY = 'src:v2';   // v2 — skippedRows 를 더했다
 /*
  * 10분이다(예전 5분). 아래 warmCache 가 5분마다 다시 파싱해 넣으므로, 트리거를
  * 걸어 두면 캐시가 비는 순간이 없다 — 마침 그때 연 학생이 수 초를 더 내던 일이
@@ -1232,6 +1288,7 @@ function readSource_() {
     warn: book.why || '',
     students: parsed.students, apps: parsed.apps,
     unknownCols: parsed.unknownCols, skipped: parsed.skipped,
+    skippedRows: parsed.skippedRows || [],
     dropped: parsed.dropped || [],
     problem: parsed.problem || '',
     grades: grades.rows, gradeProblem: grades.problem,
@@ -1278,6 +1335,27 @@ function warmCache() {
   log_('trigger', 'warm', (sp.apps || []).length + '건 파싱 · 캐시 ' + SRC_CACHE_SEC + '초');
 }
 
+/**
+ * **시트를 손으로 고치면 캐시를 바로 버린다** — 단순 트리거라 따로 설치할 것이 없다.
+ *
+ * 원본 파싱은 최대 10분 묵혀 쓴다(SRC_CACHE_SEC). 그래서 선생님이 관심대학 리스트에 대학을
+ * 한 줄 더하고 보드를 다시 열어도 10분 동안 안 보였다 — 「새로고침」 단추만 캐시를 건너뛴다.
+ * 이제 이 파일의 탭을 고치면 그 자리에서 캐시를 버린다:
+ *   배치·결과·일정 같은 보드 탭  → 그 탭의 읽기 캐시(2분)
+ *   그 밖의 탭(원본·성적 등)     → 원본 파싱 캐시
+ * **딴 파일에서 읽는 원본(설정 B2)은 여기 안 걸린다** — 그 파일을 고쳤으면 「새로고침」.
+ * 단순 트리거는 권한이 필요한 일을 못 한다. 캐시 버리기는 권한이 필요 없지만, 막히더라도
+ * 조용히 넘긴다 — 그때는 예전처럼 10분 또는 「새로고침」이다.
+ */
+function onEdit(e) {
+  try {
+    var name = e && e.range ? e.range.getSheet().getName() : '';
+    if (!name) return;
+    if (HEADERS[name]) { bumpTab_(name); return; }
+    CacheService.getScriptCache().remove(srcCacheKey_() + ':meta');
+  } catch (err) { /* 캐시를 못 버려도 고친 것은 시트에 있다 */ }
+}
+
 function installWarmTrigger() {
   removeWarmTrigger();
   ScriptApp.newTrigger('warmCache').timeBased().everyMinutes(5).create();
@@ -1299,7 +1377,11 @@ function loadAll_(me, fresh) {
     sourceBook: sp.bookName,
     sourceWarn: sp.warn,
     students: sp.students, apps: appsWith_(sp.apps, fresh),
+    // 손으로 더했다 뺀 지원 — 그 id 의 순위·결과는 뺀 것이지 짝을 잃은 것이 아니다(보드가 가른다)
+    goneIds: rows_(SHEET.extra, fresh).filter(function (r) { return String(r.status) === 'removed'; })
+      .map(function (r) { return String(r.id); }),
     unknownCols: sp.unknownCols, skipped: sp.skipped,
+    skippedRows: sp.skippedRows || [],
     dropped: sp.dropped,
     // 머리글을 못 찾았으면 왜인지 — 조용히 「0명」이 되지 않게 한다
     parseProblem: sp.problem,

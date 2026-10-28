@@ -1462,3 +1462,4 @@ table.ledger td.tight.tighter { font-size: 6.9pt; letter-spacing: -0.03em; }
 .add-rec-list li.maybe { color: var(--muted); }
 .add-rec-list .tag { margin-left: 6px; font-size: var(--t-xs); border: 1px dashed var(--amber); border-radius: 999px; padding: 0 6px; }
 .add-app [hidden] { display: none; }
+.skip-list { margin: 6px 0 0; padding-left: 1.2em; font-size: var(--t-sm); }

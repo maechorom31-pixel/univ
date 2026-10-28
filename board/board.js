@@ -342,13 +342,54 @@ function render() {
    * 있어서 보드만 텅 빈다 — 자료가 없는 건지 샌 건지 알 수 없는 상태가 된다.
    */
   if (store.state.skipped) {
-    const who = (store.state.dropped || []).slice(0, 4)
-      .map((d) => `${d.hak}(${d.n}줄)`).join(' · ');
-    main.appendChild(banner(
-      `대학이나 학과 칸이 비어 ${store.state.skipped}줄을 못 읽었습니다`
-      + `${who ? ` — ${who}` : ''}. 시트에서 그 줄을 확인해 주세요.`,
-      true,
-    ));
+    /*
+     * **몇 행을 왜 못 읽었는지 그대로 적는다.** 예전에는 개수만 세어 「대학이나 학과 칸이
+     * 비어 1줄을 못 읽었습니다」라고 했는데, 손으로 더한 줄이 대개 걸리는 까닭은 학년·반·
+     * 번호·이름 칸이다 — 이유도 틀렸고 어느 줄인지도 몰랐다. 서버가 줄마다 알려 준다(옛 서버는
+     * 개수만 — 그때는 예전 문구).
+     */
+    const rows = store.state.skippedRows || [];
+    if (rows.length) {
+      // <p> 안에 목록을 넣으면 브라우저가 밖으로 밀어낸다 — div 로 감싼다
+      const box = el('div', 'note error');
+      box.appendChild(el('p', '', `시트에서 ${store.state.skipped}줄을 못 읽어 보드에 없습니다 — 그 줄을 고친 뒤 「새로고침」을 눌러 주세요.`));
+      const ul = el('ul', 'skip-list');
+      for (const x of rows.slice(0, 8)) {
+        ul.appendChild(el('li', '', `${x.row}행 ${[x.univ, x.dept].filter(Boolean).join(' ')} — ${x.why}`));
+      }
+      if (rows.length > 8) ul.appendChild(el('li', '', `그 밖에 ${rows.length - 8}줄`));
+      box.appendChild(ul);
+      main.appendChild(box);
+    } else {
+      const who = (store.state.dropped || []).slice(0, 4)
+        .map((d) => `${d.hak}(${d.n}줄)`).join(' · ');
+      main.appendChild(banner(
+        `시트에서 ${store.state.skipped}줄을 못 읽었습니다${who ? ` — ${who}` : ''}.`
+        + ' 학년·반·번호·이름과 대학·모집단위 칸을 확인해 주세요.',
+        true,
+      ));
+    }
+  }
+  /*
+   * 짝 카드를 잃은 기록 — 시트에서 대학·학과·세부유형 글자를 고치면 새 카드가 생기고
+   * 예전 카드의 순위·결과·메모가 떨어진다(store.orphansOf). 고른 반 학생만.
+   */
+  {
+    const lost = [];
+    for (const st of store.studentsOf(store.selection.cls)) {
+      const o = store.state.orphans && store.state.orphans.get(st.hak);
+      if (!o) continue;
+      const what = Object.entries(o).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join('·');
+      lost.push(`${st.hak} ${tidy(st.name)}(${what})`);
+    }
+    if (lost.length) {
+      main.appendChild(banner(
+        `카드를 잃은 기록이 있습니다 — ${lost.slice(0, 5).join(' · ')}${lost.length > 5 ? ` 외 ${lost.length - 5}명` : ''}.`
+        + ' 시트에서 대학·학과·세부유형 글자를 고치면 새 카드가 생겨 예전 카드의 순위·결과·메모가'
+        + ' 붙지 않습니다(지워지지는 않았습니다). 글자를 예전대로 되돌리고 「새로고침」하면 다시 붙습니다.',
+        true,
+      ));
+    }
   }
   /*
    * 겹친 줄은 **보드에 적지 않는다.** 카드는 이미 한 장으로 묶여 나가므로 상담에는
