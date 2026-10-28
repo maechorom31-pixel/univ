@@ -671,6 +671,33 @@ sheets['결과'] = mkSheet([G.HEADERS['결과']]);
 }
 
 /*
+ * **한 발 늦은 화면이 남의 결과를 덮어쓰지 못한다.** 결과는 줄을 통째로 덮어써서, 학생이
+ * 「최초합격」을 적은 뒤 그 전에 열어 둔 선생님 화면이 같은 카드에 저장하면 학생 것이 지워졌다.
+ */
+console.log('\n결과 — 그 사이에 바뀌었으면 안 쓴다');
+sheets['설정'] = mkSheet([G.HEADERS['설정']]);
+sheets['공유'] = mkSheet([G.HEADERS['공유'], ['3101', 'tokA', '2099-01-01', '']]);
+sheets['결과'] = mkSheet([G.HEADERS['결과']]);
+{
+  const id = G.handle_({ action: 'student', token: 'tokA' }).apps[0].id;
+  const a = G.handle_({ action: 'studentResult', token: 'tokA', id, final: '최초합격', seen: '' });
+  eq([a.ok, Boolean(a.at)], [true, true], '학생이 처음 적는다 — 시각을 돌려준다');
+  const stale = G.handle_({ action: 'setResult', key: '84348434', id, hak: '3101', stage1: '합격', final: '', seen: '' });
+  eq([stale.ok, stale.stale, stale.row && stale.row.final], [false, true, '최초합격'], '옛 화면(빈 줄을 보던)의 저장은 거절하고 지금 줄을 준다');
+  eq(sheets['결과'].getDataRange().getValues()[1][3], '최초합격', '학생의 최종 결과는 그대로');
+  const ok = G.handle_({ action: 'setResult', key: '84348434', id, hak: '3101', stage1: '합격', final: '최초합격', seen: stale.row.at });
+  eq(ok.ok, true, '지금 줄을 보고 다시 저장하면 된다');
+  const old = G.handle_({ action: 'setResult', key: '84348434', id, hak: '3101', stage1: '합격', final: '충원합격' });
+  eq(old.ok, true, '옛 화면(seen 을 안 보냄)은 예전대로 쓴다');
+  const ap = G.handle_({ action: 'studentResult', token: 'tokA', id, final: '불합격', seen: old.at });
+  const appr = G.handle_({ action: 'approveResult', key: '84348434', id });
+  eq([appr.ok, Boolean(appr.at), appr.row.final], [true, true, '불합격'], '확인도 새 시각과 확인한 값을 돌려준다');
+  eq(G.handle_({ action: 'setResult', key: '84348434', id, hak: '3101', final: '불합격', reason: '수능최저 미충족', seen: appr.at }).ok,
+    true, '확인한 뒤 바로 고쳐도 거절되지 않는다');
+  void ap;
+}
+
+/*
  * **시트를 손으로 고치면 바로 보인다.** 원본 파싱은 최대 10분 묵혀 쓰는데, 관심대학 리스트에
  * 줄을 더해도 10분 동안 안 보였다. onEdit 가 캐시를 버린다. 못 읽은 줄은 몇 행·왜를 돌려준다.
  */

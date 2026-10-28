@@ -995,7 +995,14 @@ function resultBox(app) {
   const wrap = el('div', 'res-mini');
   const say = el('p', 'res-err');
   say.hidden = true;
-  const fail = (what, err) => { say.textContent = `${what} — ${err.message}`; say.hidden = false; };
+  // 실패하면 카드가 곧 다시 그려져(그 사이에 바뀐 값을 받으면 특히) 카드 안의 글은 사라진다 —
+  // 보드 위 알림 줄에 남긴다
+  const fail = (what, err) => {
+    say.textContent = `${what} — ${err.message}`;
+    say.hidden = false;
+    notice = `${app.univ.replace(/\(.*/, '')} ${app.dept}: ${what} — ${err.message}`;
+    render();
+  };
 
   // 수험번호 — 바꾸고 나가면 저장한다. 학생이 적은 것이면 「맞습니다」 한 번으로 확인.
   const no = store.fieldOf(app, '수험번호');

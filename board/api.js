@@ -177,6 +177,8 @@ export async function call(action, params, opts = {}) {
         // 마감(★)도 값으로 — 화면이 「방금 마감됐다」를 알아보고 표시를 띄운다
         if (data.locked) { err.locked = true; err.by = data.by || ''; err.at = data.at || ''; }
         if (data.full) err.full = true;
+        // 결과가 그 사이에 바뀌었으면 서버가 지금 줄을 같이 준다 — 화면이 그 값으로 바꿔 보인다
+        if (data.row) err.row = data.row;
         throw err;
       }
       return data;
@@ -200,7 +202,7 @@ export async function call(action, params, opts = {}) {
  * Code.gs 를 고치면 둘을 함께 올린다. 보드가 연결할 때 ping 의 ver 와 견줘
  * 「Apps Script 를 새로 배포해야 합니다」를 알려 준다(배포를 감으로 확인하지 않게).
  */
-export const SERVER_VER = '2026-10-29';
+export const SERVER_VER = '2026-10-30';
 export const ping = () => call('ping', {});
 
 // fresh 가 참이면 서버가 원본 파싱 캐시를 건너뛴다 (Code.gs sourceParsed_)

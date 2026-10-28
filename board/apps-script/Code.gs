@@ -37,7 +37,7 @@
  * 새 판이 실제로 배포됐는지 확인할 수 있다. 여태 이걸 확인할 길이 없어서
  * 「배포했는데 안 바뀐다」를 감으로 가려야 했다.
  */
-var CODE_VER = '2026-10-29';
+var CODE_VER = '2026-10-30';
 
 var SOURCE_SHEETS = ['다운로드 원본', '원본', '즐겨찾기'];
 
@@ -1351,8 +1351,11 @@ function onEdit(e) {
   try {
     var name = e && e.range ? e.range.getSheet().getName() : '';
     if (!name) return;
-    if (HEADERS[name]) { bumpTab_(name); return; }
-    CacheService.getScriptCache().remove(srcCacheKey_() + ':meta');
+    var cache = CacheService.getScriptCache();
+    // 설정(열쇠 C2 · 원본 주소 B2)은 따로 1분 캐시한다 — 고친 열쇠·주소가 바로 먹게 버린다
+    if (name === SHEET.config) cache.remove('config:v1:meta');
+    if (HEADERS[name] && name !== SHEET.config) { bumpTab_(name); return; }
+    cache.remove(srcCacheKey_() + ':meta');
   } catch (err) { /* 캐시를 못 버려도 고친 것은 시트에 있다 */ }
 }
 
@@ -1566,14 +1569,37 @@ function removeNote_(p, who) {
  */
 function setResult_(p, who, status) {
   if (!p.id || !p.hak) return { ok: false, error: 'id 와 hak 이 필요합니다.' };
+  /*
+   * **한 발 늦은 화면이 남의 결과를 덮어쓰지 못하게 한다.**
+   *
+   * 결과는 한 줄을 통째로 덮어쓴다. 그래서 학생이 「최초합격」을 적은 뒤, 그 전에 열어 둔
+   * 선생님 보드에서 같은 카드에 「1단계 합격」을 저장하면 학생의 최종 결과가 **소리 없이
+   * 지워졌다**(선생님 화면의 옛 줄 위에 얹어 보내니까). 화면은 자기가 보고 있던 줄의 시각
+   * (`seen`)을 함께 보낸다. 시트의 줄이 그 사이에 바뀌었으면 쓰지 않고 지금 줄을 돌려준다 —
+   * 화면이 그 값으로 바꿔 보여 주고, 사람이 보고 다시 고른다. 옛 화면(`seen` 을 안 보냄)은 예전대로.
+   */
+  if (typeof p.seen !== 'undefined' && p.seen !== null) {
+    var cur = null, all = rows_(SHEET.result, true);
+    for (var i = 0; i < all.length; i++) if (String(all[i].id) === String(p.id)) cur = all[i];
+    if (cur && String(cur.at || '') !== String(p.seen)) {
+      return {
+        ok: false, stale: true,
+        error: '그 사이에 이 결과가 바뀌었습니다' + (cur.by ? '(' + cur.by + ')' : '')
+          + ' — 바뀐 값을 보여 드렸으니 확인하고 다시 저장해 주세요.',
+        row: { id: cur.id, hak: cur.hak, stage1: cur.stage1, final: cur.final, reason: cur.reason,
+          waitNo: cur.waitNo, enrolled: cur.enrolled, status: cur.status, by: cur.by, at: cur.at }
+      };
+    }
+  }
+  var at = now_();
   upsert_(SHEET.result, ['id'], {
     id: p.id, hak: p.hak,
     stage1: p.stage1 || '', final: p.final || '', reason: p.reason || '',
     waitNo: p.waitNo || '', enrolled: p.enrolled || '',
-    status: status || 'confirmed', by: who, at: now_()
+    status: status || 'confirmed', by: who, at: at
   });
   log_(who, 'setResult', p.hak + ' ' + p.id + ' ' + (p.final || ''));
-  return { ok: true };
+  return { ok: true, at: at };
 }
 
 /** 담임이 학생이 적은 결과를 확인해 확정으로 올린다. */
@@ -1583,13 +1609,17 @@ function approveResult_(p, who) {
     if (String(all[i].id) === String(p.id)) hit = all[i];
   }
   if (!hit) return { ok: false, error: '확인할 결과가 없습니다.' };
+  var at = now_();
   upsert_(SHEET.result, ['id'], {
     id: hit.id, hak: hit.hak, stage1: hit.stage1, final: hit.final,
     reason: hit.reason, waitNo: hit.waitNo, enrolled: hit.enrolled,
-    status: 'confirmed', by: who, at: now_()
+    status: 'confirmed', by: who, at: at
   });
   log_(who, 'approveResult', hit.hak + ' ' + hit.id);
-  return { ok: true };
+  // at — 화면이 이 줄의 시각을 맞춘다(다음 저장의 seen). 확인한 값도 함께 — 그 사이에 학생이
+  // 고쳤으면 선생님이 본 것과 다른 값을 확인한 것이라 화면이 그 값을 보여야 한다
+  return { ok: true, at: at, row: { stage1: hit.stage1, final: hit.final, reason: hit.reason,
+    waitNo: hit.waitNo, enrolled: hit.enrolled } };
 }
 
 function setDate_(p, who, status) {
@@ -1868,7 +1898,7 @@ function studentAction_(action, p) {
   }
   if (action === 'studentResult') {
     return setResult_({ id: p.id, hak: hak, stage1: p.stage1, final: p.final,
-      reason: p.reason, waitNo: p.waitNo, enrolled: p.enrolled }, who, 'student');
+      reason: p.reason, waitNo: p.waitNo, enrolled: p.enrolled, seen: p.seen }, who, 'student');
   }
   return { ok: false, error: '알 수 없는 요청입니다: ' + action };
 }

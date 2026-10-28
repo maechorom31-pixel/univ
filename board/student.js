@@ -171,7 +171,10 @@ function applyRest(data) {
     stage1: String(r.stage1 || ''), final: String(r.final || ''),
     reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
     enrolled: String(r.enrolled || ''), status: String(r.status || 'confirmed'),
+    at: String(r.at || ''),
   }]));
+  // 다 빈 줄도 시각은 기억한다 — 저장할 때 seen 으로 보내야 서버가 「그 사이에 바뀜」을 안 낸다
+  state.resultAt = new Map((data.results || []).map((r) => [String(r.id), String(r.at || '')]));
   // 옛 배포의 서버가 시트의 Date 칸을 UTC 로 적어 보낼 수 있다 — 받는 쪽에서도 씻는다
   state.dates = new Map((data.dates || []).map((r) => [`${r.id}|${r.kind}`, {
     from: isoDay(r.from), to: isoDay(r.to || r.from), status: r.status || 'pending',
@@ -2033,16 +2036,31 @@ function resultRow(app, open = false) {
 
 async function saveResult(app, row) {
   state.busy = true; render();
+  const id = String(app.id);
   try {
+    let at = '';
     if (!offline) {
-      await api.call('studentResult', { token: state.token, id: app.id, ...row });
+      // 보고 있던 줄의 시각 — 그 사이에 선생님이 바꿨으면 서버가 안 쓰고 지금 줄을 돌려준다
+      const seen = (state.resultAt && state.resultAt.get(id)) || '';
+      const res = await api.call('studentResult', { token: state.token, id: app.id, ...row, seen });
+      at = (res && res.at) || '';
     }
+    if (!state.resultAt) state.resultAt = new Map();
+    state.resultAt.set(id, at);
     const empty = !row.stage1 && !row.final && !row.reason && !row.waitNo && !row.enrolled;
-    if (empty) state.results.delete(String(app.id));
-    else state.results.set(String(app.id), { ...row, status: 'student' });
+    if (empty) state.results.delete(id);
+    else state.results.set(id, { ...row, status: 'student', at });
     state.notice = `${shortUniv(app.univ)} 결과를 ${outcomeText(row) || '지움'} 으로 보냈습니다.`
       + ' 선생님도 함께 봅니다.';
   } catch (err) {
+    // 그 사이에 선생님이 바꾼 줄 — 그 값으로 바꿔 보이고 다시 고르게 한다
+    if (err && err.stale && err.row) {
+      const r = err.row;
+      state.results.set(id, { stage1: String(r.stage1 || ''), final: String(r.final || ''), reason: String(r.reason || ''),
+        waitNo: String(r.waitNo || ''), enrolled: String(r.enrolled || ''), status: String(r.status || 'confirmed'), at: String(r.at || '') });
+      if (!state.resultAt) state.resultAt = new Map();
+      state.resultAt.set(id, String(r.at || ''));
+    }
     state.notice = `오류: ${err.message}`;
   } finally {
     state.busy = false; render();

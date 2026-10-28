@@ -223,6 +223,8 @@ function apply(data) {
   state.notes = data.notes || [];
   // 선생님이 시트에 적어 둔 결과. 즐겨찾기가 준 값 위에 덮어쓴다 —
   // 예비번호가 도는 12월에는 대교협보다 담임이 먼저 안다.
+  resultAt.clear();
+  for (const r of data.results || []) resultAt.set(String(r.id), String(r.at || ''));
   state.results = new Map((data.results || []).map((r) => [String(r.id), {
     stage1: String(r.stage1 || ''), final: String(r.final || ''),
     reason: String(r.reason || ''), waitNo: String(r.waitNo || ''),
@@ -1060,25 +1062,49 @@ export function resultOf(app) {
 }
 
 /** 결과를 적는다. 빈 칸으로 저장하면 즐겨찾기 값으로 되돌아간다. */
+/*
+ * 서버가 적은 결과 줄의 시각 — 저장할 때 `seen` 으로 보낸다(Code.gs setResult_ 가 그 사이에
+ * 바뀌었는지 본다). 화면에 보이는 줄과 따로 둔다: 화면은 저장 전에 미리 바뀌지만(낙관적),
+ * 서버의 시각은 응답이 와야 안다. 다 빈 줄(되돌리기)의 시각도 여기 남는다.
+ */
+const resultAt = new Map();
+// 같은 카드의 저장은 차례로 — 둘째 저장이 첫째의 응답(새 시각)을 기다린다. 안 그러면 빨리
+// 두 번 고른 선생님의 둘째 저장이 자기 첫째 저장 때문에 「그 사이에 바뀜」으로 거절된다.
+const resultChain = new Map();
+
 export async function setResult(app, next) {
   const id = String(app.id);
-  const before = new Map(state.results);
+  const prevRow = state.results.get(id);
   const row = {
     stage1: next.stage1 || '', final: next.final || '', reason: next.reason || '',
     waitNo: next.waitNo || '', enrolled: next.enrolled || '',
-    status: 'confirmed', by: state.who || '', at: new Date().toISOString(),
+    status: 'confirmed', by: state.who || '', at: (prevRow && prevRow.at) || '',
   };
   const empty = !row.stage1 && !row.final && !row.reason && !row.waitNo && !row.enrolled;
   if (empty) state.results.delete(id); else state.results.set(id, row);
   emit('change', 'state');
   if (offline) return;
-  try {
-    await api.setResult({ id, hak: app.hak, ...next });
-  } catch (err) {
-    state.results = before;
-    emit('change', 'state');
-    throw err;
-  }
+  const run = async () => {
+    try {
+      const res = await api.setResult({ id, hak: app.hak, ...next, seen: resultAt.get(id) || '' });
+      if (res && res.at) {
+        resultAt.set(id, res.at);
+        if (state.results.has(id)) state.results.set(id, { ...state.results.get(id), at: res.at });
+      }
+    } catch (err) {
+      if (err && err.stale && err.row) {
+        // 그 사이에 바뀐 줄을 보인다 — 옛 값으로 되돌리면 같은 충돌을 또 낸다
+        state.results.set(id, { ...err.row });
+        resultAt.set(id, String(err.row.at || ''));
+      } else if (prevRow) state.results.set(id, prevRow);
+      else state.results.delete(id);
+      emit('change', 'state');
+      throw err;
+    }
+  };
+  const job = (resultChain.get(id) || Promise.resolve()).catch(() => {}).then(run);
+  resultChain.set(id, job);
+  return job;
 }
 
 /** 학생이 적어 두고 선생님 확인을 기다리는 결과. */
@@ -1103,7 +1129,12 @@ export async function approveResult(app) {
   emit('change', 'state');
   if (offline) return;
   try {
-    await api.call('approveResult', { id, hak: app.hak });
+    const res = await api.call('approveResult', { id, hak: app.hak });
+    if (res && res.at) {
+      resultAt.set(id, res.at);
+      state.results.set(id, { ...state.results.get(id), ...(res.row || {}), at: res.at });
+      emit('change', 'state');
+    }
   } catch (err) {
     state.results = before;
     emit('change', 'state');
