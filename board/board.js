@@ -392,6 +392,20 @@ function render() {
     }
   }
   /*
+   * 손으로 더한 지원과 겹쳐 보이는 즐겨찾기 지원 — 나중에 즐겨찾기에 같은 지원이 들어온 자리.
+   * 둘이 정말 같은지(교과/종합처럼 다른 전형일 수 있다)는 사람이 본다.
+   */
+  {
+    const twins = store.manualTwins(store.selection.cls);
+    if (twins.length) {
+      main.appendChild(banner(
+        `겹쳐 보이는 카드가 있습니다 — ${twins.slice(0, 4).map((x) => `${x.student.hak} ${shortName(x.manual)}`).join(' · ')}`
+        + `${twins.length > 4 ? ` 외 ${twins.length - 4}건` : ''}. 손으로 더한 지원과 같은 대학·학과가 즐겨찾기에도 있습니다.`
+        + ' 같은 원서면 손으로 더한 카드의 결과·날짜를 즐겨찾기 카드에 옮겨 적고, 손으로 더한 카드는 「빼기」로 빼 주세요.',
+      ));
+    }
+  }
+  /*
    * 겹친 줄은 **보드에 적지 않는다.** 카드는 이미 한 장으로 묶여 나가므로 상담에는
    * 지장이 없고, 시트를 손보는 일은 상담하다 말고 할 일이 아니다. 매번 뜨는 줄은
    * 읽히지 않고 자리만 차지한다 — 진짜 경고(못 읽은 줄·못 받은 자료)가 묻힌다.
@@ -1036,7 +1050,7 @@ function resultBox(app) {
   const step = stepOf(r, staged);
   const ask = step === 'out' ? 'stage1' : step;
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
-  const choices = ask === 'stage1' ? STAGE1_CHOICES : finalChoices({ interview: iv.yes, cat, college: app.univType === '전문대' });
+  const choices = ask === 'stage1' ? STAGE1_CHOICES : finalChoices({ interview: iv.yes, cat, college: app.univType === '전문대', staged, aptitude: Boolean(store.dateOf(app, '적성')) });
 
   /*
    * 대학별고사 — **지난 것도 남긴다.** 확정 카드는 꼬리표를 걷어 내서 면접 날이 안

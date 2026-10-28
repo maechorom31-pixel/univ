@@ -81,8 +81,9 @@ var HEADERS = {
   입력:  ['id', 'hak', 'field', 'value', 'status', 'by', 'at'],
   /*
    * 즐겨찾기에 없는 지원 — 전문대는 즐겨찾기를 안 거치고 내는 일이 많다.
-   * id 는 즐겨찾기 줄과 **같은 식**(학번·대학·전형·학과)으로 만든다. 나중에 즐겨찾기에
-   * 같은 지원이 들어오면 두 줄이 한 id 가 되어, 그동안 적은 결과·날짜·순위가 그대로 붙는다.
+   * id 는 즐겨찾기 줄과 **같은 식**(학번·대학·전형·학과)으로 만든다. 글자까지 같은 지원이 나중에
+   * 즐겨찾기에 들어오면 한 id 가 되지만, 전형 이름 글자가 다르기 쉬워 대개는 카드가 둘이 된다 —
+   * 보드가 「겹쳐 보이는 카드」로 알린다(store.manualTwins). 저절로 합치지는 않는다.
    * interview: '있음'·'없음'·'' — 전문대는 면접 여부를 자료가 모른다. 일정 추천이 이것을 본다.
    * status: 'student' 학생이 더함 · 'confirmed' 선생님이 더했거나 확인함 · 'removed' 뺌
    */
@@ -1699,8 +1700,8 @@ function extraApp_(r) {
 }
 
 /**
- * 즐겨찾기 지원 + 손으로 더한 지원. **같은 id 면 즐겨찾기가 이긴다** — 나중에 즐겨찾기에
- * 들어온 것이니 그쪽 자료(모집인원·내 등급)가 더 많다. 그래도 id 가 같아 적은 것은 안 잃는다.
+ * 즐겨찾기 지원 + 손으로 더한 지원. **같은 id 면 즐겨찾기가 이긴다** — 글자까지 같은 지원이
+ * 즐겨찾기에 들어온 것이니 그쪽 자료(모집인원·내 등급)가 더 많다. id 가 같아 적은 것은 안 잃는다.
  */
 function appsWith_(apps, fresh) {
   var seen = {};
@@ -1769,6 +1770,14 @@ function removeApp_(p, studentHak, who) {
     if (String(hit.hak) !== studentHak) return { ok: false, error: '본인 지원 내역이 아닙니다.' };
     if (String(hit.status) !== 'student') return { ok: false, error: '선생님이 확인한 지원은 선생님께 말씀드려 빼 주세요.' };
   }
+  /*
+   * **자리와 ★ 를 먼저 거둔다.** 추가지원 줄만 removed 로 바꾸면 배치·마감 줄이 남아, 빈 것으로
+   * 보이는 순위 칸을 서버는 계속 찬 칸(★ 면 마감된 칸)으로 센다 — 그 칸에 아무것도 못 넣고,
+   * 풀 단추가 달린 카드도 화면에 없다. 지우는 것은 이 지원 제 것뿐이다.
+   */
+  var hak = String(hit.hak);
+  if (locksOf_(hak, true)[String(hit.id)]) setLock_(hak, hit.id, false, who);
+  setRank_({ id: hit.id, hak: hak, slot: 'pool' }, who);
   var row = {};
   for (var k in hit) if (k !== '_row') row[k] = hit[k];
   row.status = 'removed'; row.by = who; row.at = now_();

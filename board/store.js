@@ -19,7 +19,7 @@ import {
   similarUnivs as nearUnivs,
   indexIpgyeol, indexMojip, indexCollege, indexSchedule, indexAnnounce, paperFor, examFor,
   splitDepts, referenceLine, resolveUniv, catOf, predecessor,
-  recommendSchedule,
+  recommendSchedule, univStem, normDept,
 } from './match.js';
 import { KEY_DATES } from './keydates.js';
 import { draftApp } from './addapp.js';
@@ -1224,6 +1224,7 @@ export async function removeApp(app) {
   const st = state.students.get(app.hak);
   if (st) state.students.set(app.hak, { ...st, apps: st.apps.filter((id) => id !== app.id) });
   state.placement.delete(String(app.id));
+  state.fields.delete(`${app.id}|${app.hak}|마감`);   // 서버도 ★ 를 지운다(removeApp_)
   emit('change', 'state');
 }
 
@@ -1232,6 +1233,23 @@ export async function approveApp(app) {
   if (!offline) await api.approveApp(app.id);
   state.apps.set(app.id, { ...app, addedStatus: 'confirmed' });
   emit('change', 'state');
+}
+
+/**
+ * 손으로 더한 지원과 **겹쳐 보이는** 즐겨찾기 지원 — 같은 학생, 같은 대학(이름 줄기), 같은 학과.
+ * id 는 전형 이름 글자까지 같아야 맞으므로 대개 카드가 둘이 된다. 저절로 합치지 않고 알린다 —
+ * 같은 대학·학과의 다른 전형(교과와 종합)일 수도 있어서다.
+ */
+export function manualTwins(cls) {
+  const out = [];
+  for (const student of studentsOf(cls || '')) {
+    const apps = appsOf(student.hak);
+    for (const m of apps.filter((a) => a.manual)) {
+      const twin = apps.find((a) => !a.manual && univStem(a.univ) === univStem(m.univ) && normDept(a.dept) === normDept(m.dept));
+      if (twin) out.push({ student, manual: m, twin });
+    }
+  }
+  return out;
 }
 
 /** 학생이 더하고 선생님이 아직 확인 안 한 지원. */

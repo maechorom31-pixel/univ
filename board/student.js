@@ -442,6 +442,7 @@ async function removeApp(app) {
     if (!offline) await api.call('studentRemoveApp', { token: state.token, id: app.id });
     state.apps = state.apps.filter((a) => a.id !== app.id);
     state.placement.delete(String(app.id));
+    state.fields.delete(`${app.id}|마감`);   // 서버도 ★ 를 지운다(removeApp_)
     state.notice = `${shortUniv(app.univ)} ${app.dept} 지원을 뺐습니다.`;
   } catch (err) {
     state.notice = `오류: ${err.message}`;
@@ -1953,7 +1954,7 @@ function resultRow(app, open = false) {
   const staged = isStaged(s && s.stages, interviewForce(app));
   const step = stepOf(row, staged);
   const cat = catOf(app.typeCat) || catOf(app.typeSub) || catOf(app.typeName);
-  const ctx = { interview: hasInterviewOf(app), cat, college: app.univType === '전문대' };
+  const ctx = { interview: hasInterviewOf(app), cat, college: app.univType === '전문대', staged, aptitude: Boolean(dateOf(app, '적성')) };
   const told = outcomeText(row);
 
   if (open) wrap.appendChild(el('label', '', '결과'));

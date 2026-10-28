@@ -121,5 +121,20 @@ console.log('단계별 — 2단계에서만 나오는 값이면 1단계 합격�
   eq(withChoice({ stage1: '불합격' }, 'final', '최초합격', { staged: true }).stage1, '불합격', '적힌 1단계는 건드리지 않는다');
 }
 
+console.log('리뷰에서 나온 것 — 적성 미응시, 1단계 고치기');
+{
+  const r = withMissed({}, '적성', true);
+  eq(finalOf(r), '미응시:적성', '적성 미응시를 되읽는다');
+  eq(examStatus('적성', { from: '2026-11-01', to: '2026-11-01', fixed: true }, r, { today: '2026-11-10' }).state, '미응시', '적성 줄도 미응시로 보인다');
+  eq(finalOf(withMissed(r, '적성', false)), '', '되돌리면 발표 전');
+  eq(finalChoices({ aptitude: true }).some((c) => c.value === '미응시:적성'), true, '적성 날이 있으면 갈래가 선다');
+  const auto = withMissed(withMissed({}, '면접', true, true), '면접', false);
+  eq(stepOf(auto, true), 'final', '미응시를 되돌리면 1단계 합격이 남는다(채운 값)');
+  const fixed = withChoice(auto, 'final', '1단계불합격');
+  eq([fixed.stage1, fixed.final, stepOf(fixed, true)], ['불합격', '', 'out'], '최종 칸에서 「1단계 불합격」으로 고칠 수 있다');
+  eq(finalChoices({ staged: true }).slice(-1)[0].value, '1단계불합격', '단계별이면 고치는 갈래가 끝에');
+  eq(finalChoices({}).some((c) => c.value === '1단계불합격'), false, '일괄 전형에는 없다');
+}
+
 console.log(fail ? `\n${fail}개 실패` : '\n모두 통과');
 process.exitCode = fail ? 1 : 0;

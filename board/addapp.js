@@ -150,7 +150,7 @@ export function openAddApp(opt) {
   box.appendChild(head);
   box.appendChild(el('p', 'hint', opt.forStudent
     ? '관심대학 목록에 없는 지원(전문대 등)을 더합니다. 더한 지원은 선생님도 봅니다.'
-    : '즐겨찾기에 없는 지원(전문대 등)을 더합니다. 나중에 즐겨찾기에 같은 지원이 들어오면 한 장으로 합쳐집니다.'));
+    : '즐겨찾기에 없는 지원(전문대 등)을 더합니다. 나중에 즐겨찾기에 같은 지원이 들어오면 보드가 「겹쳐 보이는 카드」로 알려 줍니다.'));
 
   const uid = `aa${Date.now()}`;
   const form = el('div', 'add-form');
@@ -301,10 +301,12 @@ export function openAddApp(opt) {
         : v.univType === '전문대' && !v.round ? '수시1차인지 2차인지 골라 주세요 — 일정이 차수마다 다릅니다.'
           : v.univType !== '전문대' && !v.typeName.trim() ? '전형 이름을 적어 주세요.' : '';
     if (miss) { say.textContent = miss; say.hidden = false; return; }
-    // 자료에 있는 이름이면 그 이름으로 저장한다 — 카드에 작년 숫자·일정이 붙는다
-    const kind = v.univType === '특수대' ? '일반대' : v.univType;
-    const known = opt.list.resolve(kind, v.univ.trim()) || null;
-    const app = draftApp('', { ...v, univ: known || v.univ });
+    /*
+     * **적은 이름 그대로 저장한다.** 예전에는 자료의 짧은 이름(「건국대학교(서울)」→「건국대」)으로
+     * 바꿔 저장해서, 나중에 즐겨찾기에 같은 지원이 들어와도 글자가 달라 id 가 맞을 길이 없었다.
+     * 작년 숫자·일정은 이름을 바꾸지 않아도 붙는다(카드가 resolveUniv 로 찾는다).
+     */
+    const app = draftApp('', v);
     go.disabled = true;
     try {
       await opt.submit({

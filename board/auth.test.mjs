@@ -671,6 +671,32 @@ sheets['결과'] = mkSheet([G.HEADERS['결과']]);
 }
 
 /*
+ * **뺀 지원이 자리와 ★ 를 남기지 않는다.** 빼기는 추가지원 줄만 removed 로 바꿔서, 3순위에
+ * 두고 ★ 를 건 지원을 빼면 화면에는 빈 3순위인데 서버는 「★ 3순위는 마감된 카드가 있는 칸」
+ * 이라며 그 칸을 영영 막았다(풀 단추가 달린 카드도 없다).
+ */
+console.log('\n뺀 지원 — 자리와 마감을 남기지 않는다');
+sheets['설정'] = mkSheet([G.HEADERS['설정']]);
+sheets['공유'] = mkSheet([G.HEADERS['공유'], ['3101', 'tokA', '2099-01-01', '']]);
+sheets['추가지원'] = mkSheet([G.HEADERS['추가지원']]);
+sheets['배치'] = mkSheet([G.HEADERS['배치']]);
+sheets['입력'] = mkSheet([G.HEADERS['입력']]);
+{
+  const add = G.handle_({ action: 'studentAddApp', token: 'tokA', univType: '일반대', univ: '가나대학교', dept: '경영학과', typeSub: '교과(일반)' });
+  const id = add.app.id;
+  eq(G.handle_({ action: 'studentRank', token: 'tokA', id, slot: 'rank', rank: 3 }).ok, true, '3순위에 둔다');
+  eq(G.handle_({ action: 'studentLock', token: 'tokA', id }).ok, true, '★ 를 건다');
+  eq(G.handle_({ action: 'studentRemoveApp', token: 'tokA', id }).ok, true, '뺀다');
+  const other = G.handle_({ action: 'student', token: 'tokA' }).apps.find((a) => !a.manual);
+  const r = G.handle_({ action: 'studentRank', token: 'tokA', id: other.id, slot: 'rank', rank: 3 });
+  eq([r.ok, r.error || ''], [true, ''], '빈 3순위에 다른 지원을 넣을 수 있다');
+  const st = sheets['배치'].getDataRange().getValues().slice(1).filter((x) => x[0] === id);
+  eq(st.every((x) => x[2] !== 'rank' && x[2] !== 'tray'), true, '뺀 지원의 배치 줄은 자리를 안 차지한다');
+  const lk = sheets['입력'].getDataRange().getValues().slice(1).filter((x) => x[0] === id && x[2] === '마감');
+  eq(lk.length, 0, '뺀 지원의 ★ 는 지운다');
+}
+
+/*
  * **한 발 늦은 화면이 남의 결과를 덮어쓰지 못한다.** 결과는 줄을 통째로 덮어써서, 학생이
  * 「최초합격」을 적은 뒤 그 전에 열어 둔 선생님 화면이 같은 카드에 저장하면 학생 것이 지워졌다.
  */

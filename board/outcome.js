@@ -52,6 +52,8 @@ export function examsOf(ctx) {
   if (ctx.interview) out.push('면접');
   if (ctx.cat === '논술') out.push('논술');
   if (ctx.cat === '실기') out.push('실기');
+  // 적성은 유형이 따로 없다 — 적성 날이 잡힌 지원이면(ctx.aptitude) 갈래를 보인다
+  if (ctx.aptitude) out.push('적성');
   return out;
 }
 
@@ -60,6 +62,12 @@ export function examsOf(ctx) {
  * 전문대 수시는 수능최저를 거의 안 걸어서 「최저」 갈래를 안 보인다(고르면 틀린 말이 남는다).
  */
 export function finalChoices(ctx = {}) {
+  /*
+   * 단계별이면 「1단계 불합격」으로 고치는 갈래를 끝에 둔다. 최종 칸으로 넘어간 뒤에는
+   * 1단계를 고칠 길이 학생 화면에 없었다 — 잘못 「1단계 합격」을 고른 경우, 그리고
+   * 고사 미응시를 골랐다 되돌려 1단계 합격만 남은 경우(withChoice 의 채움)가 그랬다.
+   */
+  const fix1 = ctx.staged ? [{ value: '1단계불합격', label: '1단계 불합격(1단계 결과 고치기)' }] : [];
   return [
     { value: '', label: '아직 발표 전' },
     { value: '최초합격', label: '최초합격' },
@@ -68,10 +76,11 @@ export function finalChoices(ctx = {}) {
     { value: '불합격', label: '불합격' },
     ...(ctx.college ? [] : [{ value: '최저', label: '불합격 — 수능최저 미충족' }]),
     ...examsOf(ctx).map((k) => ({ value: `미응시:${k}`, label: `${k} 미응시(시험에 안 감)` })),
+    ...fix1,
   ];
 }
 
-const MISS = /(면접|논술|실기)\s*(미응시|결시|불참)/;
+const MISS = /(면접|논술|실기|적성)\s*(미응시|결시|불참)/;
 
 /** 시트 줄 → 최종 칸의 갈래 값. 아는 말이 아니면 원문 그대로(버리지 않는다). */
 export function finalOf(r) {
@@ -125,6 +134,8 @@ export function withChoice(r, step, value, extra = {}) {
   };
   const past1 = ['최초합격', '예비', '충원합격'].includes(value) || String(value).startsWith('미응시:');
   if (step === 'final' && extra.staged && !cur.stage1 && past1) cur.stage1 = '합격';
+  // 최종 칸에서 고른 「1단계 불합격」 — 1단계 칸으로 적는다(뒤 칸은 지운다)
+  if (step === 'final' && value === '1단계불합격') return withChoice(r, 'stage1', '불합격');
   if (step === 'stage1') {
     const next = { ...cur, stage1: value };
     // 1단계 불합격이면 그 뒤는 없다 — 남은 최종·예비가 있으면 지운다(서로 어긋난 줄이 남지 않게)

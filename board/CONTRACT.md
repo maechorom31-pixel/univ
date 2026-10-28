@@ -325,6 +325,8 @@ parsedAt · cached                       원본을 언제 읽었나, 캐시에�
 
 - 서버는 즐겨찾기 지원 뒤에 이 줄들을 `Application` 모양으로 붙여 보낸다(`appsWith_`) —
   `manual: true`, `addedStatus`, `addedBy`, `addedAt` 이 더 붙는다. **같은 id 면 즐겨찾기가 이긴다.**
+  id 가 다른데 같은 학생·대학(univStem)·학과(normDept)인 즐겨찾기 지원이 있으면 보드가 「겹쳐 보이는
+  카드」로 알린다(`store.manualTwins`). 이름은 적은 그대로 저장한다(자료 이름으로 바꾸지 않는다).
 - id 는 `appId_({hak, univ, typeSub, dept})` — §3 의 안정키와 같은 식이다.
 - 학생 경로 `studentAddApp`(학번은 토큰에서) · `studentRemoveApp`(제가 더한 확인 전 것만).
   선생님 경로 `addApp`(hak 필요, 명단에 있는 학번만) · `removeApp` · `approveApp`.
