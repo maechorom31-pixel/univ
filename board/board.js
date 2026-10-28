@@ -371,27 +371,6 @@ function render() {
     }
   }
   /*
-   * 짝 카드를 잃은 기록 — 시트에서 대학·학과·세부유형 글자를 고치면 새 카드가 생기고
-   * 예전 카드의 순위·결과·메모가 떨어진다(store.orphansOf). 고른 반 학생만.
-   */
-  {
-    const lost = [];
-    for (const st of store.studentsOf(store.selection.cls)) {
-      const o = store.state.orphans && store.state.orphans.get(st.hak);
-      if (!o) continue;
-      const what = Object.entries(o).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join('·');
-      lost.push(`${st.hak} ${tidy(st.name)}(${what})`);
-    }
-    if (lost.length) {
-      main.appendChild(banner(
-        `카드를 잃은 기록이 있습니다 — ${lost.slice(0, 5).join(' · ')}${lost.length > 5 ? ` 외 ${lost.length - 5}명` : ''}.`
-        + ' 시트에서 대학·학과·세부유형 글자를 고치면 새 카드가 생겨 예전 카드의 순위·결과·메모가'
-        + ' 붙지 않습니다(지워지지는 않았습니다). 글자를 예전대로 되돌리고 「새로고침」하면 다시 붙습니다.',
-        true,
-      ));
-    }
-  }
-  /*
    * 손으로 더한 지원과 겹쳐 보이는 즐겨찾기 지원 — 나중에 즐겨찾기에 같은 지원이 들어온 자리.
    * 둘이 정말 같은지(교과/종합처럼 다른 전형일 수 있다)는 사람이 본다.
    */

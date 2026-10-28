@@ -51,7 +51,6 @@ export const state = {
   unknownCols: [],
   skipped: 0,
   skippedRows: [],
-  orphans: new Map(),     // 학번 → {순위, 결과, 날짜, 메모} — 짝 카드를 잃은 기록 수
   parsedAt: '',
   cached: false,
   dropped: [],
@@ -266,36 +265,7 @@ function apply(data) {
       state.studentMoves.push({ id: String(row.id), hak, at: String(row.at || '') });
     }
   }
-  state.orphans = orphansOf(data);
   linkCache.clear();
-}
-
-/**
- * **짝 카드를 잃은 기록.** 카드의 id 는 (학번·대학·세부유형·학과) 글자로 만든다(§3 안정키).
- * 그래서 시트에서 대학 이름이나 세부유형 글자를 고치면 **새 카드가 생기고**, 예전 카드에
- * 걸어 둔 순위·결과·날짜·메모는 붙을 데를 잃는다 — 지워지지는 않지만 화면에서 사라진다.
- * 여태 아무 말이 없어 「고쳤더니 순위가 날아갔다」로만 보였다. 학번마다 세어 보드가 알린다.
- * 손으로 더했다 뺀 지원(추가지원 removed)의 기록은 뺀 것이라 세지 않는다.
- */
-function orphansOf(data) {
-  const live = new Set((data.apps || []).map((a) => String(a.id)));
-  for (const id of data.goneIds || []) live.add(String(id));
-  const out = new Map();
-  const bump = (hak, kind) => {
-    if (!hak) return;
-    if (!out.has(hak)) out.set(hak, { 순위: 0, 결과: 0, 날짜: 0, 메모: 0 });
-    out.get(hak)[kind] += 1;
-  };
-  for (const r of data.state || []) {
-    if (!live.has(String(r.id)) && (r.slot === 'rank' || r.slot === 'tray')) bump(String(r.hak || ''), '순위');
-  }
-  for (const r of data.results || []) {
-    const has = ['stage1', 'final', 'reason', 'waitNo', 'enrolled'].some((k) => String(r[k] || '').trim());
-    if (has && !live.has(String(r.id))) bump(String(r.hak || ''), '결과');
-  }
-  for (const r of data.dates || []) if (!live.has(String(r.id)) && r.from) bump(String(r.hak || ''), '날짜');
-  for (const n of data.notes || []) if (n.id && !live.has(String(n.id))) bump(String(n.hak || ''), '메모');
-  return out;
 }
 
 /**
