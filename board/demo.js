@@ -7,6 +7,9 @@
  * board.html?demo=1 로 연다.
  */
 
+/** `a ?? b` 대신 — 학생 화면은 구형 iOS(12) 사파리에서도 열려야 해서 `??` 를 못 쓴다. */
+const nz = (v, d) => (v == null ? d : v);
+
 /** 오늘로부터 며칠 뒤. 데모가 언제 열려도 「다가오는 일정」이 보이게 한다. */
 const inDays = (n) => {
   const d = new Date();
@@ -26,11 +29,11 @@ const mk = (hak, univ, dept, typeSub, opts = {}) => ({
   typeSub,
   track: opts.track || '인문',
   dept,
-  quotaText: String(opts.quota ?? ''),
-  quota: opts.quota ?? null,
+  quotaText: String(nz(opts.quota, '')),
+  quota: nz(opts.quota, null),
   selectType: opts.stage || '일괄합산',
   minReqText: opts.min ? '* 수능최저기준: 2개 영역 등급 합 8 이내' : '',
-  myScore: { score: opts.score ?? null, grade: opts.conv ?? opts.grade ?? null },
+  myScore: { score: nz(opts.score, null), grade: nz(opts.conv, nz(opts.grade, null)) },
   dates: opts.date
     ? { [opts.dateKind || '면접']: { from: opts.date, to: opts.dateTo || opts.date, fixed: !opts.dateTo } }
     : {},

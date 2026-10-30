@@ -30,6 +30,9 @@ import {
 } from './outcome.js';
 import { applyFixes, fixesOf, minReqOf, minReqPill, myScoreOf, excludedKinds } from './fix.js';
 
+/** `a ?? b` 대신 — 학생 화면은 구형 iOS(12) 사파리에서도 열려야 해서 `??` 를 못 쓴다. */
+const nz = (v, d) => (v == null ? d : v);
+
 const ATTEND = ['면접', '실기', '논술', '적성'];
 const MOCK = '모의면접';
 /** 모의면접은 여러 번 한다. 학생 화면도 전부 보여 준다. */
@@ -54,7 +57,12 @@ const state = {
   busy: false,
   notice: '',
   error: '',
+  view: 'apps',          // 'apps' 내 지원 · 'cal' 달력 — 이 기기에 기억한다(VIEW_KEY)
+  calMonth: '',          // 달력이 보이는 달 'YYYY-MM'
+  calDay: '',            // 달력에서 누른 날 'YYYY-MM-DD'
 };
+const VIEW_KEY = 'student.view';
+try { if (localStorage.getItem(VIEW_KEY) === 'cal') state.view = 'cal'; } catch (err) { /* 사생활 보호 모드 */ }
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -563,6 +571,19 @@ function render() {
   if (state.notice) main.appendChild(note(state.notice));
 
   /*
+   * **「내 지원」과 「달력」 두 면.** 원서를 다 내고 나면 카드 여섯 장이 펼쳐진 긴 화면 맨 아래에
+   * 다가오는 일정·겹치는 날이 있어서, 정작 11월에 제일 자주 보는 것이 제일 멀었다.
+   * 날짜는 달력 면에 모은다. 이레 안에 닥친 일(「곧 있습니다」)은 어느 면에서나 맨 위에 둔다.
+   */
+  main.appendChild(viewTabs());
+  if (state.view === 'cal') {
+    main.appendChild(soon());
+    main.appendChild(calendarView());
+    main.appendChild(clashPanel());
+    return;
+  }
+
+  /*
    * 차례는 **지금 급한 것**을 따른다.
    *
    * 원서 마감이 9월 11일이고 면접은 10월부터다. 지원을 고르는 지금은 「내가 어디
@@ -638,8 +659,6 @@ function render() {
   }
   if ([...tray, ...rest].some((a) => a.univType === '전문대')) main.appendChild(jcNotice());
 
-  main.appendChild(upcoming());
-  main.appendChild(clashPanel());
   main.appendChild(birthPanel());
 
   if (openFolds.size) {
@@ -842,46 +861,226 @@ function soon() {
   return wrap;
 }
 
-function upcoming() {
-  const box = el('section', 'panel');
-  box.appendChild(el('h2', '', '다가오는 일정'));
-  const today = todayISO();
-  const list = [];
+/* ── 내 지원 · 달력 ───────────────────────────────────────────── */
+
+function viewTabs() {
+  const bar = el('div', 'view-tabs');
+  bar.setAttribute('role', 'tablist');
+  const sure = clashes().filter((h) => h.sure).length;
+  for (const [v, text] of [['apps', '내 지원'], ['cal', sure ? `달력 · 겹침 ${sure}` : '달력']]) {
+    const b = el('button', 'view-tab', text);
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(state.view === v));
+    b.onclick = () => setView(v);
+    bar.appendChild(b);
+  }
+  return bar;
+}
+
+function setView(v) {
+  state.view = v;
+  try { localStorage.setItem(VIEW_KEY, v); } catch (err) { /* 저장이 막혀도 이번엔 바꾼다 */ }
+  render();
+  window.scrollTo(0, 0);
+}
+
+/** 아래 그 지원의 카드로 — 달력·6칸에서 누르면 */
+function goCard(app) {
+  if (state.view !== 'apps') { state.view = 'apps'; try { localStorage.setItem(VIEW_KEY, 'apps'); } catch (err) { /* 무시 */ } render(); }
+  const card = document.querySelector(`.mycard[data-id="${app.id}"]`);
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** 결과가 정해졌나 — 떨어졌거나, 붙고 등록까지 정했거나. 그러면 카드에서 결과 칸을 접는다. */
+function resultDecided(app) {
+  const row = state.results.get(String(app.id)) || app.result || {};
+  const s = summaryOf(app);
+  const step = stepOf(row, isStaged(s && s.stages, interviewForce(app)));
+  if (step === 'out') return true;
+  const fin = finalOf(row);
+  if (!fin || fin === '예비') return false;
+  if (fin === '최초합격' || fin === '충원합격') return Boolean(row.enrolled);
+  return true;
+}
+
+/*
+ * 달력에 오르는 것 — 가는 날(면접·논술·실기·적성), 발표(1단계·최종), 모의면접, 그리고 학년 공통
+ * 일정(원서접수·수능·발표 마감·등록·충원). 지원 일정은 **순위에 넣은(전문대는 「지원」으로 올린)
+ * 지원만** — 후보로 내린 원서의 날짜로 재촉하지 않는다. 선생님 달력·「다가오는 일정」과 같은 규칙.
+ */
+const CAL_KINDS = [...ATTEND, '1단계발표', '최종발표', ...MOCKS];
+function calEvents() {
+  const out = [];
   for (const app of state.apps) {
-    for (const kind of [...ATTEND, ...MOCKS]) {
-      // 순위에 넣은 지원만 — 후보로 내린 원서의 날짜로 재촉하지 않는다. 날짜가
-      // 어디서 왔든(일정표 예정·내가 넣은 것) 같다. 값은 카드에 그대로 남아 있고,
-      // 다시 순위에 넣으면 여기로 돌아온다. 선생님 달력과 같은 규칙.
-      if (!schedTarget(app)) continue;
+    if (!schedTarget(app)) continue;
+    for (const kind of CAL_KINDS) {
       const d = dateOf(app, kind);
-      if (d && d.to >= today) list.push({ app, kind, d });
+      if (!d || !d.from) continue;
+      const settled = d.status === 'confirmed' || d.status === 'source';
+      const type = MOCKS.includes(kind) ? 'mock' : kind.endsWith('발표') ? 'tell' : (d.fixed && settled ? 'go' : 'soft');
+      out.push({ app, kind, from: d.from, to: d.to || d.from, fixed: d.fixed, status: d.status, type });
     }
   }
-  list.sort((a, b) => (a.d.from < b.d.from ? -1 : 1));
-  if (!list.length) {
-    box.appendChild(el('p', 'empty-state', '남은 면접·실기·논술 일정이 없습니다.'));
-    return box;
+  for (const k of KEY_DATES) out.push({ key: k, kind: k.name, from: k.from, to: k.to, fixed: k.from === k.to, status: 'key', type: 'key' });
+  return out.sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+}
+
+const KIND_WORD = { '1단계발표': '1단계 발표', 최종발표: '최종 발표' };
+const evName = (e) => (e.key ? (e.key.full || e.key.name)
+  : `${tidy(plainUniv(e.app.univ))} ${MOCKS.includes(e.kind) ? '모의면접' : (KIND_WORD[e.kind] || e.kind)}`);
+const evWhen = (e) => (e.from === e.to ? label(e.from) : `${label(e.from)}~${label(e.to)}`);
+const evState = (e) => (e.status === 'confirmed' ? '확정' : e.status === 'pending' ? '확인 대기'
+  : e.status === 'sched' ? '예정' : e.status === 'source' ? '공지' : '');
+const ymOf = (iso) => iso.slice(0, 7);
+const addMonth = (ym, n) => {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+/**
+ * **달력** — 한 달을 칸으로, 누른 날의 일을 그 아래, 이달 일정을 차례로.
+ * 폰 폭(390px)에서 칸이 46px 남짓이라 칸 안에 글자를 넣으면 「숭실…」로 잘린다. 칸에는 점만
+ * 찍고(가는 날·예정·발표·공통), 글은 아래 목록이 맡는다 — 잘린 글자는 없는 글자다.
+ */
+function calendarView() {
+  const today = todayISO();
+  const events = calEvents();
+  const mine = events.filter((e) => !e.key);
+  // 처음 여는 달 — 이달에 일이 있거나 남은 일이 없으면 이달, 아니면 다음 일이 있는 달
+  if (!state.calMonth) {
+    const next = mine.find((e) => e.to >= today);
+    state.calMonth = !next || mine.some((e) => ymOf(e.from) === ymOf(today) || ymOf(e.to) === ymOf(today))
+      ? ymOf(today) : ymOf(next.from);
   }
-  const stack = el('div', 'stack');
-  for (const x of list.slice(0, 5)) {
-    const row = el('div', 'row');
-    const txt = el('div', 'txt');
-    txt.appendChild(el('div', 'univ', `${shortUniv(x.app.univ)} ${x.kind}`));
-    txt.appendChild(el('div', 'dept', x.d.fixed
-      ? label(x.d.from)
-      : `${label(x.d.from)}~${label(x.d.to)} 중 하루`));
-    row.appendChild(txt);
-    const days = Math.round((Date.parse(x.d.from) - Date.parse(today)) / 86400000);
-    row.appendChild(el('span', `pill num${days <= 7 ? ' mark' : ''}`,
-      days <= 0 ? '오늘' : `D-${days}`));
-    stack.appendChild(row);
+  const ym = state.calMonth;
+  const [y, m] = ym.split('-').map(Number);
+  const box = el('section', 'panel scal');
+
+  const head = el('div', 'scal-head');
+  const prev = el('button', 'btn', '‹');
+  prev.type = 'button';
+  prev.setAttribute('aria-label', '지난달');
+  prev.onclick = () => { state.calMonth = addMonth(ym, -1); state.calDay = ''; render(); };
+  const next = el('button', 'btn', '›');
+  next.type = 'button';
+  next.setAttribute('aria-label', '다음 달');
+  next.onclick = () => { state.calMonth = addMonth(ym, 1); state.calDay = ''; render(); };
+  head.appendChild(prev);
+  head.appendChild(el('h2', '', `${y}년 ${m}월`));
+  head.appendChild(next);
+  box.appendChild(head);
+
+  const inMonth = (e) => e.from.slice(0, 7) <= ym && e.to.slice(0, 7) >= ym;
+  const monthEv = events.filter(inMonth);
+  const onDay = (iso) => monthEv.filter((e) => e.from <= iso && iso <= e.to);
+  if (!state.calDay || state.calDay.slice(0, 7) !== ym) {
+    const first = monthEv.find((e) => !e.key && e.to >= today) || monthEv.find((e) => !e.key);
+    state.calDay = ymOf(today) === ym ? today : (first ? (first.from.slice(0, 7) === ym ? first.from : `${ym}-01`) : `${ym}-01`);
   }
-  box.appendChild(stack);
+
+  const grid = el('div', 'scal-grid');
+  grid.setAttribute('role', 'grid');
+  for (const d of DOW) grid.appendChild(el('div', 'scal-dow', d));
+  const firstDow = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  for (let i = 0; i < firstDow; i += 1) grid.appendChild(el('div', 'scal-off'));
+  for (let d = 1; d <= days; d += 1) {
+    const iso = `${ym}-${String(d).padStart(2, '0')}`;
+    const here = onDay(iso);
+    const cell = el('button', 'scal-day');
+    cell.type = 'button';
+    if (iso === today) cell.classList.add('today');
+    else if (iso < today) cell.classList.add('past');
+    if (iso === state.calDay) cell.classList.add('on');
+    if (here.some((e) => e.key && e.key.big)) cell.classList.add('big');
+    cell.setAttribute('aria-label', `${m}월 ${d}일${here.length ? ` · ${here.map(evName).join(', ')}` : ''}`);
+    cell.appendChild(el('span', 'n num', String(d)));
+    const dots = el('span', 'dots');
+    // 점은 넷까지 — 가는 날이 먼저(빠뜨리면 안 되는 날), 그다음 발표·모의면접·공통
+    const order = { go: 0, soft: 1, mock: 2, tell: 3, key: 4 };
+    for (const e of here.slice().sort((a, b) => order[a.type] - order[b.type]).slice(0, 4)) {
+      dots.appendChild(el('i', `dot ${e.type}`));
+    }
+    cell.appendChild(dots);
+    cell.onclick = () => { state.calDay = iso; render(); };
+    grid.appendChild(cell);
+  }
+  box.appendChild(grid);
+
+  const legend = el('p', 'scal-legend');
+  for (const [cls, text] of [['go', '가는 날'], ['soft', '가는 날(예정·기간)'], ['tell', '발표'], ['mock', '모의면접'], ['key', '공통 일정']]) {
+    const it = el('span', 'lg');
+    it.appendChild(el('i', `dot ${cls}`));
+    it.appendChild(document.createTextNode(text));
+    legend.appendChild(it);
+  }
+  box.appendChild(legend);
+
+  // 누른 날
+  const [, , dd] = state.calDay.split('-').map(Number);
+  const dayBox = el('div', 'scal-dayinfo');
+  dayBox.setAttribute('aria-live', 'polite');
+  dayBox.appendChild(el('h3', '', `${m}월 ${dd}일(${DOW[new Date(`${state.calDay}T00:00:00Z`).getUTCDay()]})`));
+  const todays = onDay(state.calDay);
+  if (!todays.length) dayBox.appendChild(el('p', 'hint', '이 날은 일정이 없습니다.'));
+  else dayBox.appendChild(evList(todays, today));
+  box.appendChild(dayBox);
+
+  // 이달 일정 전부
+  const all = el('div', 'scal-month');
+  const list = monthEv.filter((e) => !e.key || e.from.slice(0, 7) === ym);
+  all.appendChild(el('h3', '', `${m}월 일정 ${list.length}건`));
+  if (!list.length) all.appendChild(el('p', 'hint', '이달에는 일정이 없습니다. ‹ › 로 다른 달을 볼 수 있습니다.'));
+  else all.appendChild(evList(list, today));
+  box.appendChild(all);
+  box.appendChild(el('p', 'hint scal-note',
+    '점선·「예정」은 대학 일정표에서 가져온 날입니다. 대학에서 받은 날이 다르면 「내 지원」의 카드에서 고쳐 주세요.'));
   return box;
 }
 
-function clashPanel() {
-  const box = el('section', 'panel');
+/** 일정 줄들 — 누르면 그 지원의 카드로 */
+function evList(list, today) {
+  const ul = el('ul', 'ev-list');
+  for (const e of list) {
+    const li = el('li', `ev-item ${e.type}${e.to < today ? ' past' : ''}`);
+    const inner = e.app ? el('button', 'ev-btn') : el('div', 'ev-btn');
+    if (e.app) { inner.type = 'button'; inner.onclick = () => goCard(e.app); }
+    inner.appendChild(el('i', `dot ${e.type}`));
+    const txt = el('span', 'ev-txt');
+    txt.appendChild(el('b', '', evName(e)));
+    const sub = [evWhen(e), evState(e), e.app ? tidy(e.app.dept) : ''].filter(Boolean).join(' · ');
+    txt.appendChild(el('span', 'ev-sub', sub));
+    inner.appendChild(txt);
+    const days = Math.round((Date.parse(e.from) - Date.parse(today)) / 86400000);
+    if (e.to >= today) {
+      inner.appendChild(el('span', `pill num${days <= 7 ? ' mark' : ''}`, days <= 0 ? (e.to > today && e.from < today ? '기간 중' : '오늘') : `D-${days}`));
+    }
+    li.appendChild(inner);
+    ul.appendChild(li);
+  }
+  return ul;
+}
+
+/** 6칸 칩의 지금 — 결과가 났으면 결과, 아니면 다음 날짜(달력과 같은 날들) */
+function slotStatus(box, app) {
+  const row = state.results.get(String(app.id)) || app.result || {};
+  const told = outcomeText(row);
+  const line = el('div', 'slot-next');
+  if (told) {
+    line.appendChild(el('b', '', told));
+  } else {
+    const today = todayISO();
+    const next = calEvents().find((e) => e.app === app && e.to >= today);
+    line.textContent = next ? `${MOCKS.includes(next.kind) ? '모의면접' : (KIND_WORD[next.kind] || next.kind)} ${evWhen(next)}${next.status === 'sched' ? ' 예정' : ''}`
+      : '남은 일정 없음';
+  }
+  box.appendChild(line);
+}
+
+/** 겹침 — 가는 날끼리. sure 는 둘 다 확정된 같은 하루 */
+function clashes() {
   const events = [];
   for (const app of state.apps) {
     for (const kind of ATTEND) {
@@ -895,20 +1094,24 @@ function clashPanel() {
       const a = events[i]; const b = events[j];
       if (a.app.id === b.app.id) continue;
       if (a.from > b.to || b.from > a.to) continue;
-      // 일정표에서 온 날짜(sched)와 확인 대기(pending)로는 「겹침」을 확정하지 않는다
       const settled = (e) => e.status === 'confirmed' || e.status === 'source';
       hits.push({ a, b, sure: a.fixed && b.fixed && a.from === b.from && settled(a) && settled(b) });
     }
   }
-  hits.sort((x, y) => y.sure - x.sure);
+  return hits.sort((x, y) => y.sure - x.sure);
+}
+
+function clashPanel() {
+  const box = el('section', 'panel');
+  // 일정표에서 온 날짜(sched)와 확인 대기(pending)로는 「겹침」을 확정하지 않는다(clashes)
+  const hits = clashes();
 
   box.appendChild(el('h2', '', '겹치는 날'));
   if (!hits.length) {
     box.appendChild(el('p', 'empty-state', '지금 들어온 날짜로는 겹치는 곳이 없습니다.'));
     return box;
   }
-  const stack = el('div', 'stack');
-  for (const h of hits) {
+  const rowOf = (h) => {
     const row = el('div', 'row');
     const txt = el('div', 'txt');
     txt.appendChild(el('div', 'univ',
@@ -918,9 +1121,33 @@ function clashPanel() {
       : '날짜가 포개집니다. 확정일이 나오면 넣어 주세요.'));
     row.appendChild(txt);
     row.appendChild(el('span', `pill ${h.sure ? 'warn' : 'wait'}`, h.sure ? '겹침' : '겹칠 수 있음'));
-    stack.appendChild(row);
+    return row;
+  };
+  /*
+   * **확정된 겹침만 펴 둔다.** 기간으로만 나온 날(「10/15~10/25 중 하루」) 하나가 다른 면접
+   * 넷과 다 포개져 「겹칠 수 있음」이 줄줄이 섰고, 진짜 같은 날 겹침이 그 사이에 묻혔다.
+   * 「겹칠 수 있음」은 한 줄로 접는다 — 확정일이 나오면 저절로 풀리거나 「겹침」이 된다.
+   */
+  const sure = hits.filter((h) => h.sure);
+  const maybe = hits.filter((h) => !h.sure);
+  if (sure.length) {
+    const stack = el('div', 'stack');
+    for (const h of sure) stack.appendChild(rowOf(h));
+    box.appendChild(stack);
+  } else {
+    box.appendChild(el('p', 'empty-state', '확정된 날짜끼리 겹치는 곳은 없습니다.'));
   }
-  box.appendChild(stack);
+  if (maybe.length) {
+    const fold = document.createElement('details');
+    fold.className = 'fold-row';
+    const sum = document.createElement('summary');
+    sum.textContent = `날짜가 포개질 수 있는 곳 ${maybe.length}건 — 확정일이 나오면 다시 봅니다`;
+    fold.appendChild(sum);
+    const stack = el('div', 'stack');
+    for (const h of maybe) stack.appendChild(rowOf(h));
+    fold.appendChild(stack);
+    box.appendChild(fold);
+  }
   return box;
 }
 
@@ -1019,8 +1246,14 @@ function slotGrid(ranked, tray = []) {
       part.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
       part.appendChild(el('div', 'dept', tidy(app.dept)));
       box.appendChild(part);
+      /*
+       * 원서를 낸 뒤(확정)에는 작년 컷 대신 **지금 그 지원이 어디쯤인가** — 결과가 났으면 결과,
+       * 아니면 다음 날짜. 누르면 아래 그 카드로 내려간다.
+       */
+      if (committedOf(app)) slotStatus(part, app);
       // 짝은 축약 — 숫자 한 줄만 두고 꼬리표는 뺀다. 둘을 합쳐 한 칸 높이가 되게.
-      slotFigures(part, app, here.length > 1);
+      else slotFigures(part, app, here.length > 1);
+      part.addEventListener('click', () => goCard(app));
       dragify(part, app);
     });
     if (!here.length) box.appendChild(el('div', 'dept', '비어 있음'));
@@ -1042,12 +1275,8 @@ function slotGrid(ranked, tray = []) {
       box.appendChild(el('div', 'rank', `전문대${lockOf(app) ? ' ★' : ''}`));
       box.appendChild(el('div', 'univ', tidy(shortUniv(app.univ))));
       box.appendChild(el('div', 'dept', tidy(app.dept)));
-      const iv = dateOf(app, '면접');
-      if (iv) {
-        const pills = el('div', 'pills mini');
-        pills.appendChild(el('span', 'pill mark', `면접 ${label(iv.from)}`));
-        box.appendChild(pills);
-      }
+      slotStatus(box, app);
+      box.addEventListener('click', () => goCard(app));
       tgrid.appendChild(box);
     }
     wrap.appendChild(tgrid);
@@ -1371,7 +1600,7 @@ function group(title, apps, count, help) {
 function figures(app) {
   const s = summaryOf(app);
   const naesin = (state.student && state.student.naesin) || {};
-  const total = g2(naesin['전교과'] ?? naesin['전교과(100)']);
+  const total = g2(nz(naesin['전교과'], naesin['전교과(100)']));
   const mine = myScoreOf(app, s);
 
   const wrap = el('div', 'figs');
@@ -1632,8 +1861,12 @@ function card(app) {
      * 순위)는 「다른 칸」 하나로 접는다. 결과 줄은 `res-in` 그대로라 발표 알림의
      * 「적으러 가기」가 찾아온다.
      */
-    box.appendChild(fieldRow(app, CARD_FIELDS[0], true));
-    box.appendChild(resultRow(app, true));
+    /*
+     * 수험번호는 **적었으면 접는다**(접힌 줄이 값을 말한다). 결과도 **정해졌으면** 접는다 —
+     * 붙고 등록까지 정했거나, 떨어졌거나. 예전에는 다 편 채라 여섯 장이 7천 픽셀이 넘었다.
+     */
+    box.appendChild(fieldRow(app, CARD_FIELDS[0], !state.fields.has(`${app.id}|수험번호`)));
+    box.appendChild(resultRow(app, !resultDecided(app)));
     const rest = [applyNoRow(app), ...CARD_FIELDS.slice(1).map((spec) => fieldRow(app, spec)), ...later];
     strip.appendChild(foldRow('다른 칸 · 접수번호·경쟁률·성적', rest));
   } else {

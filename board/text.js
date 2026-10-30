@@ -5,6 +5,19 @@
  * 한쪽만 고쳐지고, 화면에 `학부을(를)` 같은 표기가 남는다.
  */
 
+/** `str.matchAll(re)` 대신 — 구형 iOS(12) 사파리에는 matchAll 이 없다. */
+const allMatches = (str, re) => {
+  const g = new RegExp(re.source, re.flags.indexOf('g') >= 0 ? re.flags : `${re.flags}g`);
+  const out = [];
+  let m = g.exec(str);
+  while (m !== null) {
+    out.push(m);
+    if (m[0] === '') g.lastIndex += 1;
+    m = g.exec(str);
+  }
+  return out;
+};
+
 /**
  * 받침을 보고 조사를 고른다.
  * 숫자·영문으로 끝나면 보수적으로 받침 있는 쪽을 쓴다 — 「AI를」보다 「AI을」이
@@ -134,9 +147,9 @@ export function minReqShort(text) {
   const t = String(text || '');
   if (!t.trim()) return null;
   const hits = [
-    ...[...t.matchAll(MIN_SUM)].map((m) => `${m[1]}합 ${m[2]}`),
-    ...[...t.matchAll(MIN_EACH)].map((m) => `${m[1]}개 각 ${m[2]}등급`),
-    ...[...t.matchAll(MIN_ONE)].map((m) => `${m[1]}개 ${m[2]}등급`),
+    ...[...allMatches(t, MIN_SUM)].map((m) => `${m[1]}합 ${m[2]}`),
+    ...[...allMatches(t, MIN_EACH)].map((m) => `${m[1]}개 각 ${m[2]}등급`),
+    ...[...allMatches(t, MIN_ONE)].map((m) => `${m[1]}개 ${m[2]}등급`),
   ];
   const uniq = [...new Set(hits)];
   if (uniq.length !== 1) return null;
@@ -147,7 +160,7 @@ export function minReqShort(text) {
    * 된다. 다른 합이 하나라도 보이면 줄이지 않는다 — 원문은 상세에 있다.
    */
   const m = uniq[0].match(/합 (\d+)$/);
-  if (m && [...t.matchAll(/합(?:이)?\s*([0-9]{1,2})/g)].some((x) => x[1] !== m[1])) return null;
+  if (m && [...allMatches(t, /합(?:이)?\s*([0-9]{1,2})/g)].some((x) => x[1] !== m[1])) return null;
   return uniq[0];
 }
 

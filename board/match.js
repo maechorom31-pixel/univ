@@ -15,6 +15,22 @@
  * 애매하면 잇지 않고 「연결 안 됨」으로 남긴다. 값을 지어내지 않는다.
  */
 
+/** `a ?? b` 대신 — 학생 화면은 구형 iOS(12) 사파리에서도 열려야 해서 `??` 를 못 쓴다. */
+const nz = (v, d) => (v == null ? d : v);
+
+/** `str.matchAll(re)` 대신 — 구형 iOS(12) 사파리에는 matchAll 이 없다. */
+const allMatches = (str, re) => {
+  const g = new RegExp(re.source, re.flags.indexOf('g') >= 0 ? re.flags : `${re.flags}g`);
+  const out = [];
+  let m = g.exec(str);
+  while (m !== null) {
+    out.push(m);
+    if (m[0] === '') g.lastIndex += 1;
+    m = g.exec(str);
+  }
+  return out;
+};
+
 /* ── 대학 ─────────────────────────────────────────────────────────── */
 
 /**
@@ -61,7 +77,7 @@ export function univStem(name) {
  */
 export function campusTokens(name) {
   const s = String(name || '');
-  const raw = [...s.matchAll(/\(([^)]*)\)/g)].map((m) => m[1].trim());
+  const raw = [...allMatches(s, /\(([^)]*)\)/g)].map((m) => m[1].trim());
   const tail = s.match(/[-–—]\s*(.+)$/);
   if (tail) raw.push(tail[1].trim());
   const out = [];
@@ -166,7 +182,7 @@ export function normDept(name) {
   let d = String(name || '').trim();
   d = d.replace(/^\[[^\]]*\]/, '');                  // [통합], [유형2]
   const discs = [...new Set(
-    [...d.matchAll(/\(([^)]*)\)/g)]
+    [...allMatches(d, /\(([^)]*)\)/g)]
       .map((m) => DISCRIMINATORS[m[1].trim()])
       .filter(Boolean),
   )].sort();
@@ -468,7 +484,7 @@ export function referenceLine(univ, depts, ipgyeol, cat) {
 
   return {
     year, cat: cat || null,
-    found: found.sort((a, b) => (a.g70 ?? 99) - (b.g70 ?? 99)),
+    found: found.sort((a, b) => (nz(a.g70, 99)) - (nz(b.g70, 99))),
     missing,
     g70: spread((f) => f.g70),
     rate: spread((f) => f.rate),
@@ -923,7 +939,7 @@ function nearbyOf(rows, cat, picked, reason) {
       .sort((a, b) => {
         const av = a.rows[a.rows.length - 1].g70;
         const bv = b.rows[b.rows.length - 1].g70;
-        return (av == null) - (bv == null) || (av ?? 0) - (bv ?? 0);
+        return (av == null) - (bv == null) || (nz(av, 0)) - (nz(bv, 0));
       }),
   };
 }
@@ -1086,7 +1102,7 @@ function staleOf(rows, mineRows, app, mojipRows) {
         year: last.year, g70: last.g70, rate: last.rate,
       };
     })
-    .sort((a, b) => (a.g70 == null) - (b.g70 == null) || (a.g70 ?? 0) - (b.g70 ?? 0));
+    .sort((a, b) => (a.g70 == null) - (b.g70 == null) || (nz(a.g70, 0)) - (nz(b.g70, 0)));
   const withCut = mineRows.filter((r) => r.g70 != null);
   const last = withCut[withCut.length - 1] || mineRows[mineRows.length - 1];
   return {
@@ -1631,12 +1647,12 @@ export function summarize(l, app) {
       linked: true, kind: 'college', why: l.why, rows: l.college, before: null, real: NO_RATE,
       alias: l.alias || null, isNew: false,
       year: 2026,                      // College 자료는 앞이 최신 (2026·25·24)
-      rate: d.comp[0] ?? null,
-      avg: d.avg[0] ?? null,           // 최종등록자 평균등급
-      cut: d.min[0] ?? null,           // 최저등급 — 일반대의 70컷에 해당하는 자리
-      quotaNow: d.quota ?? null, quotaPrev: null, quota: d.quota ?? null,
-      employ: d.employ ?? null, fill: d.fill ?? null,
-      transfer: d.transfer || 0, track: d.track || null, trend: d.trend ?? null,
+      rate: nz(d.comp[0], null),
+      avg: nz(d.avg[0], null),           // 최종등록자 평균등급
+      cut: nz(d.min[0], null),           // 최저등급 — 일반대의 70컷에 해당하는 자리
+      quotaNow: nz(d.quota, null), quotaPrev: null, quota: nz(d.quota, null),
+      employ: nz(d.employ, null), fill: nz(d.fill, null),
+      transfer: d.transfer || 0, track: d.track || null, trend: nz(d.trend, null),
     };
   }
 
@@ -2134,7 +2150,7 @@ const deptLike = (t) => !/교과$/.test(t) && !Object.values(CAT_TOKEN).some((re
 function typeTokens(app) {
   const raw = `${app.typeSub || ''} ${app.typeName || ''}`;
   const out = new Set();
-  for (const m of raw.matchAll(/\(([^()]+)\)/g)) out.add(m[1]);
+  for (const m of allMatches(raw, /\(([^()]+)\)/g)) out.add(m[1]);
   /*
    * 자료는 전형 이름을 줄여 적는다 — 「광운참빛인재I·II」(즐겨찾기 「광운참빛인재전형Ⅰ-면접」),
    * 「바롬인재서류·면접」(「바롬인재면접전형」). 그래서 「-」·로마숫자·전형·면접/서류 꼬리를
@@ -2171,10 +2187,10 @@ function splitTop(text) {
  */
 function exclusions(text) {
   const out = [];
-  for (const m of String(text || '').matchAll(/([^()[\],\s]+)\s*제외/g)) out.push(...m[1].split(/[·/]/));
+  for (const m of allMatches(String(text || ''), /([^()[\],\s]+)\s*제외/g)) out.push(...m[1].split(/[·/]/));
   // 「특기형 일부 제외」 — 일부라도 빠지면 이 전형 전체를 이 날로 볼 수 없다
-  for (const m of String(text || '').matchAll(/([^()[\],\s]+)\s+일부\s*제외/g)) out.push(...m[1].split(/[·/]/));
-  for (const m of String(text || '').matchAll(/([^()[\],]+?)\s*외\s*(?:전체|모든)/g)) out.push(...m[1].split(/[·/]/));
+  for (const m of allMatches(String(text || ''), /([^()[\],\s]+)\s+일부\s*제외/g)) out.push(...m[1].split(/[·/]/));
+  for (const m of allMatches(String(text || ''), /([^()[\],]+?)\s*외\s*(?:전체|모든)/g)) out.push(...m[1].split(/[·/]/));
   return out.map((t) => t.trim()).filter((t) => t && !/^(위|전형|그|모든|전체)$/.test(t));
 }
 
@@ -2778,16 +2794,16 @@ export function indexCollege(list) {
       univ, dept: d.unit,
       region: d.sido, cat: d.cat2 || d.cat1, level: d.level,
       track: ip.track || null, phase: ip.phase || null,
-      quota: ip.quota ?? null,
+      quota: nz(ip.quota, null),
       comp: ip.comp || [],        // 3개년 경쟁률 (앞이 최신)
       avg: ip.avg || [],          // 3개년 최종등록자 평균등급
       min: ip.min || [],          // 3개년 최저등급
-      trend: ip.trend ?? null,
+      trend: nz(ip.trend, null),
       tracks: d.tracks || {},     // 전형 유형별 등급
-      employ: d.employ ?? null,   // 취업률
-      fill: d.fill ?? null,       // 충원율
-      transfer: d.transfer ?? 0,  // 연계편입 경로 수
-      tuition: d.tuition ?? null,
+      employ: nz(d.employ, null),   // 취업률
+      fill: nz(d.fill, null),       // 충원율
+      transfer: nz(d.transfer, 0),  // 연계편입 경로 수
+      tuition: nz(d.tuition, null),
       change: d.change || null,
     };
     const kk = key(univ, d.unit);
